@@ -1,6 +1,6 @@
-"""Game module for battle card game logic."""
+"""Game services package."""
 
-# Game logic will be implemented here
+from .game_service import GameService
 
-__all__ = []
+__all__ = ['GameService']
 

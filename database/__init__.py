@@ -1,16 +1,6 @@
-"""Database module for managing game data storage."""
+"""Database package for game persistence."""
 
-from .db import (
-    init_database,
-    create_account,
-    username_exists,
-    verify_login,
-)
+from .game_repository import GameRepository
 
-__all__ = [
-    "init_database",
-    "create_account",
-    "username_exists",
-    "verify_login",
-]
+__all__ = ['GameRepository']
 
