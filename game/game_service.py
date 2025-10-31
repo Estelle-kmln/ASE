@@ -1,8 +1,9 @@
 """Game service for initializing and managing games."""
 
 import uuid
-from typing import List
+from typing import List, Optional
 
+from database.game_repository import GameRepository
 from models.card import Card, CardCollection
 from models.deck import Deck
 from models.game import Game
@@ -11,9 +12,14 @@ from models.game import Game
 class GameService:
     """Service for managing game initialization and operations."""
     
-    def __init__(self):
-        """Initialize the game service."""
+    def __init__(self, repository: Optional[GameRepository] = None):
+        """Initialize the game service.
+        
+        Args:
+            repository: Optional game repository for persistence
+        """
         self.collection = CardCollection()
+        self.repository = repository or GameRepository()
     
     def get_card_collection(self) -> CardCollection:
         """Get the full card collection.
@@ -37,11 +43,12 @@ class GameService:
         """
         return Deck(selected_cards)
     
-    def start_new_game(self, deck: Deck) -> Game:
+    def start_new_game(self, deck: Deck, save: bool = True) -> Game:
         """Start a new game with the given deck.
         
         Args:
             deck: The player's deck of 22 cards
+            save: Whether to save the game to the database
         
         Returns:
             A new Game instance with the deck shuffled and ready to play
@@ -53,9 +60,14 @@ class GameService:
             raise ValueError(f"Deck must have {Deck.DECK_SIZE} cards")
         
         game_id = str(uuid.uuid4())
-        return Game(deck, game_id=game_id)
+        game = Game(deck, game_id=game_id)
+        
+        if save:
+            self.repository.save_game(game)
+        
+        return game
     
-    def validate_deck_selection(self, selected_cards: List[Card]) -> tuple[bool, str]:
+    def validate_deck_selection(self, selected_cards: List[Card]) -> tuple:
         """Validate a deck selection.
         
         Args:
