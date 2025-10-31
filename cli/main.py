@@ -87,17 +87,53 @@ class CLI:
         )
         return selected_cards
 
+    def choose_deck_option(self) -> List[Card]:
+        """Let the player choose between random deck or manual selection.
+        
+        Returns:
+            List of 22 selected cards, or empty list if cancelled
+        """
+        print("\n=== Choose Deck Option ===\n")
+        print("1. Random deck (quick start)")
+        print("2. Build deck manually (select 22 cards)")
+        print()
+        
+        while True:
+            choice = input("Enter your choice (1 or 2, or 'q' to quit): ").strip().lower()
+            
+            if choice == "q":
+                print("Deck selection cancelled.")
+                return []
+            
+            if choice == "1":
+                # Random deck
+                print("\nGenerating random deck...")
+                random_deck = self.game_service.create_random_deck()
+                selected_cards = random_deck.cards
+                
+                print(f"\n✓ Random deck generated with {len(selected_cards)} cards:")
+                for i, card in enumerate(selected_cards, 1):
+                    print(f"  {i:2d}. {card}")
+                print()
+                
+                return selected_cards
+            
+            elif choice == "2":
+                # Manual selection
+                self.display_card_collection()
+                return self.select_deck()
+            
+            else:
+                print("Invalid choice. Please enter 1, 2, or 'q'.")
+
     def start_new_game(self):
         """Start a new game - main entry point for the user story."""
         print("\n" + "=" * 50)
         print("  START NEW GAME")
         print("=" * 50)
 
-        # Display available cards
-        self.display_card_collection()
-
-        # Let player select deck
-        selected_cards = self.select_deck()
+        # Let player choose deck option
+        selected_cards = self.choose_deck_option()
 
         if not selected_cards:
             print("\nGame start cancelled.")

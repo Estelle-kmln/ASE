@@ -1,5 +1,6 @@
 """Game service for initializing and managing games."""
 
+import random
 import uuid
 from typing import List, Optional
 
@@ -41,6 +42,16 @@ class GameService:
         Raises:
             ValueError: If the number of cards is not 22 or if there are duplicates
         """
+        return Deck(selected_cards)
+    
+    def create_random_deck(self) -> Deck:
+        """Create a random deck of 22 cards from the collection.
+        
+        Returns:
+            A new Deck instance with 22 randomly selected cards
+        """
+        all_cards = self.collection.get_all_cards()
+        selected_cards = random.sample(all_cards, Deck.DECK_SIZE)
         return Deck(selected_cards)
     
     def start_new_game(self, deck: Deck, save: bool = True) -> Game:
