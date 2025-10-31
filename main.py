@@ -1,43 +1,33 @@
-from database import init_database, create_account, username_exists
+from database import init_database
+from auth import create_account_flow, login_flow
+
 
 def main():
-    """Main CLI entry point for account creation."""
+    """Main CLI entry point."""
     # Initialize database on startup
     init_database()
     
-    print("=== Battle Card Game - Account Creation ===")
-    print()
+    print("=== Battle Card Game ===")
     
     while True:
-        username = input("Enter username: ").strip()
+        print("\n1. Create Account")
+        print("2. Login")
+        print("3. Exit")
         
-        if not username:
-            print("Username cannot be empty. Please try again.\n")
-            continue
+        choice = input("\nSelect an option (1-3): ").strip()
         
-        # Check if username already exists
-        if username_exists(username):
-            print(f"Error: Username '{username}' already exists. Please choose a different username.\n")
-            continue
-        
-        password = input("Enter password: ").strip()
-        
-        if not password:
-            print("Password cannot be empty. Please try again.\n")
-            continue
-        
-        # Create the account
-        if create_account(username, password):
-            print(f"\n✓ Account created successfully! Welcome, {username}!\n")
-        else:
-            print(f"Error: Failed to create account. Please try again.\n")
-        
-        # Ask if user wants to create another account
-        again = input("Create another account? (y/n): ").strip().lower()
-        if again != 'y':
+        if choice == "1":
+            create_account_flow()
+        elif choice == "2":
+            if login_flow():
+                # User successfully logged in - you can add game logic here later
+                print("You are now logged in! (Game features coming soon...)")
+                break
+        elif choice == "3":
+            print("\nThank you for playing!")
             break
-    
-    print("\nThank you for playing!")
+        else:
+            print("Invalid choice. Please select 1, 2, or 3.")
 
 if __name__ == "__main__":
     main()
