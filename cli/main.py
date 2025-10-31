@@ -1,10 +1,11 @@
 """CLI interface for the battle card game."""
 
-from typing import List
+from typing import List, Optional
 
 from game.game_service import GameService
 from models.card import Card
 from models.deck import Deck
+from models.game import Game
 
 
 class CLI:
@@ -171,11 +172,136 @@ class CLI:
             print(f"\nError starting game: {e}")
             return None
 
+    def display_hand(self, hand):
+        """Display the current hand to the player.
+        
+        Args:
+            hand: The Hand object to display
+        """
+        print("\n=== Your Hand ===")
+        for i, card in enumerate(hand.cards, 1):
+            print(f"  {i}. {card}")
+        print()
+
+    def play_turn(self, game: Game) -> bool:
+        """Play a single turn: draw 3 cards, player picks 1, discard 2.
+        
+        Args:
+            game: The current game
+        
+        Returns:
+            True if turn was played successfully, False if game ended or cancelled
+        """
+        try:
+            # Start turn - draw 3 cards
+            hand = game.start_turn()
+            
+            print(f"\n{'='*50}")
+            print(f"  TURN {game.turn}")
+            print(f"{'='*50}")
+            print(f"Cards remaining in deck: {len(game.deck)}")
+            
+            # Display the hand
+            self.display_hand(hand)
+            
+            # Let player choose which card to play
+            while True:
+                print("Which card would you like to play?")
+                choice = input("Enter card number (1-3, or 'q' to quit turn): ").strip().lower()
+                
+                if choice == "q":
+                    print("Turn cancelled.")
+                    return False
+                
+                try:
+                    card_index = int(choice) - 1  # Convert to 0-based index
+                    
+                    if not (0 <= card_index < len(hand.cards)):
+                        print(f"Invalid choice. Please enter a number between 1 and {len(hand.cards)}.")
+                        continue
+                    
+                    # Play the selected card
+                    played_card = game.play_turn(card_index)
+                    discarded = hand.discarded_cards
+                    
+                    print(f"\n✓ Played: {played_card}")
+                    print(f"✓ Discarded: {', '.join(str(c) for c in discarded)}")
+                    print(f"✓ Cards remaining in deck: {len(game.deck)}")
+                    
+                    # Save game state
+                    self.game_service.repository.save_game(game)
+                    
+                    return True
+                    
+                except ValueError:
+                    print("Invalid input. Please enter a number (1-3) or 'q'.")
+                except IndexError as e:
+                    print(f"Error: {e}")
+                    
+        except ValueError as e:
+            # Handle cases like "not enough cards"
+            print(f"\n⚠ {e}")
+            if "Not enough cards" in str(e):
+                print("Game ended - deck is empty!")
+                game.is_active = False
+                self.game_service.repository.save_game(game)
+            return False
+
+    def play_game(self, game: Game):
+        """Main game loop - play turns until deck runs out or player quits.
+        
+        Args:
+            game: The game to play
+        """
+        print("\n" + "=" * 50)
+        print("  GAME STARTED - BEGIN PLAYING")
+        print("=" * 50)
+        
+        while game.is_active:
+            # Check if we can play another turn
+            if len(game.deck) < 3:
+                print(f"\n⚠ Not enough cards for another turn ({len(game.deck)} remaining).")
+                print("Game ended!")
+                game.is_active = False
+                self.game_service.repository.save_game(game)
+                break
+            
+            # Ask if player wants to play next turn
+            print("\n" + "-" * 50)
+            response = input("Play next turn? (y/n): ").strip().lower()
+            
+            if response in ["n", "no", "q", "quit"]:
+                print("\nGame paused.")
+                print(f"Current turn: {game.turn}")
+                print(f"Cards remaining: {len(game.deck)}")
+                break
+            
+            if response in ["y", "yes", ""]:
+                success = self.play_turn(game)
+                if not success:
+                    break
+            else:
+                print("Invalid response. Please enter 'y' for yes or 'n' for no.")
+        
+        print("\n" + "=" * 50)
+        print("  GAME SESSION ENDED")
+        print("=" * 50)
+
 
 def main():
     """Main entry point for the CLI."""
     cli = CLI()
-    cli.start_new_game()
+    game = cli.start_new_game()
+    
+    if game:
+        # Offer to start playing
+        print("\n" + "-" * 50)
+        response = input("Would you like to start playing? (y/n): ").strip().lower()
+        
+        if response in ["y", "yes", ""]:
+            cli.play_game(game)
+        else:
+            print("\nGame saved. You can continue later!")
 
 
 if __name__ == "__main__":
