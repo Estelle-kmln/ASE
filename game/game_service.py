@@ -54,24 +54,29 @@ class GameService:
         selected_cards = random.sample(all_cards, Deck.DECK_SIZE)
         return Deck(selected_cards)
     
-    def start_new_game(self, deck: Deck, save: bool = True) -> Game:
-        """Start a new game with the given deck.
+    def start_new_game(self, player1_name: str, player1_deck: Deck, player2_name: str, player2_deck: Deck, save: bool = True) -> Game:
+        """Start a new game with 2 players.
         
         Args:
-            deck: The player's deck of 22 cards
+            player1_name: Name of the first player
+            player1_deck: First player's deck of 22 cards
+            player2_name: Name of the second player
+            player2_deck: Second player's deck of 22 cards
             save: Whether to save the game to the database
         
         Returns:
-            A new Game instance with the deck shuffled and ready to play
+            A new Game instance with both players ready to play
         
         Raises:
-            ValueError: If deck is invalid
+            ValueError: If either deck is invalid
         """
-        if len(deck) != Deck.DECK_SIZE:
-            raise ValueError(f"Deck must have {Deck.DECK_SIZE} cards")
+        if len(player1_deck) != Deck.DECK_SIZE:
+            raise ValueError(f"Player 1 deck must have {Deck.DECK_SIZE} cards")
+        if len(player2_deck) != Deck.DECK_SIZE:
+            raise ValueError(f"Player 2 deck must have {Deck.DECK_SIZE} cards")
         
         game_id = str(uuid.uuid4())
-        game = Game(deck, game_id=game_id)
+        game = Game(player1_name, player1_deck, player2_name, player2_deck, game_id=game_id)
         
         if save:
             self.repository.save_game(game)

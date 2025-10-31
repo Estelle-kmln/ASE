@@ -41,6 +41,58 @@ class Card:
     
     def __hash__(self) -> int:
         return hash((self.value, self.suit))
+    
+    def beats(self, other: 'Card') -> bool:
+        """Check if this card beats another card.
+        
+        Rules:
+        1. First compare suits (rock beats scissors, scissors beats paper, paper beats rock)
+        2. If suits are the same, compare numbers (higher wins, except 1 beats 13)
+        
+        Args:
+            other: The other card to compare against
+        
+        Returns:
+            True if this card beats the other card
+        """
+        # Suit comparison (rock-paper-scissors)
+        suit_beats = {
+            "rock": "scissors",
+            "scissors": "paper",
+            "paper": "rock"
+        }
+        
+        if self.suit != other.suit:
+            # Different suits - check if this suit beats the other
+            return suit_beats[self.suit] == other.suit
+        
+        # Same suit - compare numbers
+        # Special case: 1 beats 13
+        if self.value == 1 and other.value == 13:
+            return True
+        if self.value == 13 and other.value == 1:
+            return False
+        
+        # Otherwise, higher number wins
+        return self.value > other.value
+    
+    def compare(self, other: 'Card') -> str:
+        """Compare this card with another card and return the result.
+        
+        Args:
+            other: The other card to compare against
+        
+        Returns:
+            "win" if this card wins, "lose" if this card loses, "tie" if it's a tie
+        """
+        # A tie should never happen in this game, but handle it just in case
+        if self.value == other.value and self.suit == other.suit:
+            return "tie"
+        
+        if self.beats(other):
+            return "win"
+        else:
+            return "lose"
 
 
 class CardCollection:

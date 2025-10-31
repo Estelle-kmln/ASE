@@ -2,7 +2,7 @@
 
 from .card import Card, CardCollection
 from .deck import Deck
-from .game import Game, Hand
+from .game import Game, Hand, Player
 
-__all__ = ['Card', 'CardCollection', 'Deck', 'Game', 'Hand']
+__all__ = ['Card', 'CardCollection', 'Deck', 'Game', 'Hand', 'Player']
 

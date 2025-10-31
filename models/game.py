@@ -6,6 +6,27 @@ from .card import Card
 from .deck import Deck
 
 
+class Player:
+    """Represents a player in the game."""
+    
+    def __init__(self, name: str, deck: Deck):
+        """Initialize a player.
+        
+        Args:
+            name: Player's name
+            deck: The player's deck (will be shuffled)
+        """
+        if not deck.shuffled:
+            deck.shuffle()
+        
+        self.name = name
+        self.deck = deck
+        self.hand: Optional['Hand'] = None  # Forward reference
+    
+    def __repr__(self) -> str:
+        return f"Player({self.name}, deck={len(self.deck)} cards)"
+
+
 class Hand:
     """Represents a hand of 3 cards for a turn."""
     
@@ -79,26 +100,47 @@ class Hand:
 
 
 class Game:
-    """Represents the main game state."""
+    """Represents the main game state with 2 players."""
     
-    def __init__(self, deck: Deck, game_id: Optional[str] = None):
-        """Initialize a new game.
+    def __init__(self, player1_name: str, player1_deck: Deck, player2_name: str, player2_deck: Deck, game_id: Optional[str] = None):
+        """Initialize a new game with 2 players.
         
         Args:
-            deck: The player's deck (will be shuffled)
+            player1_name: Name of the first player
+            player1_deck: First player's deck (will be shuffled)
+            player2_name: Name of the second player
+            player2_deck: Second player's deck (will be shuffled)
             game_id: Optional unique identifier for the game
         """
-        if not deck.shuffled:
-            deck.shuffle()
-        
         self.game_id = game_id
-        self.deck = deck
-        self.hand: Optional[Hand] = None
+        self.player1 = Player(player1_name, player1_deck)
+        self.player2 = Player(player2_name, player2_deck)
+        self.current_player: Player = self.player1  # Player 1 starts
         self.turn = 0
         self.is_active = True
     
+    def get_current_player(self) -> Player:
+        """Get the current player whose turn it is.
+        
+        Returns:
+            The current player
+        """
+        return self.current_player
+    
+    def get_other_player(self) -> Player:
+        """Get the other player (not current).
+        
+        Returns:
+            The other player
+        """
+        return self.player2 if self.current_player == self.player1 else self.player1
+    
+    def switch_player(self):
+        """Switch to the other player."""
+        self.current_player = self.get_other_player()
+    
     def start_turn(self) -> Hand:
-        """Start a new turn by drawing 3 cards.
+        """Start a new turn for the current player by drawing 3 cards.
         
         Returns:
             The new hand
@@ -107,20 +149,22 @@ class Game:
             ValueError: If there are not enough cards in the deck
             ValueError: If current hand is not complete
         """
-        if self.hand is not None and not self.hand.is_complete():
-            raise ValueError("Cannot start new turn until current hand is complete")
+        player = self.get_current_player()
         
-        if len(self.deck) < Hand.HAND_SIZE:
-            raise ValueError(f"Not enough cards in deck to start turn (need {Hand.HAND_SIZE}, have {len(self.deck)})")
+        if player.hand is not None and not player.hand.is_complete():
+            raise ValueError(f"Cannot start new turn until {player.name}'s current hand is complete")
         
-        drawn_cards = self.deck.draw(Hand.HAND_SIZE)
-        self.hand = Hand(drawn_cards)
+        if len(player.deck) < Hand.HAND_SIZE:
+            raise ValueError(f"Not enough cards in {player.name}'s deck to start turn (need {Hand.HAND_SIZE}, have {len(player.deck)})")
+        
+        drawn_cards = player.deck.draw(Hand.HAND_SIZE)
+        player.hand = Hand(drawn_cards)
         self.turn += 1
         
-        return self.hand
+        return player.hand
     
-    def play_turn(self, card_index: int) -> Card:
-        """Play a card from the current hand.
+    def play_card_for_current_player(self, card_index: int) -> Card:
+        """Play a card from the current player's hand (without switching players).
         
         Args:
             card_index: Index of the card to play
@@ -131,17 +175,91 @@ class Game:
         Raises:
             ValueError: If no hand is available
         """
-        if self.hand is None:
-            raise ValueError("No hand available. Start a turn first.")
+        player = self.get_current_player()
         
-        played_card = self.hand.play_card(card_index)
+        if player.hand is None:
+            raise ValueError(f"No hand available for {player.name}. Start a turn first.")
+        
+        played_card = player.hand.play_card(card_index)
         
         # Automatically discard remaining cards
-        if len(self.hand.cards) > 0:
-            self.hand.discard_remaining()
+        if len(player.hand.cards) > 0:
+            player.hand.discard_remaining()
         
         return played_card
     
+    def battle(self) -> dict:
+        """Compare the played cards from both players and determine the winner.
+        
+        Returns:
+            Dictionary with:
+            - 'winner': Player name who won (or None if tie)
+            - 'player1_card': Card played by player1
+            - 'player2_card': Card played by player2
+            - 'reason': Explanation of why the winner won
+        """
+        # Get both players' played cards
+        player1_hand_exists = self.player1.hand is not None
+        player2_hand_exists = self.player2.hand is not None
+        
+        player1_card = self.player1.hand.played_card if player1_hand_exists else None
+        player2_card = self.player2.hand.played_card if player2_hand_exists else None
+        
+        if player1_card is None or player2_card is None:
+            raise ValueError("Both players must play a card before battling")
+        
+        # Compare cards
+        if player1_card.beats(player2_card):
+            winner = self.player1.name
+            reason = self._get_battle_reason(player1_card, player2_card)
+        elif player2_card.beats(player1_card):
+            winner = self.player2.name
+            reason = self._get_battle_reason(player2_card, player1_card)
+        else:
+            # Shouldn't happen, but handle tie
+            winner = None
+            reason = "Tie (shouldn't happen)"
+        
+        return {
+            'winner': winner,
+            'player1_card': player1_card,
+            'player2_card': player2_card,
+            'reason': reason
+        }
+    
+    def _get_battle_reason(self, winning_card, losing_card) -> str:
+        """Generate an explanation of why a card won.
+        
+        Args:
+            winning_card: The winning card
+            losing_card: The losing card
+        
+        Returns:
+            Explanation string
+        """
+        if winning_card.suit != losing_card.suit:
+            # Suit-based win
+            suit_beats = {
+                "rock": "scissors",
+                "scissors": "paper",
+                "paper": "rock"
+            }
+            return f"{winning_card.suit} beats {losing_card.suit}"
+        else:
+            # Number-based win
+            if winning_card.value == 1 and losing_card.value == 13:
+                return "1 beats 13 (special rule)"
+            else:
+                return f"{winning_card.value} beats {losing_card.value} (higher number)"
+    
+    def check_game_over(self) -> bool:
+        """Check if the game should end (either player has less than 3 cards).
+        
+        Returns:
+            True if game should end
+        """
+        return len(self.player1.deck) < 3 or len(self.player2.deck) < 3
+    
     def __repr__(self) -> str:
-        return f"Game(id={self.game_id}, turn={self.turn}, active={self.is_active})"
+        return f"Game(id={self.game_id}, turn={self.turn}, current={self.current_player.name}, active={self.is_active})"
 

@@ -90,7 +90,7 @@ class CLI:
 
     def choose_deck_option(self) -> List[Card]:
         """Let the player choose between random deck or manual selection.
-        
+
         Returns:
             List of 22 selected cards, or empty list if cancelled
         """
@@ -98,191 +98,368 @@ class CLI:
         print("1. Random deck (quick start)")
         print("2. Build deck manually (select 22 cards)")
         print()
-        
+
         while True:
-            choice = input("Enter your choice (1 or 2, or 'q' to quit): ").strip().lower()
-            
+            choice = (
+                input("Enter your choice (1 or 2, or 'q' to quit): ")
+                .strip()
+                .lower()
+            )
+
             if choice == "q":
                 print("Deck selection cancelled.")
                 return []
-            
+
             if choice == "1":
                 # Random deck
                 print("\nGenerating random deck...")
                 random_deck = self.game_service.create_random_deck()
                 selected_cards = random_deck.cards
-                
-                print(f"\n✓ Random deck generated with {len(selected_cards)} cards:")
+
+                print(
+                    f"\n✓ Random deck generated with {len(selected_cards)} cards:"
+                )
                 for i, card in enumerate(selected_cards, 1):
                     print(f"  {i:2d}. {card}")
                 print()
-                
+
                 return selected_cards
-            
+
             elif choice == "2":
                 # Manual selection
                 self.display_card_collection()
                 return self.select_deck()
-            
+
             else:
                 print("Invalid choice. Please enter 1, 2, or 'q'.")
 
+    def get_player_name(
+        self, player_number: int, default_name: str = ""
+    ) -> str:
+        """Get a player's name.
+
+        Args:
+            player_number: 1 or 2
+            default_name: Default name to suggest
+
+        Returns:
+            Player's name
+        """
+        prompt = f"Enter name for Player {player_number}"
+        if default_name:
+            prompt += f" (default: {default_name})"
+        prompt += ": "
+
+        name = input(prompt).strip()
+
+        if not name and default_name:
+            return default_name
+        elif not name:
+            return f"Player {player_number}"
+
+        return name
+
+    def setup_player_deck(self, player_name: str) -> List[Card]:
+        """Setup deck for a player.
+
+        Args:
+            player_name: Name of the player
+
+        Returns:
+            List of selected cards, or empty list if cancelled
+        """
+        print(f"\n{'='*50}")
+        print(f"  SETUP DECK FOR {player_name.upper()}")
+        print(f"{'='*50}")
+        return self.choose_deck_option()
+
     def start_new_game(self):
-        """Start a new game - main entry point for the user story."""
+        """Start a new game with 2 players - main entry point."""
         print("\n" + "=" * 50)
-        print("  START NEW GAME")
+        print("  START NEW GAME - 2 PLAYERS")
         print("=" * 50)
 
-        # Let player choose deck option
-        selected_cards = self.choose_deck_option()
+        # Get player names
+        player1_name = self.get_player_name(1, "alex")
+        player2_name = self.get_player_name(2, "katrine")
 
-        if not selected_cards:
+        print(f"\nPlayers: {player1_name} vs {player2_name}")
+
+        # Setup Player 1 deck
+        player1_cards = self.setup_player_deck(player1_name)
+        if not player1_cards:
             print("\nGame start cancelled.")
             return None
 
-        # Validate deck
-        is_valid, error_msg = self.game_service.validate_deck_selection(
-            selected_cards
-        )
-        if not is_valid:
-            print(f"\nError: {error_msg}")
+        # Setup Player 2 deck
+        player2_cards = self.setup_player_deck(player2_name)
+        if not player2_cards:
+            print("\nGame start cancelled.")
             return None
 
-        # Create deck
+        # Validate both decks
+        is_valid1, error_msg1 = self.game_service.validate_deck_selection(
+            player1_cards
+        )
+        is_valid2, error_msg2 = self.game_service.validate_deck_selection(
+            player2_cards
+        )
+
+        if not is_valid1:
+            print(f"\nError with {player1_name}'s deck: {error_msg1}")
+            return None
+        if not is_valid2:
+            print(f"\nError with {player2_name}'s deck: {error_msg2}")
+            return None
+
+        # Check for overlapping cards (if needed - cards can overlap between players)
+        # For now, we'll allow overlapping cards
+
+        # Create decks
         try:
-            deck = self.game_service.create_deck(selected_cards)
+            player1_deck = self.game_service.create_deck(player1_cards)
+            player2_deck = self.game_service.create_deck(player2_cards)
         except ValueError as e:
             print(f"\nError creating deck: {e}")
             return None
 
         # Start game
         try:
-            game = self.game_service.start_new_game(deck, save=True)
+            game = self.game_service.start_new_game(
+                player1_name,
+                player1_deck,
+                player2_name,
+                player2_deck,
+                save=True,
+            )
             print(f"\n{'='*50}")
             print("  GAME STARTED SUCCESSFULLY!")
             print(f"{'='*50}")
             print(f"Game ID: {game.game_id}")
-            print(f"Turn: {game.turn}")
-            print(f"Deck size: {len(game.deck)}")
-            print(f"Deck shuffled: {game.deck.shuffled}")
+            print(f"Players: {player1_name} vs {player2_name}")
+            print(f"{player1_name}'s deck: {len(player1_deck)} cards")
+            print(f"{player2_name}'s deck: {len(player2_deck)} cards")
+            print(f"Starting player: {game.current_player.name}")
             print("Game saved to database.")
-            print("\nYou can now play the game!")
+            print("\nReady to play!")
             return game
         except ValueError as e:
             print(f"\nError starting game: {e}")
             return None
 
-    def display_hand(self, hand):
+    def display_hand(self, hand, player_name: str):
         """Display the current hand to the player.
-        
+
         Args:
             hand: The Hand object to display
+            player_name: Name of the player
         """
-        print("\n=== Your Hand ===")
+        print(f"\n=== {player_name}'s Hand ===")
         for i, card in enumerate(hand.cards, 1):
             print(f"  {i}. {card}")
         print()
 
-    def play_turn(self, game: Game) -> bool:
-        """Play a single turn: draw 3 cards, player picks 1, discard 2.
-        
+    def get_player_card_choice(self, player, hand) -> Optional[int]:
+        """Get a player's card choice.
+
+        Args:
+            player: The player choosing
+            hand: The player's hand
+
+        Returns:
+            Card index (0-based) or None if cancelled
+        """
+        while True:
+            print(f"\nWhich card would you like to play, {player.name}?")
+            choice = (
+                input("Enter card number (1-3, or 'q' to quit): ")
+                .strip()
+                .lower()
+            )
+
+            if choice == "q":
+                return None
+
+            try:
+                card_index = int(choice) - 1  # Convert to 0-based index
+
+                if not (0 <= card_index < len(hand.cards)):
+                    print(
+                        f"Invalid choice. Please enter a number between 1 and {len(hand.cards)}."
+                    )
+                    continue
+
+                return card_index
+
+            except ValueError:
+                print("Invalid input. Please enter a number (1-3) or 'q'.")
+
+    def play_round(self, game: Game) -> bool:
+        """Play a complete round: both players draw, choose, and battle.
+
         Args:
             game: The current game
-        
+
         Returns:
-            True if turn was played successfully, False if game ended or cancelled
+            True if round was played successfully, False if cancelled or game ended
         """
         try:
-            # Start turn - draw 3 cards
-            hand = game.start_turn()
-            
+            # Draw cards for both players
             print(f"\n{'='*50}")
-            print(f"  TURN {game.turn}")
+            print(f"  ROUND {game.turn + 1}")
             print(f"{'='*50}")
-            print(f"Cards remaining in deck: {len(game.deck)}")
-            
-            # Display the hand
-            self.display_hand(hand)
-            
-            # Let player choose which card to play
-            while True:
-                print("Which card would you like to play?")
-                choice = input("Enter card number (1-3, or 'q' to quit turn): ").strip().lower()
-                
-                if choice == "q":
-                    print("Turn cancelled.")
-                    return False
-                
-                try:
-                    card_index = int(choice) - 1  # Convert to 0-based index
-                    
-                    if not (0 <= card_index < len(hand.cards)):
-                        print(f"Invalid choice. Please enter a number between 1 and {len(hand.cards)}.")
-                        continue
-                    
-                    # Play the selected card
-                    played_card = game.play_turn(card_index)
-                    discarded = hand.discarded_cards
-                    
-                    print(f"\n✓ Played: {played_card}")
-                    print(f"✓ Discarded: {', '.join(str(c) for c in discarded)}")
-                    print(f"✓ Cards remaining in deck: {len(game.deck)}")
-                    
-                    # Save game state
-                    self.game_service.repository.save_game(game)
-                    
-                    return True
-                    
-                except ValueError:
-                    print("Invalid input. Please enter a number (1-3) or 'q'.")
-                except IndexError as e:
-                    print(f"Error: {e}")
-                    
+
+            # Player 1 draws
+            game.current_player = game.player1
+            game.start_turn()  # This sets game.player1.hand
+            print(
+                f"\n{game.player1.name}'s deck: {len(game.player1.deck)} cards remaining"
+            )
+            self.display_hand(game.player1.hand, game.player1.name)
+            card_index1 = self.get_player_card_choice(
+                game.player1, game.player1.hand
+            )
+
+            if card_index1 is None:
+                print("Round cancelled.")
+                return False
+
+            # Player 1 plays card
+            played_card1 = game.play_card_for_current_player(card_index1)
+            print(f"\n✓ {game.player1.name} played: {played_card1}")
+            print(
+                f"✓ Discarded: {', '.join(str(c) for c in game.player1.hand.discarded_cards)}"
+            )
+
+            # Player 2 draws
+            game.current_player = game.player2
+            game.start_turn()  # This sets game.player2.hand
+            print(f"\n{'='*50}")
+            print(
+                f"{game.player2.name}'s deck: {len(game.player2.deck)} cards remaining"
+            )
+            self.display_hand(game.player2.hand, game.player2.name)
+            card_index2 = self.get_player_card_choice(
+                game.player2, game.player2.hand
+            )
+
+            if card_index2 is None:
+                print("Round cancelled.")
+                return False
+
+            # Player 2 plays card
+            played_card2 = game.play_card_for_current_player(card_index2)
+            print(f"\n✓ {game.player2.name} played: {played_card2}")
+            print(
+                f"✓ Discarded: {', '.join(str(c) for c in game.player2.hand.discarded_cards)}"
+            )
+
+            # Battle!
+            print(f"\n{'='*50}")
+            print("  BATTLE!")
+            print(f"{'='*50}")
+            print(f"{game.player1.name} plays: {played_card1}")
+            print(f"{game.player2.name} plays: {played_card2}")
+
+            battle_result = game.battle()
+
+            print(f"\n🎯 {battle_result['winner']} wins!")
+            print(f"Reason: {battle_result['reason']}")
+
+            # Save game state
+            self.game_service.repository.save_game(game)
+
+            return True
+
         except ValueError as e:
             # Handle cases like "not enough cards"
             print(f"\n⚠ {e}")
             if "Not enough cards" in str(e):
-                print("Game ended - deck is empty!")
+                print("Game ended - a player ran out of cards!")
                 game.is_active = False
                 self.game_service.repository.save_game(game)
             return False
 
     def play_game(self, game: Game):
-        """Main game loop - play turns until deck runs out or player quits.
-        
+        """Main game loop - play rounds until a deck runs out or player quits.
+
         Args:
             game: The game to play
         """
         print("\n" + "=" * 50)
         print("  GAME STARTED - BEGIN PLAYING")
         print("=" * 50)
-        
+        print("\nBattle Rules:")
+        print(
+            "1. Suit comparison: rock beats scissors, scissors beats paper, paper beats rock"
+        )
+        print("2. If suits match: higher number wins (except 1 beats 13)")
+        print("=" * 50)
+
         while game.is_active:
-            # Check if we can play another turn
-            if len(game.deck) < 3:
-                print(f"\n⚠ Not enough cards for another turn ({len(game.deck)} remaining).")
-                print("Game ended!")
+            # Check if game should end
+            if game.check_game_over():
+                winner = None
+                if len(game.player1.deck) < 3 and len(game.player2.deck) < 3:
+                    print("\n⚠ Both players are out of cards!")
+                    print("Game ended in a tie!")
+                elif len(game.player1.deck) < 3:
+                    winner = game.player2.name
+                else:
+                    winner = game.player1.name
+
+                if winner:
+                    print(
+                        f"\n🎉 {winner} wins! (other player ran out of cards)"
+                    )
+
                 game.is_active = False
                 self.game_service.repository.save_game(game)
                 break
-            
-            # Ask if player wants to play next turn
+
+            # Check if both players can play
+            if len(game.player1.deck) < 3:
+                print(
+                    f"\n⚠ {game.player1.name} doesn't have enough cards for another round."
+                )
+                print(f"🎉 {game.player2.name} wins!")
+                game.is_active = False
+                self.game_service.repository.save_game(game)
+                break
+
+            if len(game.player2.deck) < 3:
+                print(
+                    f"\n⚠ {game.player2.name} doesn't have enough cards for another round."
+                )
+                print(f"🎉 {game.player1.name} wins!")
+                game.is_active = False
+                self.game_service.repository.save_game(game)
+                break
+
+            # Show status
+            print(f"\n{'-'*50}")
+            print(f"Status:")
+            print(f"{game.player1.name}'s deck: {len(game.player1.deck)} cards")
+            print(f"{game.player2.name}'s deck: {len(game.player2.deck)} cards")
+
+            # Ask if players want to play next round
             print("\n" + "-" * 50)
-            response = input("Play next turn? (y/n): ").strip().lower()
-            
+            response = input("Ready for next round? (y/n): ").strip().lower()
+
             if response in ["n", "no", "q", "quit"]:
                 print("\nGame paused.")
-                print(f"Current turn: {game.turn}")
-                print(f"Cards remaining: {len(game.deck)}")
+                print(f"Current round: {game.turn}")
                 break
-            
+
             if response in ["y", "yes", ""]:
-                success = self.play_turn(game)
+                success = self.play_round(game)
                 if not success:
                     break
             else:
-                print("Invalid response. Please enter 'y' for yes or 'n' for no.")
-        
+                print(
+                    "Invalid response. Please enter 'y' for yes or 'n' for no."
+                )
+
         print("\n" + "=" * 50)
         print("  GAME SESSION ENDED")
         print("=" * 50)
@@ -292,12 +469,14 @@ def main():
     """Main entry point for the CLI."""
     cli = CLI()
     game = cli.start_new_game()
-    
+
     if game:
         # Offer to start playing
         print("\n" + "-" * 50)
-        response = input("Would you like to start playing? (y/n): ").strip().lower()
-        
+        response = (
+            input("Would you like to start playing? (y/n): ").strip().lower()
+        )
+
         if response in ["y", "yes", ""]:
             cli.play_game(game)
         else:
