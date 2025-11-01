@@ -22,9 +22,10 @@ class Player:
         self.name = name
         self.deck = deck
         self.hand: Optional['Hand'] = None  # Forward reference
+        self.score = 0  # Initialize score
     
     def __repr__(self) -> str:
-        return f"Player({self.name}, deck={len(self.deck)} cards)"
+        return f"Player({self.name}, deck={len(self.deck)} cards, score={self.score})"
 
 
 class Hand:
@@ -118,6 +119,10 @@ class Game:
         self.current_player: Player = self.player1  # Player 1 starts
         self.turn = 0
         self.is_active = True
+        # Track per-round wins (score) for each player. These are in-memory only
+        # and not persisted by the repository schema currently in use.
+        self.player1_score = 0
+        self.player2_score = 0
     
     def get_current_player(self) -> Player:
         """Get the current player whose turn it is.
@@ -212,9 +217,20 @@ class Game:
         if player1_card.beats(player2_card):
             winner = self.player1.name
             reason = self._get_battle_reason(player1_card, player2_card)
+            # Increment per-round win for player1
+            try:
+                self.player1_score += 1
+            except AttributeError:
+                # In case scores weren't initialized for some reason
+                self.player1_score = 1
         elif player2_card.beats(player1_card):
             winner = self.player2.name
             reason = self._get_battle_reason(player2_card, player1_card)
+            # Increment per-round win for player2
+            try:
+                self.player2_score += 1
+            except AttributeError:
+                self.player2_score = 1
         else:
             # Shouldn't happen, but handle tie
             winner = None
