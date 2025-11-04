@@ -8,22 +8,24 @@ def test_hand_drawing():
     """Test drawing 3 cards for a turn."""
     print("Testing Hand Drawing...")
     service = GameService()
-    deck = service.create_random_deck()
-    game = service.start_new_game(deck, save=False)
+    deck1 = service.create_random_deck()
+    deck2 = service.create_random_deck()
+    game = service.start_new_game("Player1", deck1, "Player2", deck2, save=False)
     
-    initial_deck_size = len(game.deck)
+    initial_deck_size = len(game.player1.deck)
     assert initial_deck_size == 22, f"Expected 22 cards, got {initial_deck_size}"
     
-    # Start turn - should draw 3 cards
+    # Start turn - should draw 3 cards for current player
+    game.current_player = game.player1
     hand = game.start_turn()
     
     assert game.turn == 1, f"Turn should be 1, got {game.turn}"
     assert len(hand.cards) == 3, f"Hand should have 3 cards, got {len(hand.cards)}"
-    assert len(game.deck) == initial_deck_size - 3, f"Deck should have {initial_deck_size - 3} cards, got {len(game.deck)}"
+    assert len(game.player1.deck) == initial_deck_size - 3, f"Deck should have {initial_deck_size - 3} cards, got {len(game.player1.deck)}"
     
     print(f"✓ Turn {game.turn} started")
     print(f"✓ Drew 3 cards: {[str(c) for c in hand.cards]}")
-    print(f"✓ Deck now has {len(game.deck)} cards")
+    print(f"✓ Deck now has {len(game.player1.deck)} cards")
     print()
 
 
@@ -31,15 +33,17 @@ def test_playing_card():
     """Test playing a card and discarding the other 2."""
     print("Testing Playing Card...")
     service = GameService()
-    deck = service.create_random_deck()
-    game = service.start_new_game(deck, save=False)
+    deck1 = service.create_random_deck()
+    deck2 = service.create_random_deck()
+    game = service.start_new_game("Player1", deck1, "Player2", deck2, save=False)
     
     # Start turn
+    game.current_player = game.player1
     hand = game.start_turn()
     original_hand = hand.cards.copy()
     
     # Play the first card (index 0)
-    played_card = game.play_turn(0)
+    played_card = game.play_card_for_current_player(0)
     
     assert played_card == original_hand[0], "Played card should match first card"
     assert hand.played_card == played_card, "Hand should record played card"
@@ -58,22 +62,24 @@ def test_multiple_turns():
     """Test playing multiple turns."""
     print("Testing Multiple Turns...")
     service = GameService()
-    deck = service.create_random_deck()
-    game = service.start_new_game(deck, save=False)
+    deck1 = service.create_random_deck()
+    deck2 = service.create_random_deck()
+    game = service.start_new_game("Player1", deck1, "Player2", deck2, save=False)
     
-    initial_deck_size = len(game.deck)
+    initial_deck_size = len(game.player1.deck)
     turns_played = 0
     
     # Play 5 turns (should use 15 cards)
     for i in range(5):
-        if len(game.deck) < 3:
+        if len(game.player1.deck) < 3:
             break
         
+        game.current_player = game.player1
         hand = game.start_turn()
         assert len(hand.cards) == 3, f"Turn {game.turn}: Hand should have 3 cards"
         
         # Play first card
-        played = game.play_turn(0)
+        played = game.play_card_for_current_player(0)
         assert hand.is_complete(), f"Turn {game.turn}: Hand should be complete"
         
         turns_played += 1
@@ -81,12 +87,12 @@ def test_multiple_turns():
     cards_used = turns_played * 3
     remaining = initial_deck_size - cards_used
     
-    assert len(game.deck) == remaining, f"Should have {remaining} cards left, got {len(game.deck)}"
+    assert len(game.player1.deck) == remaining, f"Should have {remaining} cards left, got {len(game.player1.deck)}"
     assert game.turn == turns_played, f"Should be on turn {turns_played}, got {game.turn}"
     
     print(f"✓ Played {turns_played} turns")
     print(f"✓ Used {cards_used} cards")
-    print(f"✓ {len(game.deck)} cards remaining")
+    print(f"✓ {len(game.player1.deck)} cards remaining")
     print()
 
 
@@ -94,17 +100,19 @@ def test_all_cards_used():
     """Test game behavior when deck runs out."""
     print("Testing Deck Exhaustion...")
     service = GameService()
-    deck = service.create_random_deck()
-    game = service.start_new_game(deck, save=False)
+    deck1 = service.create_random_deck()
+    deck2 = service.create_random_deck()
+    game = service.start_new_game("Player1", deck1, "Player2", deck2, save=False)
     
     # Play turns until we can't draw 3 cards
-    while len(game.deck) >= 3:
+    while len(game.player1.deck) >= 3:
+        game.current_player = game.player1
         hand = game.start_turn()
-        game.play_turn(0)  # Play first card
+        game.play_card_for_current_player(0)  # Play first card
     
     # Should have less than 3 cards remaining
-    assert len(game.deck) < 3, "Should have less than 3 cards remaining"
-    print(f"✓ Deck exhausted with {len(game.deck)} cards remaining")
+    assert len(game.player1.deck) < 3, "Should have less than 3 cards remaining"
+    print(f"✓ Deck exhausted with {len(game.player1.deck)} cards remaining")
     print()
 
 
