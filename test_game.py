@@ -73,25 +73,31 @@ def test_game_start():
     print("Testing Game Start...")
     service = GameService()
     
-    # Create a deck
+    # Create decks for both players
     collection = CardCollection()
-    selected_cards = collection.get_all_cards()[:22]
-    deck = service.create_deck(selected_cards)
+    selected_cards1 = collection.get_all_cards()[:22]
+    selected_cards2 = collection.get_all_cards()[5:27]  # Different cards
+    deck1 = service.create_deck(selected_cards1)
+    deck2 = service.create_deck(selected_cards2)
     
     # Start game
-    game = service.start_new_game(deck, save=False)  # Don't save for test
+    game = service.start_new_game("Player1", deck1, "Player2", deck2, save=False)
     
     assert game.game_id is not None, "Game should have an ID"
     assert game.turn == 0, f"Game should start at turn 0, got {game.turn}"
     assert game.is_active, "Game should be active"
-    assert len(game.deck) == 22, f"Game deck should have 22 cards, got {len(game.deck)}"
-    assert game.deck.shuffled, "Game deck should be shuffled"
+    assert len(game.player1.deck) == 22, f"Player1 deck should have 22 cards, got {len(game.player1.deck)}"
+    assert len(game.player2.deck) == 22, f"Player2 deck should have 22 cards, got {len(game.player2.deck)}"
+    assert game.player1.deck.shuffled, "Player1 deck should be shuffled"
+    assert game.player2.deck.shuffled, "Player2 deck should be shuffled"
+    assert game.current_player == game.player1, "Player1 should start"
     
     print(f"✓ Game started successfully")
     print(f"  Game ID: {game.game_id}")
     print(f"  Turn: {game.turn}")
-    print(f"  Deck size: {len(game.deck)}")
-    print(f"  Deck shuffled: {game.deck.shuffled}")
+    print(f"  Player1 deck: {len(game.player1.deck)} cards")
+    print(f"  Player2 deck: {len(game.player2.deck)} cards")
+    print(f"  Starting player: {game.current_player.name}")
     print()
 
 
