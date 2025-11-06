@@ -125,3 +125,7 @@ python3 test_hand.py
 # All tests
 python3 test_game.py && python3 test_hand.py
 ```
+Running test_score
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
