@@ -42,3 +42,5 @@ if __name__ == "__main__":
 
     updated = update_profile({"username": username, "email": email})
     print("Profile after update:", updated)
+
+    # menu for updating your profile
