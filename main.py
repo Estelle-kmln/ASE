@@ -1,9 +1,11 @@
 """Main entry point for the battle card game."""
 
+from profile import get_profile, update_profile
+
 # Support importing both as a package (import ASE.main) and running the
 # file directly (python ASE/main.py). Try package-style import first and
 # fall back to the module path used when the file is executed as a script.
-try:
+try:  
     # When running via `python -m ASE.main` or importing the package
     from ASE.cli.main import CLI
 except Exception:
@@ -29,7 +31,6 @@ def main():
             cli.play_game(game)
         else:
             print("\nGame saved. You can continue later!")
-
 
 if __name__ == "__main__":
     main()
