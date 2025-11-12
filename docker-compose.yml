@@ -15,7 +15,7 @@ services:
       - "5432:5432"
     volumes:
       - postgresql_data:/var/lib/postgresql/data
-      - ./postgresql-init:/docker-entrypoint-initdb.d:ro
+      - ./database:/docker-entrypoint-initdb.d:ro
     networks:
       - battlecards-network
     restart: unless-stopped

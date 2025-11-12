@@ -6,8 +6,8 @@ ENV POSTGRES_DB=battlecards
 ENV POSTGRES_USER=gameuser
 ENV POSTGRES_PASSWORD=gamepassword
 
-# Copy initialization scripts
-COPY ./postgresql-init/ /docker-entrypoint-initdb.d/
+# Copy initialization scripts  
+COPY ./database/*.sql /docker-entrypoint-initdb.d/
 
 # Expose PostgreSQL port
 EXPOSE 5432
