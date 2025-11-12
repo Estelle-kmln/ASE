@@ -1,0 +1,34 @@
+How to Start a Game:
+Step 1: Start the Containers
+docker compose up -d
+
+Step 2: Launch the Game
+docker compose exec game-app python main.py
+
+What You Can Do in the Game:
+1. Create Account & Login
+Create new user accounts (stored in PostgreSQL)
+Login with existing credentials
+2. Game Features After Login:
+View All Cards - See all 8 cards from your PostgreSQL database
+View Cards by Type - Filter creatures vs spells
+Build Random Deck - Get a random selection of 5 cards
+Simple Battle - Automated battle between two random creatures
+Collection Statistics - View card distribution by rarity and cost
+Logout - Return to main menu
+3. Card Collection:
+Your game now includes:
+
+4 Creatures: Fire Dragon, Ice Giant, Shadow Assassin, Ancient Wizard
+4 Spells: Lightning Bolt, Fireball, Healing Potion, Shield Wall
+Multiple Rarities: Common, Uncommon, Rare, Epic
+Different Costs: 1-6 mana cost
+4. Battle System:
+Creatures have Attack and Defense stats
+Simple combat: Attack vs Defense calculation
+Random creature matchups
+Win/lose determination
+Database Integration:
+✅ PostgreSQL stores all user accounts and card data
+✅ Persistent data survives container restarts
+✅ Viewable in Beekeeper Studio with the connection details I provided earlier

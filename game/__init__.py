@@ -1,6 +1,6 @@
 """Game module for battle card game logic."""
 
-# Game logic will be implemented here
+from .game_logic import game_menu
 
-__all__ = []
+__all__ = ["game_menu"]
 

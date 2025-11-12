@@ -1,5 +1,6 @@
 from database import init_database
 from auth import create_account_flow, login_flow
+from game import game_menu
 
 
 def main():
@@ -20,8 +21,8 @@ def main():
             create_account_flow()
         elif choice == "2":
             if login_flow():
-                # User successfully logged in - you can add game logic here later
-                print("You are now logged in! (Game features coming soon...)")
+                # User successfully logged in - start the game!
+                game_menu()
                 break
         elif choice == "3":
             print("\nThank you for playing!")
