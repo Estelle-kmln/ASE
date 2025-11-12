@@ -1,4 +1,5 @@
 """Main entry point for the battle card game."""
+from profile import get_profile, update_profile, create_profile
 
 # Support importing both as a package (import ASE.main) and running the
 # file directly (python ASE/main.py). Try package-style import first and
