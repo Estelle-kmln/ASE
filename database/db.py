@@ -66,11 +66,11 @@ def verify_login(username, password):
 
 
 def get_all_cards():
-    """Get all cards from the database."""
+    """Get all RPS cards from the database."""
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     
-    cursor.execute("SELECT * FROM cards ORDER BY rarity, name")
+    cursor.execute("SELECT * FROM cards ORDER BY type, power")
     cards = cursor.fetchall()
     
     conn.close()
@@ -78,11 +78,11 @@ def get_all_cards():
 
 
 def get_cards_by_type(card_type):
-    """Get cards by type (creature or spell)."""
+    """Get cards by type (rock, paper, or scissors)."""
     conn = get_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     
-    cursor.execute("SELECT * FROM cards WHERE type = %s ORDER BY cost, name", (card_type,))
+    cursor.execute("SELECT * FROM cards WHERE LOWER(type) = LOWER(%s) ORDER BY power", (card_type,))
     cards = cursor.fetchall()
     
     conn.close()
@@ -99,4 +99,19 @@ def get_card_by_id(card_id):
     
     conn.close()
     return card
+
+
+def get_available_cards():
+    """Get all available RPS card types and powers."""
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cursor.execute("SELECT DISTINCT type FROM cards ORDER BY type")
+    types = cursor.fetchall()
+    
+    cursor.execute("SELECT DISTINCT power FROM cards ORDER BY power")
+    powers = cursor.fetchall()
+    
+    conn.close()
+    return [t['type'] for t in types], [p['power'] for p in powers]
 

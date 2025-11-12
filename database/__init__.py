@@ -8,6 +8,7 @@ from .db import (
     get_all_cards,
     get_cards_by_type,
     get_card_by_id,
+    get_available_cards,
 )
 
 __all__ = [
@@ -18,5 +19,6 @@ __all__ = [
     "get_all_cards",
     "get_cards_by_type",
     "get_card_by_id",
+    "get_available_cards",
 ]
 
