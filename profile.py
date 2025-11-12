@@ -5,7 +5,7 @@ users = {
     "player1": {"username": "player1", "email": "player1@example.com"}
 }
 
-# Currently logged-in user (None untill logged in or created)
+# Currently logged-in user (None until logged in or created)
 current_user = None
 
 
@@ -26,6 +26,7 @@ def get_profile():
     """
     Return the profile of the currently logged-in user.
     """
+    global current_user  # <-- added this line
     if current_user and current_user in users:
         return users[current_user]
     return None
@@ -35,6 +36,7 @@ def update_profile(new_data: dict):
     """
     Update the profile of the currently logged-in user.
     """
+    global current_user  # <-- added this line
     if not current_user or current_user not in users:
         print("⚠️  No profile logged in.")
         return None
