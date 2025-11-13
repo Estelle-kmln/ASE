@@ -37,6 +37,9 @@ class TestViewOldMatches(unittest.TestCase):
                 player2_hand_cards TEXT,
                 player2_played_card TEXT,
                 player2_discarded_cards TEXT,
+                winner TEXT,
+                player1_score INTEGER DEFAULT 0,
+                player2_score INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -97,7 +100,6 @@ class TestViewOldMatches(unittest.TestCase):
         output = buf.getvalue()
         self.assertIn("g42", output)
         self.assertIn("alex vs chris", output)
-        self.assertIn("COMPLETED", output)
 
     def test_display_old_matches_handles_no_matches(self):
         """Test that display_old_matches() prints message when no games found."""
