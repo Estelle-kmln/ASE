@@ -2,6 +2,7 @@
 from profile import get_profile, update_profile, create_profile
 from view_old_matches import display_old_matches
 from view_card_collection import display_card_collection
+from view_leaderboard import display_leaderboard
 
 # Support importing both as a package (import ASE.main) and running the
 # file directly (python ASE/main.py). Try package-style import first and
@@ -25,6 +26,12 @@ def main():
     if choice in ["y", "yes"]:
         player_name = input("Enter your player name: ").strip().lower()
         display_old_matches(player_name)
+
+# Offer to view leaderboard
+    print("\n" + "-" * 50)
+    leaderboard_choice = input("Do you want to view the leaderboard? (y/n): ").strip().lower()
+    if leaderboard_choice in ["y", "yes"]:
+        display_leaderboard()
 
 # Offer to view card collection
     print("\n" + "-" * 50)

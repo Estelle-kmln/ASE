@@ -97,6 +97,15 @@ class GameRepository:
                     # Note: This will lose old game data, but that's okay for development
                     cursor.execute("DROP TABLE games")
                     table_exists = False
+                else:
+                    # Add missing columns if they don't exist
+                    if "winner" not in columns:
+                        cursor.execute("ALTER TABLE games ADD COLUMN winner TEXT")
+                    if "player1_score" not in columns:
+                        cursor.execute("ALTER TABLE games ADD COLUMN player1_score INTEGER DEFAULT 0")
+                    if "player2_score" not in columns:
+                        cursor.execute("ALTER TABLE games ADD COLUMN player2_score INTEGER DEFAULT 0")
+                    conn.commit()
 
             if not table_exists:
                 # Games table - updated for 2-player games
@@ -117,6 +126,9 @@ class GameRepository:
                         player2_hand_cards TEXT,
                         player2_played_card TEXT,
                         player2_discarded_cards TEXT,
+                        winner TEXT,
+                        player1_score INTEGER DEFAULT 0,
+                        player2_score INTEGER DEFAULT 0,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
@@ -194,12 +206,13 @@ class GameRepository:
         cards_data = json.loads(cards_json)
         return [self._dict_to_card(card_dict) for card_dict in cards_data]
 
-    def save_game(self, game: Game):
+    def save_game(self, game: Game, winner: Optional[str] = None):
         """Save a game to the database.
 
         Persists the complete state of a Game object to the database. This includes:
             - Game metadata (ID, turn number, active status, current player)
             - Both players' names, decks, hands, played cards, and discarded cards
+            - Winner name (if game is finished)
             - Timestamp update for tracking modifications
 
         The method uses INSERT OR REPLACE, so it will update an existing game
@@ -211,6 +224,7 @@ class GameRepository:
 
         Args:
             game (Game): The Game object to persist to the database.
+            winner (Optional[str]): Name of the winner if game is finished, None otherwise.
 
         Note:
             The current_player is stored as an integer (1 for player1, 2 for player2)
@@ -221,6 +235,23 @@ class GameRepository:
 
             # Determine current player (1 or 2)
             current_player_num = 1 if game.current_player == game.player1 else 2
+            
+            # Get scores
+            p1s = getattr(game, "player1_score", 0)
+            p2s = getattr(game, "player2_score", 0)
+            
+            # Determine winner if game is not active and winner not provided
+            if not game.is_active and winner is None:
+                if p1s > p2s:
+                    winner = game.player1.name
+                elif p2s > p1s:
+                    winner = game.player2.name
+                # If scores are equal, check remaining cards as tiebreaker
+                elif len(game.player1.deck) > len(game.player2.deck):
+                    winner = game.player1.name
+                elif len(game.player2.deck) > len(game.player1.deck):
+                    winner = game.player2.name
+                # Otherwise, winner remains None (tie)
 
             # Serialize player1 data
             player1_deck_json = self._serialize_cards(game.player1.deck.cards)
@@ -266,8 +297,8 @@ class GameRepository:
                 (game_id, turn, is_active, current_player, 
                  player1_name, player1_deck_cards, player1_hand_cards, player1_played_card, player1_discarded_cards,
                  player2_name, player2_deck_cards, player2_hand_cards, player2_played_card, player2_discarded_cards,
-                 updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                 winner, player1_score, player2_score, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
                 (
                     game.game_id,
@@ -284,6 +315,9 @@ class GameRepository:
                     player2_hand_json,
                     player2_played_json,
                     player2_discarded_json,
+                    winner,
+                    p1s,
+                    p2s,
                 ),
             )
 
@@ -494,3 +528,77 @@ class GameRepository:
             conn.commit()
 
             return cursor.rowcount > 0
+
+    def get_leaderboard(self) -> list[dict]:
+        """Get leaderboard statistics for all players.
+
+        Calculates win/loss/tie statistics for each player based on completed games.
+        Only includes games where is_active = 0 (finished games).
+
+        Returns:
+            list[dict]: List of dictionaries, each containing:
+                - player_name (str): Name of the player
+                - wins (int): Number of games won
+                - losses (int): Number of games lost
+                - ties (int): Number of games tied
+                - total_games (int): Total number of games played
+                - win_rate (float): Win rate as a percentage (0-100)
+
+            Players are sorted by wins (descending), then by win_rate (descending).
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+
+            # Get all completed games (is_active = 0)
+            cursor.execute("""
+                SELECT player1_name, player2_name, winner
+                FROM games
+                WHERE is_active = 0
+            """)
+
+            rows = cursor.fetchall()
+
+            # Aggregate statistics per player
+            stats = {}
+            for player1_name, player2_name, winner in rows:
+                # Initialize stats for both players if not exists
+                if player1_name not in stats:
+                    stats[player1_name] = {"wins": 0, "losses": 0, "ties": 0, "total_games": 0}
+                if player2_name not in stats:
+                    stats[player2_name] = {"wins": 0, "losses": 0, "ties": 0, "total_games": 0}
+
+                # Update statistics
+                stats[player1_name]["total_games"] += 1
+                stats[player2_name]["total_games"] += 1
+
+                if winner == player1_name:
+                    stats[player1_name]["wins"] += 1
+                    stats[player2_name]["losses"] += 1
+                elif winner == player2_name:
+                    stats[player2_name]["wins"] += 1
+                    stats[player1_name]["losses"] += 1
+                else:
+                    # Tie (winner is None or empty)
+                    stats[player1_name]["ties"] += 1
+                    stats[player2_name]["ties"] += 1
+
+            # Convert to list and calculate win rates
+            leaderboard = []
+            for player_name, player_stats in stats.items():
+                total = player_stats["total_games"]
+                wins = player_stats["wins"]
+                win_rate = (wins / total * 100) if total > 0 else 0.0
+
+                leaderboard.append({
+                    "player_name": player_name,
+                    "wins": wins,
+                    "losses": player_stats["losses"],
+                    "ties": player_stats["ties"],
+                    "total_games": total,
+                    "win_rate": round(win_rate, 1)
+                })
+
+            # Sort by wins (descending), then by win_rate (descending)
+            leaderboard.sort(key=lambda x: (x["wins"], x["win_rate"]), reverse=True)
+
+            return leaderboard
