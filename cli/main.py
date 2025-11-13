@@ -378,19 +378,27 @@ class CLI:
                 print("Game ended - a player ran out of cards!")
                 # End game and decide winner by round-win score (not remaining cards)
                 game.is_active = False
-                self.game_service.repository.save_game(game)
                 # Show final round-win score
                 self.keep_score(game)
                 p1s = getattr(game, "player1_score", 0)
                 p2s = getattr(game, "player2_score", 0)
+                winner = None
                 if p1s > p2s:
-                    print(f"\n🎉 {game.player1.name} wins by score! ({p1s}–{p2s})")
+                    winner = game.player1.name
+                    print(
+                        f"\n🎉 {game.player1.name} wins by score! ({p1s}–{p2s})"
+                    )
                 elif p2s > p1s:
-                    print(f"\n🎉 {game.player2.name} wins by score! ({p2s}–{p1s})")
+                    winner = game.player2.name
+                    print(
+                        f"\n🎉 {game.player2.name} wins by score! ({p2s}–{p1s})"
+                    )
                 else:
                     print("\n⚖️ Game ended in a tie by score!")
+                # Save game with winner
+                self.game_service.repository.save_game(game, winner=winner)
             return False
-        
+
     def keep_score(self, game: Game):
         """Display the per-round win score for the current game.
 
@@ -400,11 +408,11 @@ class CLI:
         player1_score = getattr(game, "player1_score", 0)
         player2_score = getattr(game, "player2_score", 0)
 
-        print(f"\n=== Round Wins ===")
+        print("\n=== Round Wins ===")
         print(f"{game.player1.name}: {player1_score} points")
         print(f"{game.player2.name}: {player2_score} points")
         print("=================\n")
-        
+
         # if player1_score > player2_score:
         #     winner = game.player1.name
         # elif player2_score > player1_score:
@@ -438,36 +446,58 @@ class CLI:
                 p1s = getattr(game, "player1_score", 0)
                 p2s = getattr(game, "player2_score", 0)
 
+                winner = None
                 if len(game.player1.deck) < 3 and len(game.player2.deck) < 3:
                     print("\n⚠ Both players are out of cards!")
                     if p1s > p2s:
-                        print(f"\n🎉 {game.player1.name} wins the game with the score of: ({p1s}–{p2s})")
+                        winner = game.player1.name
+                        print(
+                            f"\n🎉 {game.player1.name} wins the game with the score of: ({p1s}–{p2s})"
+                        )
                     elif p2s > p1s:
-                        print(f"\n🎉 {game.player2.name} wins the game with the score of: ({p2s}–{p1s})")
+                        winner = game.player2.name
+                        print(
+                            f"\n🎉 {game.player2.name} wins the game with the score of: ({p2s}–{p1s})"
+                        )
                     else:
                         print("\n⚖️ Game ended in a tie by score!")
                 else:
                     # One player cannot continue; still decide by score first
                     if p1s > p2s:
-                        print(f"\n🎉 {game.player1.name} wins by score! ({p1s}–{p2s})")
+                        winner = game.player1.name
+                        print(
+                            f"\n🎉 {game.player1.name} wins by score! ({p1s}–{p2s})"
+                        )
                     elif p2s > p1s:
-                        print(f"\n🎉 {game.player2.name} wins by score! ({p2s}–{p1s})")
+                        winner = game.player2.name
+                        print(
+                            f"\n🎉 {game.player2.name} wins by score! ({p2s}–{p1s})"
+                        )
                     else:
                         # Tie on score — use remaining cards as tiebreaker
                         if len(game.player1.deck) > len(game.player2.deck):
-                            print(f"\n🎉 {game.player1.name} wins by remaining cards (tiebreaker)!")
+                            winner = game.player1.name
+                            print(
+                                f"\n🎉 {game.player1.name} wins by remaining cards (tiebreaker)!"
+                            )
                         elif len(game.player2.deck) > len(game.player1.deck):
-                            print(f"\n🎉 {game.player2.name} wins by remaining cards (tiebreaker)!")
+                            winner = game.player2.name
+                            print(
+                                f"\n🎉 {game.player2.name} wins by remaining cards (tiebreaker)!"
+                            )
                         else:
-                            print("\n⚖️ Game ended in a tie (even score and cards)!")
+                            print(
+                                "\n⚖️ Game ended in a tie (even score and cards)!"
+                            )
 
                 game.is_active = False
-                self.game_service.repository.save_game(game)
+                # Save game with winner
+                self.game_service.repository.save_game(game, winner=winner)
                 break
 
             # Show status
             print(f"\n{'-'*50}")
-            print(f"Status:")
+            print("Status:")
             print(f"{game.player1.name}'s deck: {len(game.player1.deck)} cards")
             print(f"{game.player2.name}'s deck: {len(game.player2.deck)} cards")
 
