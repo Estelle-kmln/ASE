@@ -1,6 +1,7 @@
 """Main entry point for the battle card game."""
 from profile import get_profile, update_profile, create_profile
 from view_old_matches import display_old_matches
+from view_card_collection import display_card_collection
 
 # Support importing both as a package (import ASE.main) and running the
 # file directly (python ASE/main.py). Try package-style import first and
@@ -24,6 +25,12 @@ def main():
     if choice in ["y", "yes"]:
         player_name = input("Enter your player name: ").strip().lower()
         display_old_matches(player_name)
+
+# Offer to view card collection
+    print("\n" + "-" * 50)
+    view_cards = input("Do you want to see the full card collection? (y/n): ").strip().lower()
+    if view_cards in ["y", "yes"]:
+        display_card_collection()
 
  #  Ask before starting a new game
     print("\n" + "-" * 50)
