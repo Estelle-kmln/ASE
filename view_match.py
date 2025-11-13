@@ -39,7 +39,13 @@ def view_match_details():
         return
 
     selected_game_id = games[choice - 1]["game_id"]
-    game = repo.load_game(selected_game_id)
+    #game = repo.load_game(selected_game_id)
+
+    try:
+        game = repo.load_game(selected_game_id)
+    except ValueError as e:
+        print(f"❌ Cannot load game: {e}")
+        return
 
     if not game:
         print("❌ Could not load selected match.")
