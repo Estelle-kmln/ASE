@@ -1,4 +1,4 @@
-"""Game module for battle card game logic."""
+"""Game services package."""
 
 from .game_logic import game_menu
 

@@ -4,8 +4,6 @@ __pycache__/
 *$py.class
 *.so
 
-readme.md
-
 # Distribution / packaging
 .Python
 build/
