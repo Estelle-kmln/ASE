@@ -1,6 +1,6 @@
 """Game services package."""
 
-from .game_logic import game_menu
+from .game_logic import play_rps_game, view_card_database, show_card_statistics
 
-__all__ = ["game_menu"]
+__all__ = ["play_rps_game", "view_card_database", "show_card_statistics"]
 

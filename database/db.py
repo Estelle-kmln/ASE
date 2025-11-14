@@ -166,3 +166,49 @@ def get_available_cards():
     conn.close()
     return [t['type'] for t in types], [p['power'] for p in powers]
 
+
+def get_user_profile(username):
+    """Get user profile information by username.
+    
+    Args:
+        username (str): The username to get profile for.
+        
+    Returns:
+        dict or None: User profile data if found, None otherwise.
+    """
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cursor.execute("SELECT username FROM users WHERE username = %s", (username,))
+    user = cursor.fetchone()
+    
+    conn.close()
+    return dict(user) if user else None
+
+
+def update_user_password(username, new_password):
+    """Update user's password.
+    
+    Args:
+        username (str): The username to update password for.
+        new_password (str): The new password.
+        
+    Returns:
+        bool: True if update was successful, False otherwise.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            "UPDATE users SET password = %s WHERE username = %s",
+            (new_password, username)
+        )
+        conn.commit()
+        success = cursor.rowcount > 0
+        conn.close()
+        return success
+    except Exception:
+        conn.close()
+        return False
+

@@ -365,36 +365,9 @@ class BattleCardGame:
 game_controller = BattleCardGame()
 
 
-def game_menu():
-    """Updated main game menu with enhanced two-player RPS game."""
-    print("\n🎮 Welcome to Battle Cards! 🎮")
-    
-    while True:
-        print("\n" + "="*40)
-        print("BATTLE CARD GAME - MAIN MENU") 
-        print("="*40)
-        print("1. Play Rock Paper Scissors Battle")
-        print("2. View Card Database")
-        print("3. Game Statistics")
-        print("4. Logout")
-        
-        choice = input("\nSelect an option (1-4): ").strip()
-        
-        try:
-            if choice == "1":
-                rps_game_menu()
-            elif choice == "2":
-                view_card_database()
-            elif choice == "3":
-                show_card_statistics()
-            elif choice == "4":
-                print("\nLogging out... Thanks for playing!")
-                break
-            else:
-                print("Invalid choice. Please select 1-4.")
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            print("Please try again.")
+def play_rps_game():
+    """Start the Rock Paper Scissors Battle game."""
+    rps_game_menu()
 
 
 def rps_game_menu():
@@ -619,6 +592,8 @@ def view_card_database():
         print(f"   Power {card['power']}")
     
     print(f"\nTotal cards available: {len(cards)}")
+    
+    input("\nPress Enter to return to main menu...")
 
 
 def show_card_statistics():
@@ -651,3 +626,5 @@ def show_card_statistics():
     print(f"\nPower Distribution:")
     for power in sorted(power_counts.keys()):
         print(f"  Power {power}: {power_counts[power]} cards")
+    
+    input("\nPress Enter to return to main menu...")

@@ -9,6 +9,8 @@ from .db import (
     get_cards_by_type,
     get_card_by_id,
     get_available_cards,
+    get_user_profile,
+    update_user_password,
 )
 
 __all__ = [
@@ -20,5 +22,7 @@ __all__ = [
     "get_cards_by_type",
     "get_card_by_id",
     "get_available_cards",
+    "get_user_profile",
+    "update_user_password",
 ]
 
