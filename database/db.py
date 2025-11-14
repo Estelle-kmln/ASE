@@ -72,6 +72,10 @@ def create_account(username, password):
     cursor = conn.cursor()
 
     try:
+        # Ensure strings are properly encoded as UTF-8
+        username = str(username).encode('utf-8', errors='ignore').decode('utf-8')
+        password = str(password).encode('utf-8', errors='ignore').decode('utf-8')
+        
         cursor.execute(
             "INSERT INTO users (username, password) VALUES (%s, %s)",
             (username, password),
@@ -80,6 +84,10 @@ def create_account(username, password):
         conn.close()
         return True
     except psycopg2.IntegrityError:
+        conn.close()
+        return False
+    except Exception as e:
+        print(f"Database error: {e}")
         conn.close()
         return False
 
@@ -106,14 +114,22 @@ def verify_login(username, password):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT COUNT(*) FROM users WHERE username = %s AND password = %s",
-        (username, password),
-    )
-    count = cursor.fetchone()[0]
-
-    conn.close()
-    return count > 0
+    try:
+        # Ensure strings are properly encoded as UTF-8
+        username = str(username).encode('utf-8', errors='ignore').decode('utf-8')
+        password = str(password).encode('utf-8', errors='ignore').decode('utf-8')
+        
+        cursor.execute(
+            "SELECT COUNT(*) FROM users WHERE username = %s AND password = %s",
+            (username, password),
+        )
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count > 0
+    except Exception as e:
+        print(f"Database error: {e}")
+        conn.close()
+        return False
 
 
 def get_all_cards():
@@ -200,6 +216,10 @@ def update_user_password(username, new_password):
     cursor = conn.cursor()
     
     try:
+        # Ensure strings are properly encoded as UTF-8
+        username = str(username).encode('utf-8', errors='ignore').decode('utf-8')
+        new_password = str(new_password).encode('utf-8', errors='ignore').decode('utf-8')
+        
         cursor.execute(
             "UPDATE users SET password = %s WHERE username = %s",
             (new_password, username)
@@ -208,7 +228,8 @@ def update_user_password(username, new_password):
         success = cursor.rowcount > 0
         conn.close()
         return success
-    except Exception:
+    except Exception as e:
+        print(f"Database error: {e}")
         conn.close()
         return False
 

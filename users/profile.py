@@ -20,6 +20,13 @@ def create_account_flow():
         print("Username cannot be empty. Please try again.\n")
         return False
 
+    # Clean and validate username
+    try:
+        username = username.encode('utf-8', errors='ignore').decode('utf-8')
+    except Exception:
+        print("Invalid characters in username. Please use only standard characters.\n")
+        return False
+
     # Check if username already exists
     if username_exists(username):
         print(
@@ -31,6 +38,13 @@ def create_account_flow():
 
     if not password:
         print("Password cannot be empty. Please try again.\n")
+        return False
+
+    # Clean and validate password
+    try:
+        password = password.encode('utf-8', errors='ignore').decode('utf-8')
+    except Exception:
+        print("Invalid characters in password. Please use only standard characters.\n")
         return False
 
     # Create the account
@@ -53,10 +67,24 @@ def login_flow():
         print("Username cannot be empty. Please try again.\n")
         return False
 
+    # Clean and validate username
+    try:
+        username = username.encode('utf-8', errors='ignore').decode('utf-8')
+    except Exception:
+        print("Invalid characters in username.\n")
+        return False
+
     password = input("Enter password: ").strip()
 
     if not password:
         print("Password cannot be empty. Please try again.\n")
+        return False
+
+    # Clean and validate password
+    try:
+        password = password.encode('utf-8', errors='ignore').decode('utf-8')
+    except Exception:
+        print("Invalid characters in password.\n")
         return False
 
     # Verify login credentials
