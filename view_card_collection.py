@@ -1,18 +1,16 @@
 """Module for displaying the full card collection."""
 
-from models.card import Card
+from database import get_all_cards
 
 
-def get_full_card_collection() -> list[Card]:
+def get_full_card_collection():
     """
-    Generate the full card collection of 39 cards (13 values × 3 suits).
+    Get the full card collection from the database.
 
     Returns:
-        A list of all Card objects.
+        A list of all card dictionaries from the database.
     """
-    suits = ["rock", "paper", "scissors"]
-    values = list(range(1, 14))  # 1 to 13
-    return [Card(value, suit) for suit in suits for value in values]
+    return get_all_cards()
 
 
 def display_card_collection():
@@ -23,15 +21,18 @@ def display_card_collection():
     print("🃏  CARD COLLECTION - ALL AVAILABLE CARDS")
     print("=" * 50)
 
-    suits = ["rock", "paper", "scissors"]
     all_cards = get_full_card_collection()
+    
+    # Group by type
+    rock_cards = [c for c in all_cards if c['type'].lower() == 'rock']
+    paper_cards = [c for c in all_cards if c['type'].lower() == 'paper']
+    scissors_cards = [c for c in all_cards if c['type'].lower() == 'scissors']
 
-    for suit in suits:
-        print(f"\n{suit.upper()} CARDS:")
+    for card_type, cards in [('Rock', rock_cards), ('Paper', paper_cards), ('Scissors', scissors_cards)]:
+        print(f"\n{card_type.upper()} CARDS:")
         print("-" * 50)
-        suit_cards = [card for card in all_cards if card.suit == suit]
-        for card in suit_cards:
-            print(f"  {card.suit.capitalize()} {card.value}")
+        for card in sorted(cards, key=lambda x: x['power']):
+            print(f"  {card['type']} {card['power']}")
     
     print("\n" + "=" * 50 + "\n")
 
