@@ -5,6 +5,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+*.code-workspace
 .Python
 build/
 develop-eggs/
