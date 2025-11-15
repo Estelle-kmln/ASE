@@ -3,6 +3,7 @@
 import random
 import uuid
 from typing import List, Optional
+import psycopg2
 from database import get_available_cards, get_all_cards
 
 
@@ -417,10 +418,12 @@ def start_two_player_game():
         
         # Save the game when it starts
         try:
+            # Note: Import inside function to avoid circular dependency
+            # (game_repository imports from game_logic)
             from database.game_repository import GameRepository
             repository = GameRepository()
             repository.save_game(game)
-        except Exception as e:
+        except psycopg2.Error as e:
             print(f"\n⚠️ Warning: Could not save game to database: {e}")
         
         print(f"\n{'='*50}")
