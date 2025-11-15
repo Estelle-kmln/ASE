@@ -1,0 +1,252 @@
+"""
+Card Service - Card database and statistics microservice
+"""
+
+import os
+import random
+from flask import Flask, request, jsonify
+from flask_jwt_extended import JWTManager, jwt_required
+from flask_cors import CORS
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
+import requests
+
+# Load environment variables
+load_dotenv()
+
+app = Flask(__name__)
+
+# Configuration
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-in-production')
+
+# Initialize extensions
+jwt = JWTManager(app)
+CORS(app)
+
+# Database configuration
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://gameuser:gamepassword@localhost:5432/battlecards')
+AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://localhost:5001')
+
+def get_db_connection():
+    """Create and return a PostgreSQL database connection."""
+    return psycopg2.connect(DATABASE_URL)
+
+def validate_token(token):
+    """Validate token with auth service."""
+    try:
+        headers = {'Authorization': f'Bearer {token}'}
+        response = requests.post(f'{AUTH_SERVICE_URL}/api/auth/validate', headers=headers)
+        return response.status_code == 200
+    except:
+        return False
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint."""
+    return jsonify({'status': 'healthy', 'service': 'card-service'}), 200
+
+@app.route('/api/cards', methods=['GET'])
+@jwt_required()
+def get_all_cards():
+    """Get all available cards."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute("SELECT * FROM cards ORDER BY type, power")
+        cards = cursor.fetchall()
+        conn.close()
+        
+        # Convert to list of dicts
+        card_list = []
+        for card in cards:
+            card_list.append({
+                'id': card['id'],
+                'type': card['type'],
+                'power': card['power']
+            })
+        
+        return jsonify({'cards': card_list}), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get cards: {str(e)}'}), 500
+
+@app.route('/api/cards/by-type/<card_type>', methods=['GET'])
+@jwt_required()
+def get_cards_by_type(card_type):
+    """Get cards by type (rock, paper, scissors)."""
+    try:
+        if card_type.lower() not in ['rock', 'paper', 'scissors']:
+            return jsonify({'error': 'Invalid card type. Must be rock, paper, or scissors'}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute("SELECT * FROM cards WHERE LOWER(type) = LOWER(%s) ORDER BY power", (card_type,))
+        cards = cursor.fetchall()
+        conn.close()
+        
+        card_list = []
+        for card in cards:
+            card_list.append({
+                'id': card['id'],
+                'type': card['type'],
+                'power': card['power']
+            })
+        
+        return jsonify({'cards': card_list, 'type': card_type}), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get cards by type: {str(e)}'}), 500
+
+@app.route('/api/cards/<int:card_id>', methods=['GET'])
+@jwt_required()
+def get_card_by_id(card_id):
+    """Get a specific card by ID."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute("SELECT * FROM cards WHERE id = %s", (card_id,))
+        card = cursor.fetchone()
+        conn.close()
+        
+        if not card:
+            return jsonify({'error': 'Card not found'}), 404
+        
+        return jsonify({
+            'card': {
+                'id': card['id'],
+                'type': card['type'],
+                'power': card['power']
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get card: {str(e)}'}), 500
+
+@app.route('/api/cards/random-deck', methods=['POST'])
+@jwt_required()
+def create_random_deck():
+    """Create a random deck of 22 cards."""
+    try:
+        data = request.get_json() or {}
+        deck_size = data.get('size', 22)
+        
+        if deck_size < 1 or deck_size > 50:
+            return jsonify({'error': 'Deck size must be between 1 and 50'}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get all available cards
+        cursor.execute("SELECT * FROM cards ORDER BY type, power")
+        all_cards = cursor.fetchall()
+        conn.close()
+        
+        if len(all_cards) < deck_size:
+            return jsonify({'error': f'Not enough cards in database. Available: {len(all_cards)}, Requested: {deck_size}'}), 400
+        
+        # Select random cards
+        selected_cards = random.sample(all_cards, deck_size)
+        
+        deck = []
+        for card in selected_cards:
+            deck.append({
+                'id': card['id'],
+                'type': card['type'],
+                'power': card['power']
+            })
+        
+        return jsonify({
+            'deck': deck,
+            'size': len(deck)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to create random deck: {str(e)}'}), 500
+
+@app.route('/api/cards/statistics', methods=['GET'])
+@jwt_required()
+def get_card_statistics():
+    """Get card database statistics."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get all cards for analysis
+        cursor.execute("SELECT type, power FROM cards")
+        cards = cursor.fetchall()
+        conn.close()
+        
+        if not cards:
+            return jsonify({'error': 'No cards found'}), 404
+        
+        # Calculate statistics
+        total_cards = len(cards)
+        type_counts = {}
+        power_distribution = {}
+        
+        for card in cards:
+            card_type = card['type']
+            power = card['power']
+            
+            # Count by type
+            type_counts[card_type] = type_counts.get(card_type, 0) + 1
+            
+            # Count by power
+            power_distribution[power] = power_distribution.get(power, 0) + 1
+        
+        # Calculate percentages for types
+        type_percentages = {}
+        for card_type, count in type_counts.items():
+            type_percentages[card_type] = round((count / total_cards) * 100, 2)
+        
+        return jsonify({
+            'total_cards': total_cards,
+            'type_distribution': {
+                'counts': type_counts,
+                'percentages': type_percentages
+            },
+            'power_distribution': power_distribution,
+            'available_types': list(type_counts.keys()),
+            'power_range': {
+                'min': min(power_distribution.keys()) if power_distribution else 0,
+                'max': max(power_distribution.keys()) if power_distribution else 0
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get statistics: {str(e)}'}), 500
+
+@app.route('/api/cards/types', methods=['GET'])
+@jwt_required()
+def get_card_types():
+    """Get all available card types."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT DISTINCT type FROM cards ORDER BY type")
+        types_result = cursor.fetchall()
+        
+        cursor.execute("SELECT DISTINCT power FROM cards ORDER BY power")
+        powers_result = cursor.fetchall()
+        
+        conn.close()
+        
+        types = [row[0] for row in types_result]
+        powers = [row[0] for row in powers_result]
+        
+        return jsonify({
+            'types': types,
+            'powers': powers
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get card types: {str(e)}'}), 500
+
+if __name__ == '__main__':
+    # For development only
+    app.run(host='0.0.0.0', port=5002, debug=True)

@@ -1,0 +1,488 @@
+"""
+Leaderboard Service - Game results and rankings microservice
+"""
+
+import os
+from datetime import datetime, timedelta
+from flask import Flask, request, jsonify
+from flask_jwt_extended import JWTManager, jwt_required
+from flask_cors import CORS
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+app = Flask(__name__)
+
+# Configuration
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-change-in-production')
+
+# Initialize extensions
+jwt = JWTManager(app)
+CORS(app)
+
+# Database configuration
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://gameuser:gamepassword@localhost:5432/battlecards')
+
+def get_db_connection():
+    """Create and return a PostgreSQL database connection."""
+    return psycopg2.connect(DATABASE_URL)
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint."""
+    return jsonify({'status': 'healthy', 'service': 'leaderboard-service'}), 200
+
+@app.route('/api/leaderboard', methods=['GET'])
+@jwt_required()
+def get_leaderboard():
+    """Get the global leaderboard."""
+    try:
+        limit = request.args.get('limit', 10, type=int)
+        if limit > 100:
+            limit = 100
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Calculate wins for each player
+        cursor.execute("""
+            WITH player_stats AS (
+                -- Player 1 wins
+                SELECT player1_name as player, COUNT(*) as wins
+                FROM games 
+                WHERE is_active = false AND winner = player1_name
+                GROUP BY player1_name
+                
+                UNION ALL
+                
+                -- Player 2 wins
+                SELECT player2_name as player, COUNT(*) as wins
+                FROM games 
+                WHERE is_active = false AND winner = player2_name
+                GROUP BY player2_name
+            ),
+            total_games AS (
+                -- Total games for each player
+                SELECT player1_name as player, COUNT(*) as total_games
+                FROM games
+                WHERE is_active = false
+                GROUP BY player1_name
+                
+                UNION ALL
+                
+                SELECT player2_name as player, COUNT(*) as total_games
+                FROM games
+                WHERE is_active = false
+                GROUP BY player2_name
+            ),
+            aggregated_stats AS (
+                SELECT 
+                    p.player,
+                    SUM(p.wins) as total_wins,
+                    SUM(t.total_games) as total_games
+                FROM player_stats p
+                FULL OUTER JOIN total_games t ON p.player = t.player
+                GROUP BY p.player
+            )
+            SELECT 
+                player,
+                COALESCE(total_wins, 0) as wins,
+                COALESCE(total_games, 0) as games,
+                CASE 
+                    WHEN COALESCE(total_games, 0) = 0 THEN 0 
+                    ELSE ROUND((COALESCE(total_wins, 0)::decimal / total_games) * 100, 2)
+                END as win_percentage
+            FROM aggregated_stats
+            WHERE player IS NOT NULL
+            ORDER BY wins DESC, win_percentage DESC, games DESC
+            LIMIT %s
+        """, (limit,))
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        leaderboard = []
+        for i, player in enumerate(results, 1):
+            leaderboard.append({
+                'rank': i,
+                'player': player['player'],
+                'wins': player['wins'],
+                'games': player['games'],
+                'losses': player['games'] - player['wins'],
+                'win_percentage': float(player['win_percentage'])
+            })
+        
+        return jsonify({
+            'leaderboard': leaderboard,
+            'total_players': len(leaderboard)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get leaderboard: {str(e)}'}), 500
+
+@app.route('/api/leaderboard/player/<player_name>', methods=['GET'])
+@jwt_required()
+def get_player_stats(player_name):
+    """Get detailed statistics for a specific player."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get player's overall stats
+        cursor.execute("""
+            WITH player_wins AS (
+                SELECT COUNT(*) as wins
+                FROM games 
+                WHERE is_active = false 
+                AND (
+                    (winner = player1_name AND player1_name = %s) OR 
+                    (winner = player2_name AND player2_name = %s)
+                )
+            ),
+            player_games AS (
+                SELECT COUNT(*) as total_games
+                FROM games 
+                WHERE is_active = false 
+                AND (player1_name = %s OR player2_name = %s)
+            )
+            SELECT 
+                p.wins,
+                g.total_games,
+                (g.total_games - p.wins) as losses,
+                CASE 
+                    WHEN g.total_games = 0 THEN 0 
+                    ELSE ROUND((p.wins::decimal / g.total_games) * 100, 2)
+                END as win_percentage
+            FROM player_wins p, player_games g
+        """, (player_name, player_name, player_name, player_name))
+        
+        stats = cursor.fetchone()
+        
+        if not stats or stats['total_games'] == 0:
+            conn.close()
+            return jsonify({
+                'player': player_name,
+                'wins': 0,
+                'losses': 0,
+                'total_games': 0,
+                'win_percentage': 0,
+                'recent_games': []
+            }), 200
+        
+        # Get recent games
+        cursor.execute("""
+            SELECT 
+                game_id,
+                player1_name,
+                player2_name,
+                player1_score,
+                player2_score,
+                winner,
+                created_at
+            FROM games 
+            WHERE is_active = false 
+            AND (player1_name = %s OR player2_name = %s)
+            ORDER BY created_at DESC
+            LIMIT 10
+        """, (player_name, player_name))
+        
+        recent_games = cursor.fetchall()
+        conn.close()
+        
+        games_list = []
+        for game in recent_games:
+            opponent = game['player2_name'] if game['player1_name'] == player_name else game['player1_name']
+            player_score = game['player1_score'] if game['player1_name'] == player_name else game['player2_score']
+            opponent_score = game['player2_score'] if game['player1_name'] == player_name else game['player1_score']
+            result = 'win' if game['winner'] == player_name else ('loss' if game['winner'] else 'tie')
+            
+            games_list.append({
+                'game_id': game['game_id'],
+                'opponent': opponent,
+                'player_score': player_score,
+                'opponent_score': opponent_score,
+                'result': result,
+                'date': game['created_at'].isoformat() if game['created_at'] else None
+            })
+        
+        return jsonify({
+            'player': player_name,
+            'wins': stats['wins'],
+            'losses': stats['losses'],
+            'total_games': stats['total_games'],
+            'win_percentage': float(stats['win_percentage']),
+            'recent_games': games_list
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get player stats: {str(e)}'}), 500
+
+@app.route('/api/leaderboard/recent-games', methods=['GET'])
+@jwt_required()
+def get_recent_games():
+    """Get recent completed games."""
+    try:
+        limit = request.args.get('limit', 10, type=int)
+        if limit > 50:
+            limit = 50
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute("""
+            SELECT 
+                game_id,
+                player1_name,
+                player2_name,
+                player1_score,
+                player2_score,
+                winner,
+                turn,
+                created_at,
+                updated_at
+            FROM games 
+            WHERE is_active = false
+            ORDER BY updated_at DESC
+            LIMIT %s
+        """, (limit,))
+        
+        games = cursor.fetchall()
+        conn.close()
+        
+        games_list = []
+        for game in games:
+            games_list.append({
+                'game_id': game['game_id'],
+                'player1_name': game['player1_name'],
+                'player2_name': game['player2_name'],
+                'player1_score': game['player1_score'],
+                'player2_score': game['player2_score'],
+                'winner': game['winner'],
+                'duration_turns': game['turn'],
+                'started_at': game['created_at'].isoformat() if game['created_at'] else None,
+                'completed_at': game['updated_at'].isoformat() if game['updated_at'] else None
+            })
+        
+        return jsonify({
+            'recent_games': games_list,
+            'total_games': len(games_list)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get recent games: {str(e)}'}), 500
+
+@app.route('/api/leaderboard/top-players', methods=['GET'])
+@jwt_required()
+def get_top_players():
+    """Get top players by different metrics."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Top players by wins
+        cursor.execute("""
+            WITH player_stats AS (
+                SELECT player1_name as player, COUNT(*) as wins
+                FROM games 
+                WHERE is_active = false AND winner = player1_name
+                GROUP BY player1_name
+                
+                UNION ALL
+                
+                SELECT player2_name as player, COUNT(*) as wins
+                FROM games 
+                WHERE is_active = false AND winner = player2_name
+                GROUP BY player2_name
+            )
+            SELECT 
+                player,
+                SUM(wins) as total_wins
+            FROM player_stats
+            WHERE player IS NOT NULL
+            GROUP BY player
+            ORDER BY total_wins DESC
+            LIMIT 5
+        """)
+        
+        top_by_wins = cursor.fetchall()
+        
+        # Top players by win percentage (min 5 games)
+        cursor.execute("""
+            WITH player_stats AS (
+                -- Player 1 wins
+                SELECT player1_name as player, COUNT(*) as wins
+                FROM games 
+                WHERE is_active = false AND winner = player1_name
+                GROUP BY player1_name
+                
+                UNION ALL
+                
+                -- Player 2 wins
+                SELECT player2_name as player, COUNT(*) as wins
+                FROM games 
+                WHERE is_active = false AND winner = player2_name
+                GROUP BY player2_name
+            ),
+            total_games AS (
+                -- Total games for each player
+                SELECT player1_name as player, COUNT(*) as total_games
+                FROM games
+                WHERE is_active = false
+                GROUP BY player1_name
+                
+                UNION ALL
+                
+                SELECT player2_name as player, COUNT(*) as total_games
+                FROM games
+                WHERE is_active = false
+                GROUP BY player2_name
+            ),
+            aggregated_stats AS (
+                SELECT 
+                    p.player,
+                    SUM(p.wins) as total_wins,
+                    SUM(t.total_games) as total_games
+                FROM player_stats p
+                FULL OUTER JOIN total_games t ON p.player = t.player
+                GROUP BY p.player
+            )
+            SELECT 
+                player,
+                COALESCE(total_wins, 0) as wins,
+                COALESCE(total_games, 0) as games,
+                ROUND((COALESCE(total_wins, 0)::decimal / total_games) * 100, 2) as win_percentage
+            FROM aggregated_stats
+            WHERE player IS NOT NULL AND COALESCE(total_games, 0) >= 5
+            ORDER BY win_percentage DESC
+            LIMIT 5
+        """)
+        
+        top_by_percentage = cursor.fetchall()
+        
+        # Most active players
+        cursor.execute("""
+            WITH total_games AS (
+                SELECT player1_name as player, COUNT(*) as total_games
+                FROM games
+                WHERE is_active = false
+                GROUP BY player1_name
+                
+                UNION ALL
+                
+                SELECT player2_name as player, COUNT(*) as total_games
+                FROM games
+                WHERE is_active = false
+                GROUP BY player2_name
+            )
+            SELECT 
+                player,
+                SUM(total_games) as total_games
+            FROM total_games
+            WHERE player IS NOT NULL
+            GROUP BY player
+            ORDER BY total_games DESC
+            LIMIT 5
+        """)
+        
+        most_active = cursor.fetchall()
+        conn.close()
+        
+        return jsonify({
+            'top_by_wins': [
+                {
+                    'player': row['player'], 
+                    'wins': row['total_wins']
+                } for row in top_by_wins
+            ],
+            'top_by_win_percentage': [
+                {
+                    'player': row['player'], 
+                    'wins': row['wins'],
+                    'games': row['games'],
+                    'win_percentage': float(row['win_percentage'])
+                } for row in top_by_percentage
+            ],
+            'most_active': [
+                {
+                    'player': row['player'], 
+                    'total_games': row['total_games']
+                } for row in most_active
+            ]
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get top players: {str(e)}'}), 500
+
+@app.route('/api/leaderboard/statistics', methods=['GET'])
+@jwt_required()
+def get_global_statistics():
+    """Get global game statistics."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Total games and players
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_games,
+                COUNT(DISTINCT player1_name) + COUNT(DISTINCT player2_name) as unique_players
+            FROM games 
+            WHERE is_active = false
+        """)
+        
+        basic_stats = cursor.fetchone()
+        
+        # Games by outcome
+        cursor.execute("""
+            SELECT 
+                COUNT(CASE WHEN winner IS NOT NULL THEN 1 END) as games_with_winner,
+                COUNT(CASE WHEN winner IS NULL THEN 1 END) as tied_games
+            FROM games 
+            WHERE is_active = false
+        """)
+        
+        outcome_stats = cursor.fetchone()
+        
+        # Average game duration
+        cursor.execute("""
+            SELECT 
+                AVG(turn) as avg_game_turns,
+                MIN(turn) as shortest_game,
+                MAX(turn) as longest_game
+            FROM games 
+            WHERE is_active = false
+        """)
+        
+        duration_stats = cursor.fetchone()
+        
+        # Recent activity (games in last 7 days)
+        cursor.execute("""
+            SELECT COUNT(*) as games_last_week
+            FROM games 
+            WHERE is_active = false 
+            AND created_at >= %s
+        """, (datetime.now() - timedelta(days=7),))
+        
+        recent_activity = cursor.fetchone()
+        conn.close()
+        
+        return jsonify({
+            'total_completed_games': basic_stats['total_games'],
+            'unique_players': basic_stats['unique_players'], 
+            'games_with_winner': outcome_stats['games_with_winner'],
+            'tied_games': outcome_stats['tied_games'],
+            'average_game_turns': round(float(duration_stats['avg_game_turns']), 2) if duration_stats['avg_game_turns'] else 0,
+            'shortest_game_turns': duration_stats['shortest_game'],
+            'longest_game_turns': duration_stats['longest_game'],
+            'games_last_week': recent_activity['games_last_week']
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get statistics: {str(e)}'}), 500
+
+if __name__ == '__main__':
+    # For development only
+    app.run(host='0.0.0.0', port=5004, debug=True)

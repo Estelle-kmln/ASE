@@ -1,3 +1,0 @@
-# Dependencies for Battle Card Game
-psycopg2-binary==2.9.9  # PostgreSQL adapter for Python
-
