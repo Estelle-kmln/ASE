@@ -3,6 +3,7 @@
 import random
 import uuid
 from typing import List, Optional
+import psycopg2
 from database import get_available_cards, get_all_cards
 from database.game_repository import GameRepository
 import psycopg2
