@@ -86,7 +86,6 @@ def create_game():
         player2_name = data['player2_name'].strip()
         
         # Get JWT token from request
-        from flask import request
         token = request.headers.get('Authorization', '').replace('Bearer ', '')
         
         # Get random decks from card service

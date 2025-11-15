@@ -186,7 +186,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 
 ### **Get Specific Card**
 ```http
-GET /api/cards/<card_id>
+GET /api/cards/<card_index>
 ```
 **Purpose**: Retrieve details of a specific card by ID  
 **Authentication**: Bearer token required  
@@ -352,14 +352,14 @@ POST /api/games/<game_id>/play-card
 **Request Body**:
 ```json
 {
-  "card_id": 1
+  "card_index": 1
 }
 ```
 **Example**:
 ```bash
 curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"card_id":1}' \
+  -d '{"card_index":1}' \
   http://localhost:5003/api/games/GAME_ID/play-card
 ```
 
@@ -386,6 +386,11 @@ POST /api/games/<game_id>/end
 ```
 **Purpose**: Force end the current game  
 **Authentication**: Bearer token required
+**Example**:
+```bash
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:5003/api/games/GAME_ID/end
+```
 
 ### **Get User's Games**
 ```http
@@ -498,75 +503,127 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 
 ---
 
-## **🎮 Complete Game Flow Example**
+## **🎮 Complete Game Flow Example - Two Player Setup**
+
+### **Important: Two-Terminal Workflow Required**
+Since this is a **two-player game**, you need **two separate terminals** - one for each player. Both players must play their cards before a round can be resolved.
 
 ### **Step-by-Step Gameplay**
 
-#### **1. User Registration and Authentication**
+#### **1. User Registration (Run once)**
 ```bash
-# Register Player 1
-curl -X POST http://localhost:5001/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"alice","email":"alice@example.com","password":"password123"}'
+# Register Player 1 (Alice)
+curl -X POST http://localhost:5001/api/auth/register -H "Content-Type: application/json" -d '{"username":"alice","email":"alice@example.com","password":"password123"}'
 
-# Register Player 2  
-curl -X POST http://localhost:5001/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"bob","email":"bob@example.com","password":"password123"}'
-
-# Login as Alice and save token
-TOKEN=$(curl -X POST http://localhost:5001/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"alice","password":"password123"}' | jq -r '.access_token')
+# Register Player 2 (Bob)  
+curl -X POST http://localhost:5001/api/auth/register -H "Content-Type: application/json" -d '{"username":"bob","email":"bob@example.com","password":"password123"}'
 ```
 
-#### **2. Game Creation and Setup**
-```bash
-# Create a new game
-GAME_ID=$(curl -X POST -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"player2_name":"bob"}' \
-  http://localhost:5003/api/games | jq -r '.game_id')
+#### **2. Setup Two Terminals**
 
-# Check game state
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:5003/api/games/$GAME_ID
+##### **🟦 Terminal 1 (Alice's Terminal)**
+```bash
+# Login as Alice and save token (Bash/Linux)
+ALICE_TOKEN=$(curl -X POST http://localhost:5001/api/auth/login -H "Content-Type: application/json" -d '{"username":"alice","password":"password123"}' | jq -r '.access_token')
+
+# Login as Alice and save token (PowerShell/Windows)
+$ALICE_TOKEN = (curl -X POST http://localhost:5001/api/auth/login -H "Content-Type: application/json" -d '{"username":"alice","password":"password123"}' | ConvertFrom-Json).access_token
+
+# Create a new game (Alice is Player 1)
+GAME_ID=$(curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" -H "Content-Type: application/json" -d '{"player2_name":"bob"}' http://localhost:5003/api/games | jq -r '.game_id')
+
+# PowerShell version:
+$GAME_ID = (curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" -H "Content-Type: application/json" -d '{"player2_name":"bob"}' http://localhost:5003/api/games | ConvertFrom-Json).game_id
+
+# Share the GAME_ID with Bob's terminal!
+echo "Game ID: $GAME_ID"
 ```
 
-#### **3. Gameplay Actions**
+##### **🟨 Terminal 2 (Bob's Terminal)**
 ```bash
-# Draw cards to hand (3 cards)
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  http://localhost:5003/api/games/$GAME_ID/draw-hand
+# Login as Bob and save token (Bash/Linux)
+BOB_TOKEN=$(curl -X POST http://localhost:5001/api/auth/login -H "Content-Type: application/json" -d '{"username":"bob","password":"password123"}' | jq -r '.access_token')
 
-# View current hand
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:5003/api/games/$GAME_ID/hand
+# Login as Bob and save token (PowerShell/Windows)
+$BOB_TOKEN = (curl -X POST http://localhost:5001/api/auth/login -H "Content-Type: application/json" -d '{"username":"bob","password":"password123"}' | ConvertFrom-Json).access_token
 
-# Play a card (others discarded automatically)
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"card_id":1}' \
-  http://localhost:5003/api/games/$GAME_ID/play-card
+# Set the GAME_ID (copy from Alice's terminal)
+GAME_ID="your-game-id-here"  # Replace with actual game ID from Alice
 
-# Resolve the round (determine winner)
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  http://localhost:5003/api/games/$GAME_ID/resolve-round
+# PowerShell version:
+$GAME_ID = "your-game-id-here"  # Replace with actual game ID from Alice
 ```
 
-#### **4. Statistics and Leaderboards**
+#### **3. Round-by-Round Gameplay**
+
+##### **🟦 Alice's Turn (Terminal 1)**
+```bash
+# Alice: Draw cards to hand
+curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:5003/api/games/$GAME_ID/draw-hand
+
+# Alice: View her hand
+curl -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:5003/api/games/$GAME_ID/hand
+
+# Alice: Play a card (choose index 0, 1, or 2)
+curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" -H "Content-Type: application/json" -d '{"card_index":0}' http://localhost:5003/api/games/$GAME_ID/play-card
+```
+
+##### **🟨 Bob's Turn (Terminal 2)**  
+```bash
+# Bob: Draw cards to hand
+curl -X POST -H "Authorization: Bearer $BOB_TOKEN" http://localhost:5003/api/games/$GAME_ID/draw-hand
+
+# Bob: View his hand
+curl -H "Authorization: Bearer $BOB_TOKEN" http://localhost:5003/api/games/$GAME_ID/hand
+
+# Bob: Play a card (choose index 0, 1, or 2)
+curl -X POST -H "Authorization: Bearer $BOB_TOKEN" -H "Content-Type: application/json" -d '{"card_index":1}' http://localhost:5003/api/games/$GAME_ID/play-card
+```
+
+##### **🎯 Resolve Round (Either Terminal)**
+```bash
+# After BOTH players have played their cards, resolve the round
+curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:5003/api/games/$GAME_ID/resolve-round
+
+# Or from Bob's terminal:
+curl -X POST -H "Authorization: Bearer $BOB_TOKEN" http://localhost:5003/api/games/$GAME_ID/resolve-round
+```
+
+#### **4. Check Game State (Either Terminal)**
+```bash
+# View game state and scores
+curl -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:5003/api/games/$GAME_ID
+
+# Continue playing rounds until game ends...
+```
+
+#### **5. Statistics and Leaderboards**
 ```bash
 # Check leaderboard
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:5004/api/leaderboard
+curl -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:5004/api/leaderboard
 
 # View player statistics
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:5004/api/leaderboard/player/alice
+curl -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:5004/api/leaderboard/player/alice
+curl -H "Authorization: Bearer $BOB_TOKEN" http://localhost:5004/api/leaderboard/player/bob
+```
 
-# Check recent games
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:5004/api/leaderboard/recent-games
+### **🚨 Important Game Flow Notes**
+
+#### **Round Sequence Requirements:**
+1. **Both players must draw cards** before playing
+2. **Both players must play a card** before resolving
+3. **Only then can you resolve the round** (from either terminal)
+4. **Repeat for each round** until game ends
+
+#### **Game End Conditions:**
+- Game ends when a player cannot draw 3 cards (deck exhausted)
+- Winner is the player with the most round wins
+- Use `/end` endpoint to force-end a game if needed
+
+#### **Troubleshooting:**
+- **"Invalid card index"**: Draw cards first, then check hand size
+- **"Both players must play cards"**: Wait for opponent to play before resolving
+- **"Game not found"**: Verify the GAME_ID is correct in both terminals
 ```
 
 ---
