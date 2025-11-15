@@ -4,6 +4,8 @@ import random
 import uuid
 from typing import List, Optional
 from database import get_available_cards, get_all_cards
+from database.game_repository import GameRepository
+import psycopg2
 
 
 class Card:
@@ -417,10 +419,9 @@ def start_two_player_game():
         
         # Save the game when it starts
         try:
-            from database.game_repository import GameRepository
             repository = GameRepository()
             repository.save_game(game)
-        except Exception as e:
+        except (psycopg2.Error, OSError) as e:
             print(f"\n⚠️ Warning: Could not save game to database: {e}")
         
         print(f"\n{'='*50}")
@@ -506,12 +507,11 @@ def play_game_loop(game: Game):
             
             # Save the completed game to the database
             try:
-                from database.game_repository import GameRepository
                 repository = GameRepository()
                 winner_name = round_result['game_winner'] if round_result['game_winner'] != 'Tie' else None
                 repository.save_game(game, winner=winner_name)
                 print("\n✅ Game saved to leaderboard!")
-            except Exception as e:
+            except (psycopg2.Error, OSError) as e:
                 print(f"\n⚠️ Warning: Could not save game to database: {e}")
         else:
             game.turn_number += 1
