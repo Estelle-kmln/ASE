@@ -238,7 +238,7 @@ class GameRepository:
                 """,
                 (
                     game.game_id,
-                    getattr(game, "turn_number", 1),
+                    game.turn_number,
                     not game.game_over,  # is_active = not game_over
                     current_player_num,
                     game.player1.name,
