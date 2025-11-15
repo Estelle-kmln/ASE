@@ -1,0 +1,54 @@
+services:
+  # PostgreSQL Database Service
+  postgresql:
+    build:
+      context: .
+      dockerfile: database/Dockerfile
+    container_name: battlecards-postgresql
+    environment:
+      - POSTGRES_DB=battlecards
+      - POSTGRES_USER=gameuser
+      - POSTGRES_PASSWORD=gamepassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+      - ./database:/docker-entrypoint-initdb.d:ro
+    networks:
+      - battlecards-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gameuser -d battlecards"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Python Game Application Service  
+  game-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: battlecards-app
+    environment:
+      - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    networks:
+      - battlecards-network
+    restart: unless-stopped
+    stdin_open: true  # Enable interactive mode for CLI input
+    tty: true         # Allocate a pseudo-TTY for CLI interaction
+
+# Define volumes for data persistence
+volumes:
+  postgresql_data:
+    driver: local
+
+# Define network for inter-service communication
+networks:
+  battlecards-network:
+    driver: bridge

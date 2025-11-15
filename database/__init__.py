@@ -1,14 +1,28 @@
-"""Database package for game persistence.
+"""Database module for managing game data storage."""
 
-This package provides database operations for the battle card game application.
-It includes:
-    - GameRepository: Repository pattern implementation for persisting and loading game state
-    - db module: Low-level database connection and user authentication functions
+from .db import (
+    init_database,
+    create_account,
+    username_exists,
+    verify_login,
+    get_all_cards,
+    get_cards_by_type,
+    get_card_by_id,
+    get_available_cards,
+    get_user_profile,
+    update_user_password,
+)
 
-The database uses SQLite for persistence, storing game state as JSON-serialized data
-in the games table, and user credentials in the users table.
-"""
+__all__ = [
+    "init_database",
+    "create_account",
+    "username_exists",
+    "verify_login",
+    "get_all_cards",
+    "get_cards_by_type",
+    "get_card_by_id",
+    "get_available_cards",
+    "get_user_profile",
+    "update_user_password",
+]
 
-from .game_repository import GameRepository
-
-__all__ = ["GameRepository"]

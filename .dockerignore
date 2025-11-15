@@ -1,0 +1,47 @@
+# .dockerignore for Battle Card Game
+
+# Git
+.git
+.gitignore
+README.md
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Database files (SQLite)
+*.db
+*.sqlite3
+
+# Docker
+.dockerignore
+Dockerfile*
+docker-compose*.yml
+
+# Documentation
+*.md

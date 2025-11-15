@@ -7,56 +7,24 @@ account creation, login verification, and username existence checks.
 The database file is stored as 'game.db' in the current working directory.
 """
 
-import sqlite3
+import os
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
-# Database file name used for SQLite storage
-DB_NAME = "game.db"
+# Get database URL from environment variable
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://gameuser:gamepassword@localhost:5432/battlecards")
 
 
 def get_connection():
-    """Create and return a database connection.
-
-    Creates a new SQLite database connection to the database file specified by DB_NAME.
-    The connection must be closed by the caller after use.
-
-    Returns:
-        sqlite3.Connection: A connection object to the SQLite database.
-
-    Note:
-        It is recommended to use context managers (with statement) or ensure
-        the connection is properly closed to avoid resource leaks.
-    """
-    return sqlite3.connect(DB_NAME)
+    """Create and return a PostgreSQL database connection."""
+    return psycopg2.connect(DATABASE_URL)
 
 
 def init_database():
-    """Initialize the database and create the users table if it doesn't exist.
-
-    This function sets up the database schema by creating the users table.
-    The table stores user account information with the following structure:
-        - id: Auto-incrementing primary key
-        - username: Unique username (required, must be unique)
-        - password: User password (required, stored as plain text)
-
-    If the table already exists, this function does nothing (idempotent operation).
-    This function should be called at application startup to ensure the database
-    schema is properly initialized.
-    """
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL
-        )
-    """
-    )
-
-    conn.commit()
-    conn.close()
+    """Initialize the database (tables are already created by init script)."""
+    # Tables are created by postgresql-init/01-init-cards.sql
+    # This function exists for compatibility but does nothing
+    pass
 
 
 def username_exists(username):
@@ -74,7 +42,7 @@ def username_exists(username):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) FROM users WHERE username = ?", (username,))
+    cursor.execute("SELECT COUNT(*) FROM users WHERE username = %s", (username,))
     count = cursor.fetchone()[0]
 
     conn.close()
@@ -104,14 +72,22 @@ def create_account(username, password):
     cursor = conn.cursor()
 
     try:
+        # Ensure strings are properly encoded as UTF-8
+        username = str(username).encode('utf-8', errors='ignore').decode('utf-8')
+        password = str(password).encode('utf-8', errors='ignore').decode('utf-8')
+        
         cursor.execute(
-            "INSERT INTO users (username, password) VALUES (?, ?)",
+            "INSERT INTO users (username, password) VALUES (%s, %s)",
             (username, password),
         )
         conn.commit()
         conn.close()
         return True
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
+        conn.close()
+        return False
+    except Exception as e:
+        print(f"Database error: {e}")
         conn.close()
         return False
 
@@ -138,11 +114,122 @@ def verify_login(username, password):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT COUNT(*) FROM users WHERE username = ? AND password = ?",
-        (username, password),
-    )
-    count = cursor.fetchone()[0]
+    try:
+        # Ensure strings are properly encoded as UTF-8
+        username = str(username).encode('utf-8', errors='ignore').decode('utf-8')
+        password = str(password).encode('utf-8', errors='ignore').decode('utf-8')
+        
+        cursor.execute(
+            "SELECT COUNT(*) FROM users WHERE username = %s AND password = %s",
+            (username, password),
+        )
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count > 0
+    except Exception as e:
+        print(f"Database error: {e}")
+        conn.close()
+        return False
 
+
+def get_all_cards():
+    """Get all RPS cards from the database."""
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cursor.execute("SELECT * FROM cards ORDER BY type, power")
+    cards = cursor.fetchall()
+    
     conn.close()
-    return count > 0
+    return cards
+
+
+def get_cards_by_type(card_type):
+    """Get cards by type (rock, paper, or scissors)."""
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cursor.execute("SELECT * FROM cards WHERE LOWER(type) = LOWER(%s) ORDER BY power", (card_type,))
+    cards = cursor.fetchall()
+    
+    conn.close()
+    return cards
+
+
+def get_card_by_id(card_id):
+    """Get a specific card by ID."""
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cursor.execute("SELECT * FROM cards WHERE id = %s", (card_id,))
+    card = cursor.fetchone()
+    
+    conn.close()
+    return card
+
+
+def get_available_cards():
+    """Get all available RPS card types and powers."""
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cursor.execute("SELECT DISTINCT type FROM cards ORDER BY type")
+    types = cursor.fetchall()
+    
+    cursor.execute("SELECT DISTINCT power FROM cards ORDER BY power")
+    powers = cursor.fetchall()
+    
+    conn.close()
+    return [t['type'] for t in types], [p['power'] for p in powers]
+
+
+def get_user_profile(username):
+    """Get user profile information by username.
+    
+    Args:
+        username (str): The username to get profile for.
+        
+    Returns:
+        dict or None: User profile data if found, None otherwise.
+    """
+    conn = get_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cursor.execute("SELECT username FROM users WHERE username = %s", (username,))
+    user = cursor.fetchone()
+    
+    conn.close()
+    return dict(user) if user else None
+
+
+def update_user_password(username, new_password):
+    """Update user's password.
+    
+    Args:
+        username (str): The username to update password for.
+        new_password (str): The new password.
+        
+    Returns:
+        bool: True if update was successful, False otherwise.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Ensure strings are properly encoded as UTF-8
+        username = str(username).encode('utf-8', errors='ignore').decode('utf-8')
+        new_password = str(new_password).encode('utf-8', errors='ignore').decode('utf-8')
+        
+        cursor.execute(
+            "UPDATE users SET password = %s WHERE username = %s",
+            (new_password, username)
+        )
+        conn.commit()
+        success = cursor.rowcount > 0
+        conn.close()
+        return success
+    except Exception as e:
+        print(f"Database error: {e}")
+        conn.close()
+        return False
+
