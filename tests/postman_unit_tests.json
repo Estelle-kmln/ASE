@@ -1,0 +1,1015 @@
+{
+	"info": {
+		"_postman_id": "battle-cards-unit-tests",
+		"name": "Battle Cards - Unit Tests",
+		"description": "Unit tests for internal microservices (Game Service, User Service, Card Collection Service). Each endpoint includes tests for valid input (200 OK) and invalid input (error responses).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Game Service",
+			"item": [
+				{
+					"name": "Create Random Deck - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has deck with 22 cards\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('deck');",
+									"    pm.expect(jsonData.deck).to.have.property('cards');",
+									"    pm.expect(jsonData.deck.cards).to.be.an('array');",
+									"    pm.expect(jsonData.deck.cards).to.have.lengthOf(22);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{game_service_url}}/games/decks/random",
+							"host": [
+								"{{game_service_url}}"
+							],
+							"path": [
+								"games",
+								"decks",
+								"random"
+							]
+						},
+						"description": "Test creating a random deck with valid request. Should return 200 OK with a deck containing 22 cards."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Random Deck - Invalid (Method Not Allowed)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 405 or 400\", function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 405, 404]);",
+									"});",
+									"",
+									"pm.test(\"Response contains error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{game_service_url}}/games/decks/random",
+							"host": [
+								"{{game_service_url}}"
+							],
+							"path": [
+								"games",
+								"decks",
+								"random"
+							]
+						},
+						"description": "Test creating a random deck with invalid HTTP method (GET instead of POST). Should return 405 Method Not Allowed or 400 Bad Request."
+					},
+					"response": []
+				},
+				{
+					"name": "Start New Game - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has game with valid structure\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('game_id');",
+									"    pm.expect(jsonData).to.have.property('player1_name');",
+									"    pm.expect(jsonData).to.have.property('player2_name');",
+									"    pm.expect(jsonData).to.have.property('is_active');",
+									"    pm.expect(jsonData.is_active).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"player1_name\": \"alex\",\n    \"player1_deck\": {\n        \"cards\": []\n    },\n    \"player2_name\": \"katrine\",\n    \"player2_deck\": {\n        \"cards\": []\n    }\n}"
+						},
+						"url": {
+							"raw": "{{game_service_url}}/games",
+							"host": [
+								"{{game_service_url}}"
+							],
+							"path": [
+								"games"
+							]
+						},
+						"description": "Test starting a new game with valid input. Should return 200 OK with game details. Note: In actual implementation, decks should contain 22 valid cards."
+					},
+					"response": []
+				},
+				{
+					"name": "Start New Game - Invalid (Missing Player Name)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"player1_name\": \"\",\n    \"player1_deck\": {\n        \"cards\": []\n    },\n    \"player2_name\": \"katrine\",\n    \"player2_deck\": {\n        \"cards\": []\n    }\n}"
+						},
+						"url": {
+							"raw": "{{game_service_url}}/games",
+							"host": [
+								"{{game_service_url}}"
+							],
+							"path": [
+								"games"
+							]
+						},
+						"description": "Test starting a new game with invalid input (empty player1_name). Should return 400 Bad Request with error message."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Game by ID - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has game details\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('game_id');",
+									"    pm.expect(jsonData).to.have.property('player1_name');",
+									"    pm.expect(jsonData).to.have.property('player2_name');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{game_service_url}}/games/{{game_id}}",
+							"host": [
+								"{{game_service_url}}"
+							],
+							"path": [
+								"games",
+								"{{game_id}}"
+							]
+						},
+						"description": "Test getting a game by valid ID. Should return 200 OK with game details."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Game by ID - Invalid (Non-existent ID)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Response contains error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{game_service_url}}/games/invalid-game-id-12345",
+							"host": [
+								"{{game_service_url}}"
+							],
+							"path": [
+								"games",
+								"invalid-game-id-12345"
+							]
+						},
+						"description": "Test getting a game with non-existent ID. Should return 404 Not Found with error message."
+					},
+					"response": []
+				},
+				{
+					"name": "Validate Deck - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response indicates valid deck\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('is_valid');",
+									"    pm.expect(jsonData.is_valid).to.be.true;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"cards\": [\n        {\"value\": 1, \"suit\": \"rock\"},\n        {\"value\": 2, \"suit\": \"rock\"},\n        {\"value\": 3, \"suit\": \"paper\"}\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{game_service_url}}/games/decks/validate",
+							"host": [
+								"{{game_service_url}}"
+							],
+							"path": [
+								"games",
+								"decks",
+								"validate"
+							]
+						},
+						"description": "Test validating a deck with valid structure. Should return 200 OK with validation result. Note: In actual implementation, deck must have exactly 22 cards."
+					},
+					"response": []
+				},
+				{
+					"name": "Validate Deck - Invalid (Wrong Number of Cards)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response indicates invalid deck\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('is_valid');",
+									"    pm.expect(jsonData.is_valid).to.be.false;",
+									"    pm.expect(jsonData).to.have.property('error_message');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"cards\": [\n        {\"value\": 1, \"suit\": \"rock\"}\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{game_service_url}}/games/decks/validate",
+							"host": [
+								"{{game_service_url}}"
+							],
+							"path": [
+								"games",
+								"decks",
+								"validate"
+							]
+						},
+						"description": "Test validating a deck with wrong number of cards (1 instead of 22). Should return 400 Bad Request with validation error."
+					},
+					"response": []
+				}
+			],
+			"description": "Unit tests for Game Service microservice. Tests game creation, deck management, and game retrieval operations."
+		},
+		{
+			"name": "User Service",
+			"item": [
+				{
+					"name": "Create Account - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 or 201\", function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+									"});",
+									"",
+									"pm.test(\"Response indicates successful account creation\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('message');",
+									"    pm.expect(jsonData).to.have.property('username');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"testuser123\",\n    \"password\": \"securepassword123\"\n}"
+						},
+						"url": {
+							"raw": "{{user_service_url}}/users/accounts",
+							"host": [
+								"{{user_service_url}}"
+							],
+							"path": [
+								"users",
+								"accounts"
+							]
+						},
+						"description": "Test creating a new account with valid username and password. Should return 200 OK or 201 Created with success message."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Account - Invalid (Empty Username)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"\",\n    \"password\": \"securepassword123\"\n}"
+						},
+						"url": {
+							"raw": "{{user_service_url}}/users/accounts",
+							"host": [
+								"{{user_service_url}}"
+							],
+							"path": [
+								"users",
+								"accounts"
+							]
+						},
+						"description": "Test creating an account with empty username. Should return 400 Bad Request with error message."
+					},
+					"response": []
+				},
+				{
+					"name": "Login - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains authentication token or success message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('message');",
+									"    if (jsonData.token) {",
+									"        pm.expect(jsonData.token).to.be.a('string');",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"testuser123\",\n    \"password\": \"securepassword123\"\n}"
+						},
+						"url": {
+							"raw": "{{user_service_url}}/users/login",
+							"host": [
+								"{{user_service_url}}"
+							],
+							"path": [
+								"users",
+								"login"
+							]
+						},
+						"description": "Test login with valid credentials. Should return 200 OK with success message or authentication token."
+					},
+					"response": []
+				},
+				{
+					"name": "Login - Invalid (Wrong Password)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 401\", function () {",
+									"    pm.response.to.have.status(401);",
+									"});",
+									"",
+									"pm.test(\"Response contains error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"testuser123\",\n    \"password\": \"wrongpassword\"\n}"
+						},
+						"url": {
+							"raw": "{{user_service_url}}/users/login",
+							"host": [
+								"{{user_service_url}}"
+							],
+							"path": [
+								"users",
+								"login"
+							]
+						},
+						"description": "Test login with wrong password. Should return 401 Unauthorized with error message."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Profile - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains profile information\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('username');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{user_service_url}}/users/profile/testuser123",
+							"host": [
+								"{{user_service_url}}"
+							],
+							"path": [
+								"users",
+								"profile",
+								"testuser123"
+							]
+						},
+						"description": "Test getting user profile with valid username. Should return 200 OK with profile information."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Profile - Invalid (Non-existent User)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Response contains error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{user_service_url}}/users/profile/nonexistentuser999",
+							"host": [
+								"{{user_service_url}}"
+							],
+							"path": [
+								"users",
+								"profile",
+								"nonexistentuser999"
+							]
+						},
+						"description": "Test getting profile for non-existent user. Should return 404 Not Found with error message."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Profile - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response indicates successful update\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('message');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"password\": \"newsecurepassword456\"\n}"
+						},
+						"url": {
+							"raw": "{{user_service_url}}/users/profile/testuser123",
+							"host": [
+								"{{user_service_url}}"
+							],
+							"path": [
+								"users",
+								"profile",
+								"testuser123"
+							]
+						},
+						"description": "Test updating user profile with valid data. Should return 200 OK with success message."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Profile - Invalid (Empty Password)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"password\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{user_service_url}}/users/profile/testuser123",
+							"host": [
+								"{{user_service_url}}"
+							],
+							"path": [
+								"users",
+								"profile",
+								"testuser123"
+							]
+						},
+						"description": "Test updating profile with empty password. Should return 400 Bad Request with error message."
+					},
+					"response": []
+				}
+			],
+			"description": "Unit tests for User Service microservice. Tests account creation, authentication, and profile management operations."
+		},
+		{
+			"name": "Card Collection Service",
+			"item": [
+				{
+					"name": "Get All Cards - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains array of cards\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('array');",
+									"    if (jsonData.length > 0) {",
+									"        pm.expect(jsonData[0]).to.have.property('id');",
+									"        pm.expect(jsonData[0]).to.have.property('name');",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{card_service_url}}/cards",
+							"host": [
+								"{{card_service_url}}"
+							],
+							"path": [
+								"cards"
+							]
+						},
+						"description": "Test getting all cards. Should return 200 OK with array of all cards in the collection."
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Cards - Invalid (Wrong Method)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 405 or 400\", function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 405, 404]);",
+									"});",
+									"",
+									"pm.test(\"Response contains error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{card_service_url}}/cards",
+							"host": [
+								"{{card_service_url}}"
+							],
+							"path": [
+								"cards"
+							]
+						},
+						"description": "Test getting all cards with wrong HTTP method (POST instead of GET). Should return 405 Method Not Allowed or 400 Bad Request."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Cards by Type - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains filtered cards\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('array');",
+									"    if (jsonData.length > 0) {",
+									"        jsonData.forEach(function(card) {",
+									"            pm.expect(card).to.have.property('type');",
+									"        });",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{card_service_url}}/cards?type=rock",
+							"host": [
+								"{{card_service_url}}"
+							],
+							"path": [
+								"cards"
+							],
+							"query": [
+								{
+									"key": "type",
+									"value": "rock"
+								}
+							]
+						},
+						"description": "Test getting cards filtered by type (rock). Should return 200 OK with array of cards matching the type."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Cards by Type - Invalid (Invalid Type)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 or 404\", function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([400, 404]);",
+									"});",
+									"",
+									"pm.test(\"Response contains error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{card_service_url}}/cards?type=invalidtype123",
+							"host": [
+								"{{card_service_url}}"
+							],
+							"path": [
+								"cards"
+							],
+							"query": [
+								{
+									"key": "type",
+									"value": "invalidtype123"
+								}
+							]
+						},
+						"description": "Test getting cards with invalid type parameter. Should return 400 Bad Request or 404 Not Found with error message."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Card by ID - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains card details\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('name');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{card_service_url}}/cards/1",
+							"host": [
+								"{{card_service_url}}"
+							],
+							"path": [
+								"cards",
+								"1"
+							]
+						},
+						"description": "Test getting a card by valid ID. Should return 200 OK with card details."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Card by ID - Invalid (Non-existent ID)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Response contains error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{card_service_url}}/cards/99999",
+							"host": [
+								"{{card_service_url}}"
+							],
+							"path": [
+								"cards",
+								"99999"
+							]
+						},
+						"description": "Test getting a card with non-existent ID. Should return 404 Not Found with error message."
+					},
+					"response": []
+				}
+			],
+			"description": "Unit tests for Card Collection Service microservice. Tests card retrieval operations including getting all cards, filtering by type, and getting cards by ID."
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "game_service_url",
+			"value": "http://localhost:8001",
+			"type": "string"
+		},
+		{
+			"key": "user_service_url",
+			"value": "http://localhost:8002",
+			"type": "string"
+		},
+		{
+			"key": "card_service_url",
+			"value": "http://localhost:8003",
+			"type": "string"
+		},
+		{
+			"key": "game_id",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
+
