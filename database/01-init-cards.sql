@@ -17,10 +17,37 @@ CREATE TABLE IF NOT EXISTS cards (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create games table for storing game state and results
+CREATE TABLE IF NOT EXISTS games (
+    game_id VARCHAR(255) PRIMARY KEY,
+    turn INTEGER NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    current_player INTEGER NOT NULL,
+    player1_name VARCHAR(255) NOT NULL,
+    player1_deck_cards TEXT,
+    player1_hand_cards TEXT,
+    player1_played_card TEXT,
+    player1_discarded_cards TEXT,
+    player2_name VARCHAR(255) NOT NULL,
+    player2_deck_cards TEXT,
+    player2_hand_cards TEXT,
+    player2_played_card TEXT,
+    player2_discarded_cards TEXT,
+    winner VARCHAR(255),
+    player1_score INTEGER DEFAULT 0,
+    player2_score INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_cards_type ON cards(type);
 CREATE INDEX IF NOT EXISTS idx_cards_power ON cards(power);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_games_is_active ON games(is_active);
+CREATE INDEX IF NOT EXISTS idx_games_player1_name ON games(player1_name);
+CREATE INDEX IF NOT EXISTS idx_games_player2_name ON games(player2_name);
+CREATE INDEX IF NOT EXISTS idx_games_winner ON games(winner);
 
 -- Insert all possible RPS cards (type + power combinations)
 -- Rock cards (power 1-13)
