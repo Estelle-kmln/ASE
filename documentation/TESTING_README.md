@@ -2,6 +2,14 @@
 
 This document describes both Python unit tests and Postman API tests for the Battle Cards game.
 
+## Quick Start: Run 1. Pytests and 2. Docker Tests
+
+1. **Pytests**: `./venv/bin/python tests/run_all_tests.py`
+
+2. **Docker Tests**: `docker-compose build && docker-compose up -d && docker-compose exec -T game-app python tests/run_all_tests.py`
+
+---
+
 ## Python Unit Tests
 
 ### Overview

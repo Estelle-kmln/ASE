@@ -1,7 +1,7 @@
 """Repository for persisting game state to database.
 
 This module implements the Repository pattern for game persistence, providing
-an abstraction layer between the game domain models and the SQLite database.
+an abstraction layer between the game domain models and the PostgreSQL database.
 It handles serialization and deserialization of game objects (cards, decks, hands)
 to/from JSON format for storage in the database.
 
@@ -9,147 +9,62 @@ The repository manages a 'games' table that stores complete game state including
     - Game metadata (ID, turn number, active status, current player)
     - Player information (names, decks, hands, played cards, discarded cards)
     - Timestamps for creation and updates
-
-The module includes automatic database schema migration to handle schema changes
-between versions of the application.
 """
 
 import json
-import sqlite3
-from pathlib import Path
+import os
+import psycopg2
 from typing import Optional
 
-from models.card import Card
-from models.deck import Deck
-from models.game import Game, Hand
+from game.game_logic import Card, Deck, Game, Hand
+
+# Get database URL from environment variable
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://gameuser:gamepassword@localhost:5432/battlecards",
+)
 
 
 class GameRepository:
     """Repository for game persistence.
 
     This class provides methods to save, load, list, and delete game instances
-    from a SQLite database. It handles the conversion between game domain objects
+    from a PostgreSQL database. It handles the conversion between game domain objects
     and their database representation using JSON serialization.
 
-    The repository automatically initializes the database schema on instantiation,
-    creating the necessary tables if they don't exist. It also handles schema
-    migrations when the database structure changes.
+    The repository connects to PostgreSQL using the DATABASE_URL environment variable.
+    The games table is created by the database initialization script.
 
     Attributes:
-        db_path (str): Path to the SQLite database file.
+        database_url (str): PostgreSQL connection string.
     """
 
-    def __init__(self, db_path: str = "game.db"):
+    def __init__(self, database_url: Optional[str] = None):
         """Initialize the repository.
 
         Args:
-            db_path (str, optional): Path to the SQLite database file.
-                                   Defaults to "game.db" in the current directory.
+            database_url (str, optional): PostgreSQL connection string.
+                                        Defaults to DATABASE_URL environment variable.
         """
-        self.db_path = db_path
-        self._ensure_database()
+        self.database_url = database_url or DATABASE_URL
 
-    def _ensure_database(self):
-        """Create database and tables if they don't exist.
-
-        This method ensures the database schema is properly initialized. It:
-        1. Checks if the 'games' table exists
-        2. Performs schema migration if the table exists but has an outdated schema
-        3. Creates the table with the current schema if it doesn't exist
-
-        The current schema includes:
-            - game_id: Unique identifier for the game (primary key)
-            - turn: Current turn number
-            - is_active: Boolean flag (stored as INTEGER: 0 or 1)
-            - current_player: Player number (1 or 2) whose turn it is
-            - player1_name, player2_name: Player names
-            - player1_deck_cards, player2_deck_cards: JSON-serialized deck cards
-            - player1_hand_cards, player2_hand_cards: JSON-serialized hand cards
-            - player1_played_card, player2_played_card: JSON-serialized played card
-            - player1_discarded_cards, player2_discarded_cards: JSON-serialized discarded cards
-            - created_at, updated_at: Timestamps for tracking game lifecycle
-
-        Note:
-            The migration logic drops the old table if it lacks the 'current_player'
-            column. This will result in data loss for existing games, which is
-            acceptable for development but should be handled more carefully in production.
-        """
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-
-            # Check if table exists
-            cursor.execute(
-                """
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='games'
-            """
-            )
-
-            table_exists = cursor.fetchone() is not None
-
-            if table_exists:
-                # Check if we need to migrate (old schema doesn't have current_player)
-                cursor.execute("PRAGMA table_info(games)")
-                columns = [row[1] for row in cursor.fetchall()]
-
-                if "current_player" not in columns:
-                    # Migrate: drop old table and create new one
-                    # Note: This will lose old game data, but that's okay for development
-                    cursor.execute("DROP TABLE games")
-                    table_exists = False
-                else:
-                    # Add missing columns if they don't exist
-                    if "winner" not in columns:
-                        cursor.execute("ALTER TABLE games ADD COLUMN winner TEXT")
-                    if "player1_score" not in columns:
-                        cursor.execute("ALTER TABLE games ADD COLUMN player1_score INTEGER DEFAULT 0")
-                    if "player2_score" not in columns:
-                        cursor.execute("ALTER TABLE games ADD COLUMN player2_score INTEGER DEFAULT 0")
-                    conn.commit()
-
-            if not table_exists:
-                # Games table - updated for 2-player games
-                cursor.execute(
-                    """
-                    CREATE TABLE games (
-                        game_id TEXT PRIMARY KEY,
-                        turn INTEGER NOT NULL,
-                        is_active INTEGER NOT NULL,
-                        current_player INTEGER NOT NULL,
-                        player1_name TEXT NOT NULL,
-                        player1_deck_cards TEXT NOT NULL,
-                        player1_hand_cards TEXT,
-                        player1_played_card TEXT,
-                        player1_discarded_cards TEXT,
-                        player2_name TEXT NOT NULL,
-                        player2_deck_cards TEXT NOT NULL,
-                        player2_hand_cards TEXT,
-                        player2_played_card TEXT,
-                        player2_discarded_cards TEXT,
-                        winner TEXT,
-                        player1_score INTEGER DEFAULT 0,
-                        player2_score INTEGER DEFAULT 0,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """
-                )
-
-            conn.commit()
+    def _get_connection(self):
+        """Create and return a PostgreSQL database connection."""
+        return psycopg2.connect(self.database_url)
 
     def _card_to_dict(self, card: Card) -> dict:
         """Convert a card to a dictionary.
 
         Converts a Card domain object into a dictionary representation suitable
-        for JSON serialization. The dictionary contains the card's value and suit.
+        for JSON serialization. The dictionary contains the card's type and power.
 
         Args:
             card (Card): The card object to convert.
 
         Returns:
-            dict: Dictionary with 'value' and 'suit' keys containing the card's data.
+            dict: Dictionary with 'type' and 'power' keys containing the card's data.
         """
-        return {"value": card.value, "suit": card.suit}
+        return {"type": card.type, "power": card.power}
 
     def _dict_to_card(self, card_dict: dict) -> Card:
         """Convert a dictionary to a card.
@@ -158,15 +73,15 @@ class GameRepository:
         This is the inverse operation of _card_to_dict.
 
         Args:
-            card_dict (dict): Dictionary containing 'value' and 'suit' keys.
+            card_dict (dict): Dictionary containing 'type' and 'power' keys.
 
         Returns:
-            Card: A Card object with the specified value and suit.
+            Card: A Card object with the specified type and power.
 
         Raises:
-            KeyError: If the dictionary is missing required keys ('value' or 'suit').
+            KeyError: If the dictionary is missing required keys ('type' or 'power').
         """
-        return Card(card_dict["value"], card_dict["suit"])
+        return Card(card_dict["type"], card_dict["power"])
 
     def _serialize_cards(self, cards: list[Card]) -> str:
         """Serialize a list of cards to JSON string.
@@ -215,7 +130,7 @@ class GameRepository:
             - Winner name (if game is finished)
             - Timestamp update for tracking modifications
 
-        The method uses INSERT OR REPLACE, so it will update an existing game
+        The method uses INSERT ... ON CONFLICT ... DO UPDATE, so it will update an existing game
         with the same game_id or create a new record if it doesn't exist.
 
         All card data is serialized to JSON format before storage. Hand data is
@@ -230,19 +145,22 @@ class GameRepository:
             The current_player is stored as an integer (1 for player1, 2 for player2)
             based on which player object matches game.current_player.
         """
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor()
 
+        try:
             # Determine current player (1 or 2)
             current_player_num = 1 if game.current_player == game.player1 else 2
-            
-            # Get scores
-            p1s = getattr(game, "player1_score", 0)
-            p2s = getattr(game, "player2_score", 0)
-            
-            # Determine winner if game is not active and winner not provided
-            if not game.is_active and winner is None:
-                if p1s > p2s:
+
+            # Get scores from player objects
+            p1s = game.player1.score
+            p2s = game.player2.score
+
+            # Determine winner if game is over and winner not provided
+            if game.game_over and winner is None:
+                if game.winner:
+                    winner = game.winner.name
+                elif p1s > p2s:
                     winner = game.player1.name
                 elif p2s > p1s:
                     winner = game.player2.name
@@ -293,17 +211,35 @@ class GameRepository:
 
             cursor.execute(
                 """
-                INSERT OR REPLACE INTO games
+                INSERT INTO games
                 (game_id, turn, is_active, current_player, 
                  player1_name, player1_deck_cards, player1_hand_cards, player1_played_card, player1_discarded_cards,
                  player2_name, player2_deck_cards, player2_hand_cards, player2_played_card, player2_discarded_cards,
                  winner, player1_score, player2_score, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            """,
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (game_id) DO UPDATE SET
+                    turn = EXCLUDED.turn,
+                    is_active = EXCLUDED.is_active,
+                    current_player = EXCLUDED.current_player,
+                    player1_name = EXCLUDED.player1_name,
+                    player1_deck_cards = EXCLUDED.player1_deck_cards,
+                    player1_hand_cards = EXCLUDED.player1_hand_cards,
+                    player1_played_card = EXCLUDED.player1_played_card,
+                    player1_discarded_cards = EXCLUDED.player1_discarded_cards,
+                    player2_name = EXCLUDED.player2_name,
+                    player2_deck_cards = EXCLUDED.player2_deck_cards,
+                    player2_hand_cards = EXCLUDED.player2_hand_cards,
+                    player2_played_card = EXCLUDED.player2_played_card,
+                    player2_discarded_cards = EXCLUDED.player2_discarded_cards,
+                    winner = EXCLUDED.winner,
+                    player1_score = EXCLUDED.player1_score,
+                    player2_score = EXCLUDED.player2_score,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
                 (
                     game.game_id,
-                    game.turn,
-                    1 if game.is_active else 0,
+                    game.turn_number,
+                    not game.game_over,  # is_active = not game_over
                     current_player_num,
                     game.player1.name,
                     player1_deck_json,
@@ -322,6 +258,8 @@ class GameRepository:
             )
 
             conn.commit()
+        finally:
+            conn.close()
 
     def load_game(self, game_id: str) -> Optional[Game]:
         """Load a game from the database.
@@ -352,17 +290,18 @@ class GameRepository:
             be shuffled when the game was created. Hands are only reconstructed
             if they contain exactly HAND_SIZE (3) cards.
         """
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor()
 
+        try:
             cursor.execute(
                 """
                 SELECT game_id, turn, is_active, current_player,
                        player1_name, player1_deck_cards, player1_hand_cards, player1_played_card, player1_discarded_cards,
                        player2_name, player2_deck_cards, player2_hand_cards, player2_played_card, player2_discarded_cards
                 FROM games
-                WHERE game_id = ?
-            """,
+                WHERE game_id = %s
+                """,
                 (game_id,),
             )
 
@@ -405,8 +344,8 @@ class GameRepository:
                 player2_deck,
                 game_id=game_id_db,
             )
-            game.turn = turn
-            game.is_active = bool(is_active)
+            game.turn_number = turn
+            game.game_over = not bool(is_active)  # game_over = not is_active
 
             # Set current player
             if current_player_num == 2:
@@ -459,6 +398,8 @@ class GameRepository:
                         )
 
             return game
+        finally:
+            conn.close()
 
     def list_games(self, active_only: bool = False) -> list[dict]:
         """List all games.
@@ -481,12 +422,13 @@ class GameRepository:
 
             Games are ordered by creation time, most recent first.
         """
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor()
 
+        try:
             query = "SELECT game_id, turn, is_active, created_at FROM games"
             if active_only:
-                query += " WHERE is_active = 1"
+                query += " WHERE is_active = true"
             query += " ORDER BY created_at DESC"
 
             cursor.execute(query)
@@ -497,10 +439,12 @@ class GameRepository:
                     "game_id": row[0],
                     "turn": row[1],
                     "is_active": bool(row[2]),
-                    "created_at": row[3],
+                    "created_at": str(row[3]),
                 }
                 for row in rows
             ]
+        finally:
+            conn.close()
 
     def delete_game(self, game_id: str) -> bool:
         """Delete a game from the database.
@@ -521,19 +465,22 @@ class GameRepository:
             If the game_id doesn't exist, rowcount will be 0 and the method
             returns False.
         """
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor()
 
-            cursor.execute("DELETE FROM games WHERE game_id = ?", (game_id,))
+        try:
+            cursor.execute("DELETE FROM games WHERE game_id = %s", (game_id,))
             conn.commit()
 
             return cursor.rowcount > 0
+        finally:
+            conn.close()
 
     def get_leaderboard(self) -> list[dict]:
         """Get leaderboard statistics for all players.
 
         Calculates win/loss/tie statistics for each player based on completed games.
-        Only includes games where is_active = 0 (finished games).
+        Only includes games where is_active = false (finished games).
 
         Returns:
             list[dict]: List of dictionaries, each containing:
@@ -546,15 +493,18 @@ class GameRepository:
 
             Players are sorted by wins (descending), then by win_rate (descending).
         """
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor()
 
-            # Get all completed games (is_active = 0)
-            cursor.execute("""
+        try:
+            # Get all completed games (is_active = false)
+            cursor.execute(
+                """
                 SELECT player1_name, player2_name, winner
                 FROM games
-                WHERE is_active = 0
-            """)
+                WHERE is_active = false
+            """
+            )
 
             rows = cursor.fetchall()
 
@@ -563,9 +513,19 @@ class GameRepository:
             for player1_name, player2_name, winner in rows:
                 # Initialize stats for both players if not exists
                 if player1_name not in stats:
-                    stats[player1_name] = {"wins": 0, "losses": 0, "ties": 0, "total_games": 0}
+                    stats[player1_name] = {
+                        "wins": 0,
+                        "losses": 0,
+                        "ties": 0,
+                        "total_games": 0,
+                    }
                 if player2_name not in stats:
-                    stats[player2_name] = {"wins": 0, "losses": 0, "ties": 0, "total_games": 0}
+                    stats[player2_name] = {
+                        "wins": 0,
+                        "losses": 0,
+                        "ties": 0,
+                        "total_games": 0,
+                    }
 
                 # Update statistics
                 stats[player1_name]["total_games"] += 1
@@ -589,16 +549,22 @@ class GameRepository:
                 wins = player_stats["wins"]
                 win_rate = (wins / total * 100) if total > 0 else 0.0
 
-                leaderboard.append({
-                    "player_name": player_name,
-                    "wins": wins,
-                    "losses": player_stats["losses"],
-                    "ties": player_stats["ties"],
-                    "total_games": total,
-                    "win_rate": round(win_rate, 1)
-                })
+                leaderboard.append(
+                    {
+                        "player_name": player_name,
+                        "wins": wins,
+                        "losses": player_stats["losses"],
+                        "ties": player_stats["ties"],
+                        "total_games": total,
+                        "win_rate": round(win_rate, 1),
+                    }
+                )
 
             # Sort by wins (descending), then by win_rate (descending)
-            leaderboard.sort(key=lambda x: (x["wins"], x["win_rate"]), reverse=True)
+            leaderboard.sort(
+                key=lambda x: (x["wins"], x["win_rate"]), reverse=True
+            )
 
             return leaderboard
+        finally:
+            conn.close()
