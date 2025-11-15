@@ -415,6 +415,14 @@ def start_two_player_game():
         # Start the game with random decks
         game = game_controller.start_new_game(player1_name, player2_name)
         
+        # Save the game when it starts
+        try:
+            from database.game_repository import GameRepository
+            repository = GameRepository()
+            repository.save_game(game)
+        except Exception as e:
+            print(f"\n⚠️ Warning: Could not save game to database: {e}")
+        
         print(f"\n{'='*50}")
         print("  GAME STARTED SUCCESSFULLY!")
         print(f"{'='*50}")
@@ -495,6 +503,16 @@ def play_game_loop(game: Game):
                 print(f"🎉🏆 {round_result['game_winner']} wins the game! 🏆🎉")
             
             print(f"Final Score: {game.player1.name} {round_result['player1_score']} - {round_result['player2_score']} {game.player2.name}")
+            
+            # Save the completed game to the database
+            try:
+                from database.game_repository import GameRepository
+                repository = GameRepository()
+                winner_name = round_result['game_winner'] if round_result['game_winner'] != 'Tie' else None
+                repository.save_game(game, winner=winner_name)
+                print("\n✅ Game saved to leaderboard!")
+            except Exception as e:
+                print(f"\n⚠️ Warning: Could not save game to database: {e}")
         else:
             game.turn_number += 1
             input("\nPress Enter to continue to next round...")
