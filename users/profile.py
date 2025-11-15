@@ -161,8 +161,3 @@ def logout():
 def get_current_user():
     """Return the currently logged-in username."""
     return current_user
-
-
-def is_logged_in():
-    """Check if a user is currently logged in."""
-    return current_user is not None
