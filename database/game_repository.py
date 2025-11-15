@@ -16,9 +16,7 @@ import os
 import psycopg2
 from typing import Optional
 
-from models.card import Card
-from models.deck import Deck
-from models.game import Game, Hand
+from game.game_logic import Card, Deck, Game, Hand
 
 # Get database URL from environment variable
 DATABASE_URL = os.getenv(
@@ -154,13 +152,15 @@ class GameRepository:
             # Determine current player (1 or 2)
             current_player_num = 1 if game.current_player == game.player1 else 2
 
-            # Get scores
-            p1s = getattr(game, "player1_score", 0)
-            p2s = getattr(game, "player2_score", 0)
+            # Get scores from player objects
+            p1s = game.player1.score
+            p2s = game.player2.score
 
-            # Determine winner if game is not active and winner not provided
-            if not game.is_active and winner is None:
-                if p1s > p2s:
+            # Determine winner if game is over and winner not provided
+            if game.game_over and winner is None:
+                if game.winner:
+                    winner = game.winner.name
+                elif p1s > p2s:
                     winner = game.player1.name
                 elif p2s > p1s:
                     winner = game.player2.name
@@ -238,8 +238,8 @@ class GameRepository:
                 """,
                 (
                     game.game_id,
-                    game.turn,
-                    game.is_active,
+                    getattr(game, "turn_number", 1),
+                    not game.game_over,  # is_active = not game_over
                     current_player_num,
                     game.player1.name,
                     player1_deck_json,
@@ -344,8 +344,8 @@ class GameRepository:
                 player2_deck,
                 game_id=game_id_db,
             )
-            game.turn = turn
-            game.is_active = bool(is_active)
+            game.turn_number = turn
+            game.game_over = not bool(is_active)  # game_over = not is_active
 
             # Set current player
             if current_player_num == 2:
