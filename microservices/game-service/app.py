@@ -139,13 +139,13 @@ def create_game():
         
         cursor.execute("""
             INSERT INTO games (
-                game_id, turn, is_active, current_player,
+                game_id, turn, is_active,
                 player1_name, player1_deck_cards, player1_hand_cards, 
                 player1_score, player2_name, player2_deck_cards, 
                 player2_hand_cards, player2_score
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
-            game_id, 1, True, 1,
+            game_id, 1, True,
             player1_name, json.dumps(player1_deck), json.dumps([]),
             0, player2_name, json.dumps(player2_deck),
             json.dumps([]), 0
@@ -159,8 +159,7 @@ def create_game():
             'player1_name': player1_name,
             'player2_name': player2_name,
             'status': 'created',
-            'turn': 1,
-            'current_player': 1
+            'turn': 1
         }), 201
         
     except Exception as e:
@@ -200,7 +199,6 @@ def get_game(game_id):
             'game_id': game['game_id'],
             'turn': game['turn'],
             'is_active': game['is_active'],
-            'current_player': game['current_player'],
             'player1': {
                 'name': game['player1_name'],
                 'deck_size': len(player1_deck),
