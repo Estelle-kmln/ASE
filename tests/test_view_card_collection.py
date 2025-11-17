@@ -8,10 +8,11 @@ class TestViewCardCollection(unittest.TestCase):
     def test_get_full_card_collection_returns_39_cards(self):
         cards = get_full_card_collection()
         self.assertEqual(len(cards), 39)
-        suits = {c.suit for c in cards}
-        values = {c.value for c in cards}
-        self.assertSetEqual(suits, {"rock", "paper", "scissors"})
-        self.assertSetEqual(values, set(range(1, 14)))
+        # Cards are dictionaries from the database
+        types = {c['type'] for c in cards}
+        powers = {c['power'] for c in cards}
+        self.assertSetEqual(types, {"Rock", "Paper", "Scissors"})
+        self.assertSetEqual(powers, set(range(1, 14)))
 
     @patch("sys.stdout", new_callable=StringIO)
     def test_display_card_collection_prints_output(self, mock_stdout):

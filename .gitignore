@@ -11,6 +11,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+# Distribution / packaging
+*.code-workspace
 .Python
 build/
 develop-eggs/
