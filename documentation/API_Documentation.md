@@ -335,19 +335,28 @@ GET /api/games/<game_id>/hand
 ```http
 POST /api/games/<game_id>/draw-hand
 ```
-**Purpose**: Draw 3 cards from deck to hand (only if hand is empty)  
+**Purpose**: Draw cards from deck to hand - **NEW: Handles final cards (1-3 remaining) for endgame**  
 **Authentication**: Bearer token required  
 **Example**:
 ```bash
 curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:5003/api/games/GAME_ID/draw-hand
 ```
+**Response**:
+```json
+{
+  "hand": [{"id": 5, "type": "Rock", "power": 5}],
+  "deck_size": 0,
+  "is_final_hand": true,
+  "cards_drawn": 1
+}
+```
 
 ### **Play a Card**
 ```http
 POST /api/games/<game_id>/play-card
 ```
-**Purpose**: Play a card from hand (remaining cards are discarded)  
+**Purpose**: Play a card from hand - **NEW: Automatically resolves round when both players have played**  
 **Authentication**: Bearer token required  
 **Request Body**:
 ```json
@@ -362,22 +371,145 @@ curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"card_index":1}' \
   http://localhost:5003/api/games/GAME_ID/play-card
 ```
+**Response** (when both players have played):
+```json
+{
+  "played_card": {"id": 5, "type": "Rock", "power": 5},
+  "remaining_hand": [],
+  "both_played": true,
+  "round_resolved": true,
+  "round_result": {
+    "round_winner": 1,
+    "round_tied": false,
+    "player1_card": {"id": 5, "type": "Rock", "power": 5},
+    "player2_card": {"id": 15, "type": "Scissors", "power": 3},
+    "player1_score": 1,
+    "player2_score": 0,
+    "game_over": false,
+    "winner": null,
+    "is_tie": false,
+    "tie_breaker_possible": false
+  }
+}
+```
 
 ### **Resolve Round**
 ```http
 POST /api/games/<game_id>/resolve-round
 ```
-**Purpose**: Calculate battle result based on rock-paper-scissors rules  
+**Purpose**: Manually resolve round (usually auto-resolved when both players play cards)  
 **Authentication**: Bearer token required  
 **Game Rules**:
 - Rock beats Scissors
 - Scissors beats Paper  
 - Paper beats Rock
-- Same type: Higher power wins (except 1 beats 13)
+- Same type: Higher power wins
+- **NEW**: Same type and power = tie (no points awarded)
 **Example**:
 ```bash
 curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:5003/api/games/GAME_ID/resolve-round
+```
+**Response**:
+```json
+{
+  "round_winner": 1,
+  "round_tied": false,
+  "player1_card": {"id": 5, "type": "Rock", "power": 5},
+  "player2_card": {"id": 15, "type": "Scissors", "power": 3},
+  "player1_score": 1,
+  "player2_score": 0,
+  "game_over": false,
+  "winner": null,
+  "is_tie": false,
+  "tie_breaker_possible": false
+}
+```
+
+### **🆕 Play Tie-Breaker Round**
+```http
+POST /api/games/<game_id>/tie-breaker
+```
+**Purpose**: Use remaining cards to break a tie when game ends with equal scores  
+**Authentication**: Bearer token required  
+**Example**:
+```bash
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:5003/api/games/GAME_ID/tie-breaker
+```
+**Response**:
+```json
+{
+  "tie_breaker_winner": "alice",
+  "tie_breaker_tied": false,
+  "player1_card": {"id": 8, "type": "Paper", "power": 8},
+  "player2_card": {"id": 22, "type": "Rock", "power": 9},
+  "final_winner": "alice",
+  "still_tied": false
+}
+```
+
+### **🆕 Check Tie-Breaker Status**
+```http
+GET /api/games/<game_id>/tie-breaker-status
+```
+**Purpose**: Check if tie-breaker round is available after game ends in tie  
+**Authentication**: Bearer token required  
+**Example**:
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:5003/api/games/GAME_ID/tie-breaker-status
+```
+**Response**:
+```json
+{
+  "is_tied_game": true,
+  "tie_breaker_possible": true,
+  "player1_remaining_cards": 2,
+  "player2_remaining_cards": 1
+}
+```
+
+### **🆕 Get Turn Information**
+```http
+GET /api/games/<game_id>/turn-info
+```
+**Purpose**: Get detailed turn status and what actions each player needs to take  
+**Authentication**: Bearer token required  
+**Example**:
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:5003/api/games/GAME_ID/turn-info
+```
+**Response**:
+```json
+{
+  "game_id": "uuid-string",
+  "turn": 3,
+  "is_active": true,
+  "current_user": "alice",
+  "player1_name": "alice",
+  "player2_name": "bob",
+  "turn_status": {
+    "both_need_to_draw": true,
+    "p1_needs_to_draw": true,
+    "p2_needs_to_draw": true,
+    "p1_needs_to_play": false,
+    "p2_needs_to_play": false,
+    "both_played": false,
+    "ready_to_resolve": false
+  },
+  "deck_status": {
+    "p1_deck_size": 16,
+    "p2_deck_size": 16,
+    "p1_hand_size": 0,
+    "p2_hand_size": 0
+  },
+  "scores": {
+    "player1_score": 2,
+    "player2_score": 1
+  }
+}
 ```
 
 ### **End Game**
@@ -609,21 +741,28 @@ curl -H "Authorization: Bearer $BOB_TOKEN" http://localhost:5004/api/leaderboard
 
 ### **🚨 Important Game Flow Notes**
 
-#### **Round Sequence Requirements:**
-1. **Both players must draw cards** before playing
-2. **Both players must play a card** before resolving
-3. **Only then can you resolve the round** (from either terminal)
+#### **🆕 Enhanced Round Sequence (Automatic Resolution):**
+1. **Both players draw cards** (3 cards normally, 1-3 for final round)
+2. **Players play cards in any order** - round automatically resolves when both have played
+3. **No manual resolution needed** - the system handles it automatically
 4. **Repeat for each round** until game ends
 
-#### **Game End Conditions:**
-- Game ends when a player cannot draw 3 cards (deck exhausted)
+#### **🆕 Enhanced Game End Conditions:**
+- Game ends when a player cannot draw cards (deck exhausted)
 - Winner is the player with the most round wins
-- Use `/end` endpoint to force-end a game if needed
+- **NEW**: If scores are tied, players can use remaining cards for tie-breaker rounds
+- **NEW**: Perfect ties (same card type and power) award no points to either player
+
+#### **🆕 New Endpoints for Enhanced Gameplay:**
+- **`/turn-info`** - See exactly what each player needs to do next
+- **`/tie-breaker-status`** - Check if tie-breaker is possible after tied game
+- **`/tie-breaker`** - Play final card battle to break ties
 
 #### **Troubleshooting:**
 - **"Invalid card index"**: Draw cards first, then check hand size
-- **"Both players must play cards"**: Wait for opponent to play before resolving
 - **"Game not found"**: Verify the GAME_ID is correct in both terminals
+- **"Both players must play cards"**: This error should be rare now with auto-resolution
+- **Game ends in tie**: Use `/tie-breaker-status` to check if tie-breaker is possible
 ```
 
 ---
