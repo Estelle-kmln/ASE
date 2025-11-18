@@ -1,0 +1,130 @@
+services:
+  # Database
+  postgresql:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: battlecards
+      POSTGRES_USER: gameuser
+      POSTGRES_PASSWORD: gamepassword
+    volumes:
+      - ./database:/docker-entrypoint-initdb.d
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gameuser -d battlecards"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - battlecards-network
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./auth-service
+    environment:
+      - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
+      - JWT_SECRET_KEY=your-super-secret-key-change-in-production
+    ports:
+      - "5001:5001"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - battlecards-network
+
+  # Card Service
+  card-service:
+    build:
+      context: ./card-service
+    environment:
+      - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
+      - JWT_SECRET_KEY=your-super-secret-key-change-in-production
+      - AUTH_SERVICE_URL=http://auth-service:5001
+    ports:
+      - "5002:5002"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - battlecards-network
+
+  # Game Service
+  game-service:
+    build:
+      context: ./game-service
+    environment:
+      - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
+      - JWT_SECRET_KEY=your-super-secret-key-change-in-production
+      - CARD_SERVICE_URL=http://card-service:5002
+    ports:
+      - "5003:5003"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      card-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - battlecards-network
+
+  # Leaderboard Service
+  leaderboard-service:
+    build:
+      context: ./leaderboard-service
+    environment:
+      - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
+      - JWT_SECRET_KEY=your-super-secret-key-change-in-production
+    ports:
+      - "5004:5004"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - battlecards-network
+
+  # API Gateway (Nginx reverse proxy)
+  api-gateway:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - auth-service
+      - card-service
+      - game-service
+      - leaderboard-service
+    networks:
+      - battlecards-network
+
+volumes:
+  postgres_data:
+
+networks:
+  battlecards-network:
+    driver: bridge
