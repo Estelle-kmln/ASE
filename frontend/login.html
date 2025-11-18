@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battlecards - Login</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="login-container">
+            <h2 id="form-title">Login to Battlecards!</h2>
+            
+            <div id="alert-container"></div>
+            
+            <form id="auth-form">
+                <div class="form-group" id="username-group" style="display: none;">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                
+                <div class="form-group" id="confirm-password-group" style="display: none;">
+                    <label for="confirm-password">Confirm Password</label>
+                    <input type="password" id="confirm-password" name="confirm-password">
+                </div>
+                
+                <button type="submit" class="btn" id="submit-btn">Login</button>
+            </form>
+            
+            <div class="toggle-auth">
+                <p id="toggle-text">Don't have an account? <a id="toggle-link">Register here</a></p>
+            </div>
+        </div>
+    </div>
+    
+    <script src="js/auth.js"></script>
+</body>
+</html>

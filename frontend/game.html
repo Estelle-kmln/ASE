@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battlecards - Game</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <button class="back-button" onclick="quitGame()">← Quit</button>
+    
+    <header class="header">
+        <h1>Battlecards!</h1>
+    </header>
+    
+    <div class="container">
+        <div class="game-container">
+            <div class="game-header">
+                <div class="player-info">
+                    <h3 id="player1-name">Player 1</h3>
+                    <div class="score" id="player1-score">0</div>
+                </div>
+                
+                <div class="player-info">
+                    <h3>Turn <span id="turn-number">1</span></h3>
+                </div>
+                
+                <div class="player-info">
+                    <h3 id="player2-name">Player 2</h3>
+                    <div class="score" id="player2-score">0</div>
+                </div>
+            </div>
+            
+            <div class="turn-indicator" id="turn-indicator">
+                Your turn to play!
+            </div>
+            
+            <div class="game-area">
+                <div class="card-display">
+                    <h4>Your Card</h4>
+                    <div class="played-card" id="player1-card">
+                        <span>?</span>
+                    </div>
+                </div>
+                
+                <div style="font-size: 3rem; color: #e74c3c;">
+                    VS
+                </div>
+                
+                <div class="card-display">
+                    <h4>Opponent's Card</h4>
+                    <div class="played-card" id="player2-card">
+                        <span>?</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="hand-container">
+                <h3>Your Hand</h3>
+                <div class="hand" id="hand">
+                    <!-- Cards will be dynamically added here -->
+                </div>
+            </div>
+            
+            <button class="play-card-btn" id="play-card-btn" onclick="playSelectedCard()" disabled>
+                Play Card
+            </button>
+        </div>
+    </div>
+    
+    <!-- Game Over Modal -->
+    <div class="modal" id="game-over-modal">
+        <div class="modal-content game-over-modal">
+            <div class="victory-icon" id="victory-icon">👑</div>
+            <h2 id="game-result">Victory!</h2>
+            <div class="final-score" id="final-score"></div>
+            <button class="btn" onclick="returnToHome()">Return to Home</button>
+        </div>
+    </div>
+    
+    <script src="js/game.js"></script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battlecards - Game Rules</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <button class="back-button" onclick="goHome()">← Home</button>
+    
+    <header class="header">
+        <h1>Battlecards!</h1>
+    </header>
+    
+    <div class="container">
+        <div class="placeholder-container">
+            <h2>📖 Game Rules</h2>
+            <div style="text-align: left; max-width: 600px; margin: 2rem auto; line-height: 1.8;">
+                <h3>How to Play:</h3>
+                <ol>
+                    <li><strong>Start a Game:</strong> Click "LAUNCH A GAME!" to create a new game and share the code with a friend, or click "JOIN A GAME!" to enter a code.</li>
+                    
+                    <li><strong>Build Your Deck:</strong> Choose 10 cards from Rock, Paper, and Scissors. You can select manually or get a random deck. Powers are automatically assigned!</li>
+                    
+                    <li><strong>Play Cards:</strong> Each turn, select a card from your hand and play it against your opponent's card.</li>
+                    
+                    <li><strong>Winning Rounds:</strong>
+                        <ul>
+                            <li>Rock beats Scissors</li>
+                            <li>Scissors beats Paper</li>
+                            <li>Paper beats Rock</li>
+                            <li>If both players use the same type, the card with higher power wins!</li>
+                        </ul>
+                    </li>
+                    
+                    <li><strong>Scoring:</strong> Win a round to earn points! The player with the most points after all cards are played wins the game.</li>
+                    
+                    <li><strong>Victory:</strong> May the best strategist win! 👑</li>
+                </ol>
+                
+                <h3 style="margin-top: 2rem;">Tips:</h3>
+                <ul>
+                    <li>Pay attention to your opponent's playing patterns</li>
+                    <li>Save high-power cards for crucial moments</li>
+                    <li>Balance your deck composition for better versatility</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function goHome() {
+            window.location.href = 'index.html';
+        }
+        
+        // Check authentication
+        if (!localStorage.getItem('token')) {
+            window.location.href = 'login.html';
+        }
+    </script>
+</body>
+</html>

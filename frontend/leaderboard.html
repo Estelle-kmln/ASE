@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battlecards - Leaderboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <button class="back-button" onclick="goHome()">← Home</button>
+    
+    <header class="header">
+        <h1>Battlecards!</h1>
+    </header>
+    
+    <div class="container">
+        <div class="leaderboard-container">
+            <h2>My Game History</h2>
+            
+            <table class="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Opponent</th>
+                        <th>My Score</th>
+                        <th>Opp. Score</th>
+                        <th>Result</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboard-body">
+                    <tr>
+                        <td colspan="5" style="text-align: center;">
+                            <div class="loading"></div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div class="pagination">
+                <button id="prev-btn" onclick="previousPage()" disabled>← Previous</button>
+                <span class="page-info">Page <span id="current-page">1</span> of <span id="total-pages">1</span></span>
+                <button id="next-btn" onclick="nextPage()">Next →</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="js/leaderboard.js"></script>
+</body>
+</html>

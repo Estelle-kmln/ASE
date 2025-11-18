@@ -114,6 +114,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ../frontend:/usr/share/nginx/html:ro
     depends_on:
       - auth-service
       - card-service

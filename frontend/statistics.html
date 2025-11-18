@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battlecards - Game Statistics</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <button class="back-button" onclick="goHome()">← Home</button>
+    
+    <header class="header">
+        <h1>Battlecards!</h1>
+    </header>
+    
+    <div class="container">
+        <div class="placeholder-container">
+            <h2>📊 Game Statistics</h2>
+            <p>This feature is coming soon!</p>
+            <p>Here you'll be able to view your detailed game statistics including:</p>
+            <ul style="text-align: left; max-width: 400px; margin: 2rem auto;">
+                <li>Win/Loss ratio</li>
+                <li>Most used cards</li>
+                <li>Average score per game</li>
+                <li>Playing streak</li>
+                <li>Card effectiveness statistics</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        function goHome() {
+            window.location.href = 'index.html';
+        }
+        
+        // Check authentication
+        if (!localStorage.getItem('token')) {
+            window.location.href = 'login.html';
+        }
+    </script>
+</body>
+</html>

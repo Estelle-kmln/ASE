@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battlecards - Home</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header class="header">
+        <h1>Battlecards!</h1>
+        <button class="menu-button" id="menu-btn">☰ Menu</button>
+        
+        <div class="dropdown-menu" id="dropdown-menu">
+            <div class="dropdown-item user-info" id="user-info"></div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item" onclick="navigateTo('profile.html')">Profile</div>
+            <div class="dropdown-item" onclick="navigateTo('leaderboard.html')">Leaderboard</div>
+            <div class="dropdown-item" onclick="navigateTo('statistics.html')">Game Statistics</div>
+            <div class="dropdown-item" onclick="navigateTo('rules.html')">Game Rules</div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item" onclick="logout()">Logout</div>
+        </div>
+    </header>
+    
+    <div class="container">
+        <div class="game-buttons-container">
+            <button class="game-button" id="launch-game-btn">🚀 LAUNCH A GAME!</button>
+            <button class="game-button" id="join-game-btn">🎮 JOIN A GAME!</button>
+        </div>
+    </div>
+    
+    <!-- Launch Game Modal -->
+    <div class="modal" id="launch-modal">
+        <div class="modal-content">
+            <h2>Game Created!</h2>
+            <p>Share this code with your opponent:</p>
+            <div class="game-code" id="game-code"></div>
+            <p>Waiting for opponent to join...</p>
+            <div style="text-align: center; margin: 1rem 0;">
+                <div class="loading"></div>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="closeModal('launch-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Join Game Modal -->
+    <div class="modal" id="join-modal">
+        <div class="modal-content">
+            <h2>Join a Game</h2>
+            <div class="form-group">
+                <label for="game-code-input">Enter Game Code:</label>
+                <input type="text" id="game-code-input" placeholder="Enter code..." style="text-transform: uppercase;">
+            </div>
+            <div id="join-alert"></div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="closeModal('join-modal')">Cancel</button>
+                <button class="btn" onclick="joinGame()">Join Game</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="js/home.js"></script>
+</body>
+</html>
