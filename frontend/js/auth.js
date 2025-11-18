@@ -10,7 +10,6 @@ const formTitle = document.getElementById('form-title');
 const submitBtn = document.getElementById('submit-btn');
 const toggleLink = document.getElementById('toggle-link');
 const toggleText = document.getElementById('toggle-text');
-const usernameGroup = document.getElementById('username-group');
 const confirmPasswordGroup = document.getElementById('confirm-password-group');
 const alertContainer = document.getElementById('alert-container');
 
@@ -26,13 +25,11 @@ function toggleAuthMode() {
         formTitle.textContent = 'Login to Battlecards!';
         submitBtn.textContent = 'Login';
         toggleText.innerHTML = "Don't have an account? <a id='toggle-link'>Register here</a>";
-        usernameGroup.style.display = 'none';
         confirmPasswordGroup.style.display = 'none';
     } else {
         formTitle.textContent = 'Register for Battlecards!';
         submitBtn.textContent = 'Register';
         toggleText.innerHTML = "Already have an account? <a id='toggle-link'>Login here</a>";
-        usernameGroup.style.display = 'block';
         confirmPasswordGroup.style.display = 'block';
     }
     
@@ -45,13 +42,12 @@ async function handleSubmit(e) {
     e.preventDefault();
     clearAlert();
     
-    const email = document.getElementById('email').value;
+    const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
     
     if (isLoginMode) {
-        await login(email, password);
+        await login(username, password);
     } else {
-        const username = document.getElementById('username').value;
         const confirmPassword = document.getElementById('confirm-password').value;
         
         if (password !== confirmPassword) {
@@ -59,18 +55,18 @@ async function handleSubmit(e) {
             return;
         }
         
-        await register(username, email, password);
+        await register(username, password);
     }
 }
 
-async function login(email, password) {
+async function login(username, password) {
     try {
         const response = await fetch(`${API_BASE_URL}/login`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ email, password }),
+            body: JSON.stringify({ username, password }),
         });
         
         const data = await response.json();
@@ -95,14 +91,14 @@ async function login(email, password) {
     }
 }
 
-async function register(username, email, password) {
+async function register(username, password) {
     try {
         const response = await fetch(`${API_BASE_URL}/register`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ username, email, password }),
+            body: JSON.stringify({ username, password }),
         });
         
         const data = await response.json();
