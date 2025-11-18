@@ -71,8 +71,10 @@
 									"    pm.expect(jsonData).to.have.property('user');",
 									"    pm.expect(jsonData.user).to.have.property('username');",
 									"    ",
-									"    // Store the token for subsequent requests",
+									"    // Store the token and credentials for subsequent requests",
 									"    pm.environment.set('auth_token', jsonData.access_token);",
+									"    pm.environment.set('test_username', jsonData.user.username);",
+									"    pm.environment.set('test_password', 'testpass123');",
 									"});"
 								],
 								"type": "text/javascript"
@@ -94,6 +96,18 @@
 							"mode": "raw",
 							"raw": "{\n    \"username\": \"testuser{{$randomInt}}\",\n    \"password\": \"testpass123\"\n}"
 						},
+						"event": [
+							{
+								"listen": "prerequest",
+								"script": {
+									"exec": [
+										"// Store password for login test",
+										"pm.environment.set('test_password', 'testpass123');"
+									],
+									"type": "text/javascript"
+								}
+							}
+						],
 						"url": {
 							"raw": "{{auth_service_url}}/api/auth/register",
 							"host": ["{{auth_service_url}}"],
@@ -224,7 +238,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"username\": \"testuser\",\n    \"password\": \"testpass123\"\n}"
+							"raw": "{\n    \"username\": \"{{test_username}}\",\n    \"password\": \"{{test_password}}\"\n}"
 						},
 						"url": {
 							"raw": "{{auth_service_url}}/api/auth/login",
@@ -267,7 +281,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"username\": \"testuser\",\n    \"password\": \"wrongpassword\"\n}"
+							"raw": "{\n    \"username\": \"{{test_username}}\",\n    \"password\": \"wrongpassword\"\n}"
 						},
 						"url": {
 							"raw": "{{auth_service_url}}/api/auth/login",
@@ -1254,9 +1268,9 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{game_service_url}}/api/games/user/testuser",
+							"raw": "{{game_service_url}}/api/games/user/{{test_username}}",
 							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "user", "testuser"]
+							"path": ["api", "games", "user", "{{test_username}}"]
 						}
 					}
 				},
@@ -1485,9 +1499,9 @@
 						"method": "GET",
 						"header": [],
 						"url": {
-							"raw": "{{leaderboard_service_url}}/api/leaderboard/player/testuser",
+							"raw": "{{leaderboard_service_url}}/api/leaderboard/player/{{test_username}}",
 							"host": ["{{leaderboard_service_url}}"],
-							"path": ["api", "leaderboard", "player", "testuser"]
+							"path": ["api", "leaderboard", "player", "{{test_username}}"]
 						}
 					}
 				},
