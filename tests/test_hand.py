@@ -139,6 +139,163 @@ def test_all_cards_used():
     print()
 
 
+def test_invalid_card_index_negative():
+    """Test playing with negative card index (should fail)."""
+    print("Testing Invalid Card Index (Negative)...")
+    service = GameService()
+    deck1 = service.create_random_deck()
+    deck2 = service.create_random_deck()
+    game = service.start_new_game("Player1", deck1, "Player2", deck2, save=False)
+    
+    game.player1.draw_new_hand()
+    game.player2.draw_new_hand()
+    
+    controller = BattleCardGame()
+    controller.game = game
+    
+    # Try to play with negative index
+    try:
+        controller.play_turn(-1)
+        assert False, "Should have raised IndexError for negative index"
+    except IndexError as e:
+        assert "out of range" in str(e).lower() or "index" in str(e).lower(), f"Expected IndexError, got: {e}"
+        print(f"✓ Correctly rejected negative index: {e}")
+    print()
+
+
+def test_invalid_card_index_too_large():
+    """Test playing with card index too large (should fail)."""
+    print("Testing Invalid Card Index (Too Large)...")
+    service = GameService()
+    deck1 = service.create_random_deck()
+    deck2 = service.create_random_deck()
+    game = service.start_new_game("Player1", deck1, "Player2", deck2, save=False)
+    
+    game.player1.draw_new_hand()
+    game.player2.draw_new_hand()
+    
+    controller = BattleCardGame()
+    controller.game = game
+    
+    # Try to play with index >= 3
+    try:
+        controller.play_turn(3)
+        assert False, "Should have raised IndexError for index too large"
+    except IndexError as e:
+        assert "out of range" in str(e).lower() or "index" in str(e).lower(), f"Expected IndexError, got: {e}"
+        print(f"✓ Correctly rejected index too large: {e}")
+    print()
+
+
+def test_playing_without_hand():
+    """Test playing a card when player has no hand (should fail)."""
+    print("Testing Playing Without Hand...")
+    service = GameService()
+    deck1 = service.create_random_deck()
+    deck2 = service.create_random_deck()
+    game = service.start_new_game("Player1", deck1, "Player2", deck2, save=False)
+    
+    # Don't draw hands - players have no hand
+    controller = BattleCardGame()
+    controller.game = game
+    
+    # Try to play without a hand
+    try:
+        controller.play_turn(0)
+        assert False, "Should have raised AttributeError or similar when no hand exists"
+    except (AttributeError, ValueError) as e:
+        print(f"✓ Correctly rejected playing without hand: {type(e).__name__}")
+    print()
+
+
+def test_playing_card_twice():
+    """Test trying to play a card when one is already played (should fail)."""
+    print("Testing Playing Card Twice...")
+    service = GameService()
+    deck1 = service.create_random_deck()
+    deck2 = service.create_random_deck()
+    game = service.start_new_game("Player1", deck1, "Player2", deck2, save=False)
+    
+    game.player1.draw_new_hand()
+    game.player2.draw_new_hand()
+    
+    controller = BattleCardGame()
+    controller.game = game
+    
+    # Play first card
+    controller.play_turn(0)
+    
+    # Try to play again (should fail because card already played)
+    try:
+        # Manually try to play from hand again
+        game.player1.hand.play_card(0)
+        assert False, "Should have raised ValueError for playing card twice"
+    except ValueError as e:
+        assert "already been played" in str(e).lower() or "already" in str(e).lower(), f"Expected ValueError about already played, got: {e}"
+        print(f"✓ Correctly rejected playing card twice: {e}")
+    print()
+
+
+def test_drawing_from_empty_deck():
+    """Test drawing hand when deck has fewer than 3 cards (should fail)."""
+    print("Testing Drawing From Empty Deck...")
+    service = GameService()
+    deck1 = service.create_random_deck()
+    deck2 = service.create_random_deck()
+    game = service.start_new_game("Player1", deck1, "Player2", deck2, save=False)
+    
+    # Draw cards until deck has less than 3 cards
+    while len(game.player1.deck) >= 3:
+        game.player1.deck.draw_hand()
+    
+    # Now try to draw a new hand with < 3 cards
+    result = game.player1.draw_new_hand()
+    assert result == False, "draw_new_hand should return False when not enough cards"
+    assert game.player1.hand is None or len(game.player1.hand.cards) == 0, "Hand should not be created when deck is too small"
+    print(f"✓ Correctly handled drawing from deck with {len(game.player1.deck)} cards (< 3)")
+    print()
+
+
+def test_playing_when_game_over():
+    """Test playing a turn when game is already over (should fail)."""
+    print("Testing Playing When Game Over...")
+    service = GameService()
+    deck1 = service.create_random_deck()
+    deck2 = service.create_random_deck()
+    game = service.start_new_game("Player1", deck1, "Player2", deck2, save=False)
+    
+    # Manually set game as over
+    game.game_over = True
+    
+    controller = BattleCardGame()
+    controller.game = game
+    
+    # Try to play when game is over
+    try:
+        controller.play_turn(0)
+        assert False, "Should have raised ValueError when game is over"
+    except ValueError as e:
+        assert "no active game" in str(e).lower() or "game" in str(e).lower(), f"Expected ValueError about no active game, got: {e}"
+        print(f"✓ Correctly rejected playing when game over: {e}")
+    print()
+
+
+def test_playing_with_no_game():
+    """Test playing when no game exists (should fail)."""
+    print("Testing Playing With No Game...")
+    controller = BattleCardGame()
+    controller.game = None
+    
+    # Try to play when no game exists
+    try:
+        controller.play_turn(0)
+        assert False, "Should have raised ValueError when no game exists"
+    except ValueError as e:
+        assert "no active game" in str(e).lower() or "game" in str(e).lower(), f"Expected ValueError about no active game, got: {e}"
+        print(f"✓ Correctly rejected playing with no game: {e}")
+    print()
+
+
 def run_all_tests():
     """Run all hand tests."""
     print("=" * 50)
@@ -151,6 +308,15 @@ def run_all_tests():
         test_playing_card()
         test_multiple_turns()
         test_all_cards_used()
+        
+        # Negative test cases
+        test_invalid_card_index_negative()
+        test_invalid_card_index_too_large()
+        test_playing_without_hand()
+        test_playing_card_twice()
+        test_drawing_from_empty_deck()
+        test_playing_when_game_over()
+        test_playing_with_no_game()
         
         print("=" * 50)
         print("  ALL HAND TESTS PASSED! ✓")

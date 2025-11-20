@@ -158,6 +158,120 @@ class APITester:
         # Test recent games
         self.test_request("GET", "/leaderboard/recent", headers=self.get_auth_headers())
 
+    def test_auth_negative_cases(self):
+        """Test authentication service negative cases."""
+        self.log("Testing Authentication Service Negative Cases", "TEST")
+        
+        # Test login with invalid credentials
+        invalid_login = {"username": "nonexistent", "password": "wrongpassword"}
+        self.test_request("POST", "/auth/login", invalid_login, expected_status=401)
+        
+        # Test login with missing password
+        incomplete_login = {"username": TEST_USER["username"]}
+        self.test_request("POST", "/auth/login", incomplete_login, expected_status=400)
+        
+        # Test registration with duplicate username
+        duplicate_user = {
+            "username": TEST_USER["username"],
+            "email": "duplicate@example.com",
+            "password": "password123"
+        }
+        self.test_request("POST", "/auth/register", duplicate_user, expected_status=400)
+        
+        # Test profile access without token
+        self.test_request("GET", "/auth/profile", expected_status=401)
+        
+        # Test profile access with invalid token
+        invalid_headers = {"Authorization": "Bearer invalid_token_12345"}
+        self.test_request("GET", "/auth/profile", headers=invalid_headers, expected_status=401)
+        
+        # Test profile update without token
+        update_data = {"email": "new@example.com"}
+        self.test_request("PUT", "/auth/profile", update_data, expected_status=401)
+
+    def test_card_service_negative_cases(self):
+        """Test card service negative cases."""
+        self.log("Testing Card Service Negative Cases", "TEST")
+        
+        # Test accessing cards without authentication (if required)
+        # Note: Some endpoints might allow unauthenticated access, adjust expected_status accordingly
+        # Test invalid card type
+        self.test_request("GET", "/cards/type/invalid_type", headers=self.get_auth_headers(), expected_status=404)
+        
+        # Test accessing cards with invalid token
+        invalid_headers = {"Authorization": "Bearer invalid_token_12345"}
+        self.test_request("GET", "/cards", headers=invalid_headers, expected_status=401)
+
+    def test_game_service_negative_cases(self):
+        """Test game service negative cases."""
+        self.log("Testing Game Service Negative Cases", "TEST")
+        
+        # Test creating game without authentication
+        game_data = {"player2_name": "Opponent"}
+        self.test_request("POST", "/game", game_data, expected_status=401)
+        
+        # Test creating game with missing player2_name
+        incomplete_game = {}
+        self.test_request("POST", "/game", incomplete_game, headers=self.get_auth_headers(), expected_status=400)
+        
+        # Test getting game with invalid game ID
+        fake_game_id = "00000000-0000-0000-0000-000000000000"
+        self.test_request("GET", f"/game/{fake_game_id}", headers=self.get_auth_headers(), expected_status=404)
+        
+        # Test playing card with invalid game ID
+        play_data = {"card_index": 0}
+        self.test_request("POST", f"/game/{fake_game_id}/play", play_data, headers=self.get_auth_headers(), expected_status=404)
+        
+        # Test playing card without authentication
+        if self.token:
+            # Create a real game first
+            game_data = {"player2_name": "Opponent"}
+            response = self.test_request("POST", "/game", game_data, headers=self.get_auth_headers(), expected_status=201)
+            if response and "game_id" in response:
+                game_id = response["game_id"]
+                # Test playing with invalid card index (negative)
+                invalid_play = {"card_index": -1}
+                self.test_request("POST", f"/game/{game_id}/play", invalid_play, headers=self.get_auth_headers(), expected_status=400)
+                
+                # Test playing with invalid card index (too large)
+                invalid_play2 = {"card_index": 10}
+                self.test_request("POST", f"/game/{game_id}/play", invalid_play2, headers=self.get_auth_headers(), expected_status=400)
+                
+                # Test playing without card_index
+                incomplete_play = {}
+                self.test_request("POST", f"/game/{game_id}/play", incomplete_play, headers=self.get_auth_headers(), expected_status=400)
+        
+        # Test end turn without authentication
+        if self.token:
+            game_data = {"player2_name": "Opponent"}
+            response = self.test_request("POST", "/game", game_data, headers=self.get_auth_headers(), expected_status=201)
+            if response and "game_id" in response:
+                game_id = response["game_id"]
+                self.test_request("POST", f"/game/{game_id}/end-turn", expected_status=401)
+
+    def test_leaderboard_negative_cases(self):
+        """Test leaderboard service negative cases."""
+        self.log("Testing Leaderboard Service Negative Cases", "TEST")
+        
+        # Test accessing leaderboard without authentication (if required)
+        # Test player stats for non-existent player
+        self.test_request("GET", "/leaderboard/player/nonexistent_player_12345", headers=self.get_auth_headers(), expected_status=404)
+        
+        # Test accessing leaderboard with invalid token
+        invalid_headers = {"Authorization": "Bearer invalid_token_12345"}
+        self.test_request("GET", "/leaderboard", headers=invalid_headers, expected_status=401)
+
+    def test_nonexistent_endpoints(self):
+        """Test accessing non-existent endpoints."""
+        self.log("Testing Non-existent Endpoints", "TEST")
+        
+        # Test various non-existent endpoints
+        self.test_request("GET", "/nonexistent", expected_status=404)
+        self.test_request("GET", "/auth/invalid", expected_status=404)
+        self.test_request("GET", "/cards/invalid/endpoint", expected_status=404)
+        self.test_request("GET", "/game/invalid/endpoint", expected_status=404)
+        self.test_request("POST", "/invalid/service", expected_status=404)
+
     def wait_for_services(self, timeout=60):
         """Wait for all services to be available."""
         self.log("Waiting for services to be available...")
@@ -200,11 +314,18 @@ class APITester:
         if not self.wait_for_services():
             return False
         
-        # Run tests
+        # Run positive tests
         self.test_auth_service()
         self.test_card_service()
         self.test_game_service()
         self.test_leaderboard_service()
+        
+        # Run negative tests
+        self.test_auth_negative_cases()
+        self.test_card_service_negative_cases()
+        self.test_game_service_negative_cases()
+        self.test_leaderboard_negative_cases()
+        self.test_nonexistent_endpoints()
         
         # Print summary
         self.log("=" * 50)
