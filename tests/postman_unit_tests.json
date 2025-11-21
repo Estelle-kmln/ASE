@@ -992,17 +992,17 @@
 	"variable": [
 		{
 			"key": "game_service_url",
-			"value": "http://localhost:8001",
+			"value": "http://localhost:5003",
 			"type": "string"
 		},
 		{
 			"key": "user_service_url",
-			"value": "http://localhost:8002",
+			"value": "http://localhost:5001",
 			"type": "string"
 		},
 		{
 			"key": "card_service_url",
-			"value": "http://localhost:8003",
+			"value": "http://localhost:5002",
 			"type": "string"
 		},
 		{
