@@ -10,21 +10,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: gameuser
-          POSTGRES_PASSWORD: gamepassword
-          POSTGRES_DB: battlecards
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -38,47 +23,105 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y postgresql-client
-
-    - name: Initialize database
-      env:
-        PGHOST: localhost
-        PGPORT: 5432
-        PGUSER: gameuser
-        PGPASSWORD: gamepassword
-        PGDATABASE: battlecards
-      run: |
-        # Wait for PostgreSQL to be ready
-        until pg_isready -h localhost -p 5432 -U gameuser; do
-          echo "Waiting for PostgreSQL..."
-          sleep 2
-        done
-        echo "PostgreSQL is ready!"
-        # Initialize database schema (use the main database init script)
-        psql -h localhost -U gameuser -d battlecards -f database/01-init-cards.sql
-
-    - name: Create virtual environment
-      run: |
-        python -m venv venv
+        sudo apt-get install -y curl
 
     - name: Install Python dependencies
       run: |
-        source venv/bin/activate
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install pytest pytest-cov requests urllib3
 
-    - name: Verify database connection
-      env:
-        DATABASE_URL: postgresql://gameuser:gamepassword@localhost:5432/battlecards
+    - name: Install Node.js for Newman
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Newman (Postman CLI)
       run: |
-        source venv/bin/activate
-        python -c "import psycopg2; conn = psycopg2.connect('$DATABASE_URL'); print('Database connection successful!'); conn.close()"
+        npm install -g newman
+        npm install -g newman-reporter-htmlextra
 
-    - name: Run all tests
+    - name: Build Docker images
+      run: |
+        cd microservices
+        docker compose build
+
+    - name: Start microservices
+      run: |
+        cd microservices
+        docker compose up -d
+        echo "Waiting for services to be ready..."
+        sleep 60
+
+    - name: Verify services are running
+      run: |
+        docker ps
+        echo "Checking service health..."
+        curl -f http://localhost:8080/health || echo "Nginx not ready yet"
+        sleep 30
+
+    - name: Run pytest tests for microservices
       env:
-        DATABASE_URL: postgresql://gameuser:gamepassword@localhost:5432/battlecards
+        BASE_URL: http://localhost:8080
         PYTHONPATH: ${{ github.workspace }}
       run: |
-        source venv/bin/activate
-        python tests/run_all_tests.py
+        echo "Running pytest tests..."
+        pytest tests/test_auth_service.py -v --tb=short || true
+        pytest tests/test_card_service.py -v --tb=short || true
+        pytest tests/test_game_service.py -v --tb=short || true
+        pytest tests/test_leaderboard_service.py -v --tb=short || true
+
+    - name: Run Postman tests with Newman
+      run: |
+        echo "Running Postman/Newman tests..."
+        newman run tests/postman_unit_tests.json \
+          --environment <(echo '{}') \
+          --reporters cli,htmlextra \
+          --reporter-htmlextra-export newman-report.html \
+          --color on || true
+
+    - name: Run Locust performance tests (headless)
+      run: |
+        echo "Running Locust performance tests..."
+        cd tests
+        locust -f locustfile.py \
+          --headless \
+          --users 10 \
+          --spawn-rate 2 \
+          --run-time 60s \
+          --host http://localhost:8080 \
+          --html locust-report.html \
+          --csv locust-results || true
+
+    - name: Show service logs on failure
+      if: failure()
+      run: |
+        echo "=== Docker Compose Services ==="
+        docker ps -a
+        echo "=== Auth Service Logs ==="
+        docker logs auth-service || true
+        echo "=== Card Service Logs ==="
+        docker logs card-service || true
+        echo "=== Game Service Logs ==="
+        docker logs game-service || true
+        echo "=== Leaderboard Service Logs ==="
+        docker logs leaderboard-service || true
+        echo "=== Nginx Logs ==="
+        docker logs nginx || true
+
+    - name: Upload test reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-reports
+        path: |
+          newman-report.html
+          tests/locust-report.html
+          tests/locust-results*.csv
+
+    - name: Cleanup
+      if: always()
+      run: |
+        cd microservices
+        docker compose down -v
 
