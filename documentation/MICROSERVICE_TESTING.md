@@ -52,4 +52,3 @@ pytest tests\test_auth_service.py -v
 
 The tests use unique timestamps to avoid conflicts and validate all response codes, error messages, and data structures returned by each endpoint.
 
-Made changes.
