@@ -12,35 +12,28 @@ NC='\033[0m'
 
 echo -e "${YELLOW}Checking if microservices are running...${NC}"
 
-# Check each service
-SERVICES_OK=true
-for port in 5001 5002 5003 5004; do
-    if ! curl -s http://localhost:$port/health > /dev/null 2>&1; then
-        echo -e "${RED}✗ Service on port $port is not responding${NC}"
-        SERVICES_OK=false
-    else
-        echo -e "${GREEN}✓ Service on port $port is running${NC}"
-    fi
-done
-
-if [ "$SERVICES_OK" = false ]; then
+# Check nginx gateway
+if ! curl -s http://localhost:8080/api/auth/login -X POST -H "Content-Type: application/json" -d '{}' > /dev/null 2>&1; then
+    echo -e "${RED}✗ Nginx gateway on port 8080 is not responding${NC}"
     echo ""
-    echo -e "${RED}Some services are not running!${NC}"
+    echo -e "${RED}Services are not running!${NC}"
     echo "Please start the microservices first:"
     echo "  cd ../microservices"
-    echo "  docker-compose up -d"
+    echo "  docker compose up -d"
     echo ""
-    echo "Then wait for services to be healthy and run this script again."
+    echo "Then wait for services to be healthy (about 60 seconds) and run this script again."
     exit 1
 fi
 
+echo -e "${GREEN}✓ Nginx gateway is running on port 8080${NC}"
+
 echo ""
-echo -e "${GREEN}All services are running!${NC}"
+echo -e "${GREEN}✓ Nginx gateway is running on port 8080${NC}"
 echo ""
 echo "Starting Locust web UI..."
 echo "Open your browser to: http://localhost:8089"
 echo ""
 
 cd "$(dirname "$0")"
-locust -f locustfile.py
+locust -f locustfile.py --host=http://localhost:8080
 
