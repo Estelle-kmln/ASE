@@ -11,7 +11,7 @@ The application is split into four microservices:
 3. **Game Service** (Port 5003) - Game logic and state management
 4. **Leaderboard Service** (Port 5004) - Game results and rankings
 
-All services communicate over HTTPS through an Nginx API Gateway (Port 8443) and use PostgreSQL for data persistence.
+All services communicate through an Nginx API Gateway (Port 8080) and use PostgreSQL for data persistence.
 
 ## Prerequisites
 
@@ -33,30 +33,7 @@ cd ASE/microservices
 
 All dependencies are managed through Docker containers. No local Python installation required.
 
-### 3. Generate SSL Certificates
-
-For HTTPS support, generate self-signed certificates:
-
-**On Linux/macOS:**
-```bash
-chmod +x generate-ssl.sh
-./generate-ssl.sh
-```
-
-**On Windows (PowerShell):**
-```powershell
-.\generate-ssl.ps1
-```
-
-**Manual SSL Setup (if scripts fail):**
-```bash
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout nginx/ssl/server.key \
-    -out nginx/ssl/server.crt \
-    -subj "/C=US/ST=State/L=City/O=BattleCards/CN=localhost"
-```
-
-### 4. Build and Run the Backend
+### 3. Build and Run the Backend
 
 ```bash
 # Build all services
@@ -69,11 +46,11 @@ docker-compose up -d
 docker-compose ps
 ```
 
-### 5. Verify Installation
+### 4. Verify Installation
 
 Check that all services are running:
 ```bash
-curl -k https://localhost:8443/health
+curl http://localhost:8080/health
 ```
 
 Expected response:
@@ -81,24 +58,24 @@ Expected response:
 {"status":"healthy","gateway":"api-gateway"}
 ```
 
-### 6. Run Tests
+### 5. Run Tests
 
 ```bash
 # Run integration tests
 python -m pytest tests/ -v
 
 # Test specific service
-curl -k https://localhost:8443/api/auth/health
-curl -k https://localhost:8443/api/cards/health  
-curl -k https://localhost:8443/api/games/health
-curl -k https://localhost:8443/api/leaderboard/health
+curl http://localhost:8080/api/auth/health
+curl http://localhost:8080/api/cards/health  
+curl http://localhost:8080/api/games/health
+curl http://localhost:8080/api/leaderboard/health
 ```
 
 ## API Documentation
 
 ### Base URL
 ```
-https://localhost:8443/api
+http://localhost:8080/api
 ```
 
 ### Authentication
@@ -175,25 +152,25 @@ Import the API endpoints into Postman for testing:
 
 1. **Register User:**
    ```
-   POST https://localhost:8443/api/auth/register
+   POST http://localhost:8080/api/auth/register
    Body: {"username": "testuser", "password": "testpass"}
    ```
 
 2. **Login:**
    ```
-   POST https://localhost:8443/api/auth/login
+   POST http://localhost:8080/api/auth/login
    Body: {"username": "testuser", "password": "testpass"}
    ```
    
 3. **Get Cards:**
    ```
-   GET https://localhost:8443/api/cards/
+   GET http://localhost:8080/api/cards/
    Headers: Authorization: Bearer <token>
    ```
 
 4. **Create Game:**
    ```
-   POST https://localhost:8443/api/games/
+   POST http://localhost:8080/api/games/
    Headers: Authorization: Bearer <token>
    Body: {"player2_name": "opponent"}
    ```
@@ -255,14 +232,6 @@ docker-compose logs postgresql
 docker-compose restart
 ```
 
-**SSL Certificate errors:**
-```bash
-# Regenerate certificates
-rm -rf nginx/ssl/*
-./generate-ssl.sh
-docker-compose restart api-gateway
-```
-
 **Database connection issues:**
 ```bash
 # Reset database
@@ -277,13 +246,13 @@ docker-compose up -d
 Monitor service health:
 ```bash
 # Check all services
-curl -k https://localhost:8443/health
+curl http://localhost:8080/health
 
 # Check individual services
-curl -k https://localhost:8443/api/auth/health
-curl -k https://localhost:8443/api/cards/health
-curl -k https://localhost:8443/api/games/health
-curl -k https://localhost:8443/api/leaderboard/health
+curl http://localhost:8080/api/auth/health
+curl http://localhost:8080/api/cards/health
+curl http://localhost:8080/api/games/health
+curl http://localhost:8080/api/leaderboard/health
 ```
 
 ## Tech Stack

@@ -23,6 +23,22 @@ app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-chan
 jwt = JWTManager(app)
 CORS(app)
 
+# JWT error handlers - convert 422 to 401 for invalid tokens
+@jwt.invalid_token_loader
+def invalid_token_callback(error_string):
+    """Handle invalid token errors."""
+    return jsonify({'error': 'Invalid token'}), 401
+
+@jwt.unauthorized_loader
+def unauthorized_callback(error_string):
+    """Handle missing token errors."""
+    return jsonify({'error': 'Missing authorization header'}), 401
+
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_payload):
+    """Handle expired token errors."""
+    return jsonify({'error': 'Token has expired'}), 401
+
 # Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://gameuser:gamepassword@localhost:5432/battlecards')
 
@@ -41,6 +57,9 @@ def get_leaderboard():
     """Get the global leaderboard."""
     try:
         limit = request.args.get('limit', 10, type=int)
+        # Handle negative or zero limits
+        if limit <= 0:
+            limit = 10
         if limit > 100:
             limit = 100
         
@@ -226,6 +245,9 @@ def get_recent_games():
     """Get recent completed games."""
     try:
         limit = request.args.get('limit', 10, type=int)
+        # Handle negative or zero limits
+        if limit <= 0:
+            limit = 10
         if limit > 50:
             limit = 50
         

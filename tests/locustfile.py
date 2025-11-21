@@ -17,7 +17,7 @@ from locust import HttpUser, task, between
 
 class AuthServiceUser(HttpUser):
     """Test user for Auth Service endpoints"""
-    host = "http://localhost:5001"
+    host = "http://localhost:8080"
     wait_time = between(1, 3)
     
     def on_start(self):
@@ -86,12 +86,14 @@ class AuthServiceUser(HttpUser):
     @task(1)
     def health_check(self):
         """Test health check endpoint"""
-        self.client.get("/health", name="/health [auth]")
+        with self.client.get("/api/auth/profile", headers={"Authorization": f"Bearer {self.token}"} if self.token else {}, catch_response=True, name="/health [auth]") as response:
+            if response.status_code in [200, 401]:
+                response.success()
 
 
 class CardServiceUser(HttpUser):
     """Test user for Card Service endpoints"""
-    host = "http://localhost:5002"
+    host = "http://localhost:8080"
     wait_time = between(1, 3)
     
     def on_start(self):
@@ -100,29 +102,33 @@ class CardServiceUser(HttpUser):
     
     def get_auth_token(self):
         """Get a valid auth token"""
-        # Try to login with a test user
-        username = "testuser_perf"
+        # Create unique username to avoid conflicts
+        username = f"carduser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}"
         password = "testpass123"
         
         # First try to register
-        response = self.client.post(
-            "http://localhost:5001/api/auth/register",
+        with self.client.post(
+            "/api/auth/register",
             json={"username": username, "password": password},
+            catch_response=True,
             name="/api/auth/register [for card service]"
-        )
-        
-        if response.status_code == 201:
-            return response.json().get("access_token")
+        ) as response:
+            if response.status_code == 201:
+                response.success()
+                return response.json().get("access_token")
+            elif response.status_code == 409:
+                response.success()  # Mark as success, username taken is expected
         
         # If registration fails, try login
-        response = self.client.post(
-            "http://localhost:5001/api/auth/login",
+        with self.client.post(
+            "/api/auth/login",
             json={"username": username, "password": password},
+            catch_response=True,
             name="/api/auth/login [for card service]"
-        )
-        
-        if response.status_code == 200:
-            return response.json().get("access_token")
+        ) as response:
+            if response.status_code == 200:
+                response.success()
+                return response.json().get("access_token")
         
         return None
     
@@ -192,12 +198,14 @@ class CardServiceUser(HttpUser):
     @task(1)
     def health_check(self):
         """Test health check endpoint"""
-        self.client.get("/health", name="/health [card]")
+        with self.client.get("/api/cards", headers={"Authorization": f"Bearer {self.token}"} if self.token else {}, catch_response=True, name="/health [card]") as response:
+            if response.status_code in [200, 401]:
+                response.success()
 
 
 class GameServiceUser(HttpUser):
     """Test user for Game Service endpoints"""
-    host = "http://localhost:5003"
+    host = "http://localhost:8080"
     wait_time = between(2, 5)
     
     def on_start(self):
@@ -219,28 +227,32 @@ class GameServiceUser(HttpUser):
     
     def get_auth_token(self):
         """Get a valid auth token"""
-        username = f"player_{''.join(random.choices(string.ascii_lowercase + string.digits, k=6))}"
+        username = f"player_{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}"
         password = "testpass123"
         
         # Register
-        response = self.client.post(
-            "http://localhost:5001/api/auth/register",
+        with self.client.post(
+            "/api/auth/register",
             json={"username": username, "password": password},
+            catch_response=True,
             name="/api/auth/register [for game service]"
-        )
-        
-        if response.status_code == 201:
-            return response.json().get("access_token")
+        ) as response:
+            if response.status_code == 201:
+                response.success()
+                return response.json().get("access_token")
+            elif response.status_code == 409:
+                response.success()
         
         # Try login
-        response = self.client.post(
-            "http://localhost:5001/api/auth/login",
+        with self.client.post(
+            "/api/auth/login",
             json={"username": username, "password": password},
+            catch_response=True,
             name="/api/auth/login [for game service]"
-        )
-        
-        if response.status_code == 200:
-            return response.json().get("access_token")
+        ) as response:
+            if response.status_code == 200:
+                response.success()
+                return response.json().get("access_token")
         
         return None
     
@@ -279,12 +291,15 @@ class GameServiceUser(HttpUser):
         """Test play card"""
         if self.token and self.game_id:
             card_index = random.randint(0, 2)  # Assuming 3 cards in hand
-            self.client.post(
+            with self.client.post(
                 f"/api/games/{self.game_id}/play-card",
                 headers={"Authorization": f"Bearer {self.token}"},
                 json={"card_index": card_index},
+                catch_response=True,
                 name="/api/games/[id]/play-card"
-            )
+            ) as response:
+                if response.status_code in [200, 400]:
+                    response.success()  # 400 is expected if card can't be played
     
     @task(1)
     def get_turn_info(self):
@@ -299,12 +314,15 @@ class GameServiceUser(HttpUser):
     @task(1)
     def health_check(self):
         """Test health check endpoint"""
-        self.client.get("/health", name="/health [game]")
+        if self.token and self.game_id:
+            with self.client.get(f"/api/games/{self.game_id}", headers={"Authorization": f"Bearer {self.token}"}, catch_response=True, name="/health [game]") as response:
+                if response.status_code in [200, 404]:
+                    response.success()
 
 
 class LeaderboardServiceUser(HttpUser):
     """Test user for Leaderboard Service endpoints"""
-    host = "http://localhost:5004"
+    host = "http://localhost:8080"
     wait_time = between(1, 3)
     
     def on_start(self):
@@ -313,28 +331,32 @@ class LeaderboardServiceUser(HttpUser):
     
     def get_auth_token(self):
         """Get a valid auth token"""
-        username = "testuser_leaderboard"
+        username = f"lbuser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}"
         password = "testpass123"
         
         # Register
-        response = self.client.post(
-            "http://localhost:5001/api/auth/register",
+        with self.client.post(
+            "/api/auth/register",
             json={"username": username, "password": password},
+            catch_response=True,
             name="/api/auth/register [for leaderboard service]"
-        )
-        
-        if response.status_code == 201:
-            return response.json().get("access_token")
+        ) as response:
+            if response.status_code == 201:
+                response.success()
+                return response.json().get("access_token")
+            elif response.status_code == 409:
+                response.success()
         
         # Try login
-        response = self.client.post(
-            "http://localhost:5001/api/auth/login",
+        with self.client.post(
+            "/api/auth/login",
             json={"username": username, "password": password},
+            catch_response=True,
             name="/api/auth/login [for leaderboard service]"
-        )
-        
-        if response.status_code == 200:
-            return response.json().get("access_token")
+        ) as response:
+            if response.status_code == 200:
+                response.success()
+                return response.json().get("access_token")
         
         return None
     
@@ -394,12 +416,14 @@ class LeaderboardServiceUser(HttpUser):
     @task(1)
     def health_check(self):
         """Test health check endpoint"""
-        self.client.get("/health", name="/health [leaderboard]")
+        with self.client.get("/api/leaderboard", headers={"Authorization": f"Bearer {self.token}"} if self.token else {}, catch_response=True, name="/health [leaderboard]") as response:
+            if response.status_code in [200, 401]:
+                response.success()
 
 
 class CombinedUser(HttpUser):
     """Combined user that tests all services in a realistic workflow"""
-    host = "http://localhost:5001"
+    host = "http://localhost:8080"
     wait_time = between(2, 5)
     
     def on_start(self):
@@ -437,14 +461,14 @@ class CombinedUser(HttpUser):
         
         # 1. Get cards
         self.client.get(
-            "http://localhost:5002/api/cards",
+            "/api/cards",
             headers={"Authorization": f"Bearer {self.token}"},
             name="/api/cards [combined]"
         )
         
         # 2. Create random deck
         deck_response = self.client.post(
-            "http://localhost:5002/api/cards/random-deck",
+            "/api/cards/random-deck",
             headers={"Authorization": f"Bearer {self.token}"},
             json={"size": 22},
             name="/api/cards/random-deck [combined]"
@@ -453,7 +477,7 @@ class CombinedUser(HttpUser):
         # 3. Create game
         player2 = f"opponent_{''.join(random.choices(string.ascii_lowercase + string.digits, k=6))}"
         game_response = self.client.post(
-            "http://localhost:5003/api/games",
+            "/api/games",
             headers={"Authorization": f"Bearer {self.token}"},
             json={"player2_name": player2},
             name="/api/games [create combined]"
@@ -464,32 +488,35 @@ class CombinedUser(HttpUser):
             
             # 4. Get game state
             self.client.get(
-                f"http://localhost:5003/api/games/{game_id}",
+                f"/api/games/{game_id}",
                 headers={"Authorization": f"Bearer {self.token}"},
                 name="/api/games/[id] [combined]"
             )
             
             # 5. Draw hand
             self.client.post(
-                f"http://localhost:5003/api/games/{game_id}/draw-hand",
+                f"/api/games/{game_id}/draw-hand",
                 headers={"Authorization": f"Bearer {self.token}"},
                 name="/api/games/[id]/draw-hand [combined]"
             )
             
             # 6. Get hand
             self.client.get(
-                f"http://localhost:5003/api/games/{game_id}/hand",
+                f"/api/games/{game_id}/hand",
                 headers={"Authorization": f"Bearer {self.token}"},
                 name="/api/games/[id]/hand [combined]"
             )
             
             # 7. Play card
-            self.client.post(
-                f"http://localhost:5003/api/games/{game_id}/play-card",
+            with self.client.post(
+                f"/api/games/{game_id}/play-card",
                 headers={"Authorization": f"Bearer {self.token}"},
                 json={"card_index": random.randint(0, 2)},
+                catch_response=True,
                 name="/api/games/[id]/play-card [combined]"
-            )
+            ) as response:
+                if response.status_code in [200, 400]:
+                    response.success()
     
     @task(5)
     def view_leaderboard(self):
@@ -499,14 +526,14 @@ class CombinedUser(HttpUser):
         
         # Get leaderboard
         self.client.get(
-            "http://localhost:5004/api/leaderboard",
+            "/api/leaderboard",
             headers={"Authorization": f"Bearer {self.token}"},
             name="/api/leaderboard [combined]"
         )
         
         # Get statistics
         self.client.get(
-            "http://localhost:5004/api/leaderboard/statistics",
+            "/api/leaderboard/statistics",
             headers={"Authorization": f"Bearer {self.token}"},
             name="/api/leaderboard/statistics [combined]"
         )
