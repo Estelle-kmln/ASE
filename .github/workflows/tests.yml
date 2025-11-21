@@ -128,7 +128,7 @@ jobs:
     - name: Run Postman tests with Newman
       run: |
         echo "Running Postman/Newman tests..."
-        newman run tests/postman_unit_tests.json \
+        newman run tests/microservices_postman_collection.json\
           --environment <(echo '{}') \
           --reporters cli,htmlextra \
           --reporter-htmlextra-export newman-report.html \

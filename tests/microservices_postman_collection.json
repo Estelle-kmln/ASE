@@ -329,13 +329,13 @@
 							"listen": "test",
 							"script": {
 								"exec": [
-									"pm.test(\"Status code is 401 or 422\", function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([401, 422]);",
+									"pm.test(\"Status code is 401\", function () {",
+									"    pm.expect(pm.response.code).to.equal(401);",
 									"});",
 									"",
 									"pm.test(\"Response indicates authentication error\", function () {",
 									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('msg');",
+									"    pm.expect(jsonData).to.have.property('error');",
 									"});"
 								],
 								"type": "text/javascript"
@@ -472,13 +472,13 @@
 							"listen": "test",
 							"script": {
 								"exec": [
-									"pm.test(\"Status code is 401 or 422\", function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([401, 422]);",
+									"pm.test(\"Status code is 401\", function () {",
+									"    pm.expect(pm.response.code).to.equal(401);",
 									"});",
 									"",
 									"pm.test(\"Response indicates authentication error\", function () {",
 									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('msg');",
+									"    pm.expect(jsonData).to.have.property('error');",
 									"});"
 								],
 								"type": "text/javascript"
@@ -580,13 +580,13 @@
 							"listen": "test",
 							"script": {
 								"exec": [
-									"pm.test(\"Status code is 401 or 422\", function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([401, 422]);",
+									"pm.test(\"Status code is 401\", function () {",
+									"    pm.expect(pm.response.code).to.equal(401);",
 									"});",
 									"",
 									"pm.test(\"Response indicates authentication error\", function () {",
 									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('msg');",
+									"    pm.expect(jsonData).to.have.property('error');",
 									"});"
 								],
 								"type": "text/javascript"
@@ -1337,6 +1337,219 @@
 					}
 				},
 				{
+					"name": "Resolve Round - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 or 400\", function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+									"});",
+									"",
+									"pm.test(\"Response contains round result or error\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    if (pm.response.code === 200) {",
+									"        pm.expect(jsonData).to.have.property('player1_score');",
+									"        pm.expect(jsonData).to.have.property('player2_score');",
+									"        pm.expect(jsonData).to.have.property('game_over');",
+									"    } else {",
+									"        pm.expect(jsonData).to.have.property('error');",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/resolve-round",
+							"host": ["{{game_service_url}}"],
+							"path": ["api", "games", "{{test_game_id}}", "resolve-round"]
+						}
+					}
+				},
+				{
+					"name": "Resolve Round - Invalid (No Game)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Response contains error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error', 'Game not found');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{game_service_url}}/api/games/invalid-game/resolve-round",
+							"host": ["{{game_service_url}}"],
+							"path": ["api", "games", "invalid-game", "resolve-round"]
+						}
+					}
+				},
+				{
+					"name": "Get Tie Breaker Status - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains tie breaker status\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('is_tied_game');",
+									"    pm.expect(jsonData).to.have.property('tie_breaker_possible');",
+									"    pm.expect(jsonData).to.have.property('player1_remaining_cards');",
+									"    pm.expect(jsonData).to.have.property('player2_remaining_cards');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/tie-breaker-status",
+							"host": ["{{game_service_url}}"],
+							"path": ["api", "games", "{{test_game_id}}", "tie-breaker-status"]
+						}
+					}
+				},
+				{
+					"name": "Get Tie Breaker Status - Invalid (No Game)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Response contains error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error', 'Game not found');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{game_service_url}}/api/games/invalid-game/tie-breaker-status",
+							"host": ["{{game_service_url}}"],
+							"path": ["api", "games", "invalid-game", "tie-breaker-status"]
+						}
+					}
+				},
+				{
+					"name": "Play Tie Breaker - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 or 400\", function () {",
+									"    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+									"});",
+									"",
+									"pm.test(\"Response contains tie breaker result or error\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    if (pm.response.code === 200) {",
+									"        pm.expect(jsonData).to.have.property('still_tied');",
+									"        pm.expect(jsonData).to.have.property('player1_card');",
+									"        pm.expect(jsonData).to.have.property('player2_card');",
+									"    } else {",
+									"        pm.expect(jsonData).to.have.property('error');",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{}"
+						},
+						"url": {
+							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/tie-breaker",
+							"host": ["{{game_service_url}}"],
+							"path": ["api", "games", "{{test_game_id}}", "tie-breaker"]
+						}
+					}
+				},
+				{
+					"name": "Play Tie Breaker - Invalid (No Tie State)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains error message\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('error');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{}"
+						},
+						"url": {
+							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/tie-breaker",
+							"host": ["{{game_service_url}}"],
+							"path": ["api", "games", "{{test_game_id}}", "tie-breaker"]
+						}
+					}
+				},
+				{
 					"name": "End Game - Valid",
 					"event": [
 						{
@@ -1444,13 +1657,13 @@
 							"listen": "test",
 							"script": {
 								"exec": [
-									"pm.test(\"Status code is 401 or 422\", function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([401, 422]);",
+									"pm.test(\"Status code is 401\", function () {",
+									"    pm.expect(pm.response.code).to.equal(401);",
 									"});",
 									"",
 									"pm.test(\"Response indicates authentication error\", function () {",
 									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('msg');",
+									"    pm.expect(jsonData).to.have.property('error');",
 									"});"
 								],
 								"type": "text/javascript"
