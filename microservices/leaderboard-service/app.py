@@ -57,6 +57,9 @@ def get_leaderboard():
     """Get the global leaderboard."""
     try:
         limit = request.args.get('limit', 10, type=int)
+        # Handle negative or zero limits
+        if limit <= 0:
+            limit = 10
         if limit > 100:
             limit = 100
         
@@ -242,6 +245,9 @@ def get_recent_games():
     """Get recent completed games."""
     try:
         limit = request.args.get('limit', 10, type=int)
+        # Handle negative or zero limits
+        if limit <= 0:
+            limit = 10
         if limit > 50:
             limit = 50
         
