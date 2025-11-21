@@ -549,3 +549,60 @@ To export test results:
 1. After running tests, click **Export Results**
 2. Save as JSON or HTML
 3. Include in your project documentation
+
+
+## **Card Service Tests** (`test_card_service.py`) - 29 tests
+
+**Endpoints tested:**
+- ✅ `GET /api/cards` - Get all cards (3 tests: success, no token, invalid token)
+- ✅ `GET /api/cards/by-type/<type>` - Get cards by type (6 tests: rock/paper/scissors success, invalid type, no token, case insensitive)
+- ✅ `GET /api/cards/<id>` - Get card by ID (4 tests: success, not found, no token, invalid format)
+- ✅ `POST /api/cards/random-deck` - Create random deck (7 tests: default size, custom size, too small, too large, negative, no token, randomness)
+- ✅ `GET /api/cards/statistics` - Get card statistics (3 tests: success, no token, percentage validation)
+- ✅ `GET /api/cards/types` - Get available types (3 tests: success, no token, valid types check)
+
+## **Game Service Tests** (`test_game_service.py`) - 35 tests
+
+**Endpoints tested:**
+- ✅ `POST /api/games` - Create game (5 tests: success, missing player2, no token, invalid token, empty name)
+- ✅ `GET /api/games/<game_id>` - Get game state (6 tests: player1/player2 success, not found, unauthorized, no token)
+- ✅ `GET /api/games/<game_id>/hand` - Get player hand (4 tests: success, not found, unauthorized, no token)
+- ✅ `POST /api/games/<game_id>/draw-hand` - Draw hand (4 tests: success, not found, unauthorized, no token)
+- ✅ `POST /api/games/<game_id>/play-card` - Play card (6 tests: success, missing index, invalid index, negative index, not found, no token)
+- ✅ `POST /api/games/<game_id>/resolve-round` - Resolve round (4 tests: success, not found, no token, cards not played)
+
+## **Leaderboard Service Tests** (`test_leaderboard_service.py`) - 32 tests
+
+**Endpoints tested:**
+- ✅ `GET /api/leaderboard` - Global leaderboard (6 tests: success, with limit, max limit, no token, invalid token, ranking order)
+- ✅ `GET /api/leaderboard/player/<name>` - Player stats (5 tests: success, nonexistent player, no token, invalid token, recent games structure)
+- ✅ `GET /api/leaderboard/recent-games` - Recent games (5 tests: success, with limit, max limit, no token, invalid token)
+- ✅ `GET /api/leaderboard/top-players` - Top players (4 tests: success, no token, invalid token, list sizes)
+- ✅ `GET /api/leaderboard/statistics` - Global statistics (4 tests: success, no token, invalid token, consistency)
+- ✅ Edge cases (3 tests: zero limit, negative limit, special characters)
+
+## **Total Test Coverage: 96 tests**
+
+Each test suite follows the same pattern as the auth service tests:
+- **Valid input tests** - Verify successful operations with correct data
+- **Invalid input tests** - Test error handling for bad data, missing fields, invalid values
+- **Authentication tests** - Verify token requirements and invalid token handling
+- **Authorization tests** - Check that users can only access their own resources
+- **Edge cases** - Test boundary conditions, special characters, and unusual scenarios
+
+You can run all the tests with:
+
+```bash
+# Run individual service tests
+pytest tests\test_card_service.py -v
+pytest tests\test_game_service.py -v
+pytest tests\test_leaderboard_service.py -v
+
+# Run all service tests together
+pytest tests\test_card_service.py tests\test_game_service.py tests\test_leaderboard_service.py -v
+
+# Run all tests including auth service
+pytest tests\test_auth_service.py tests\test_card_service.py tests\test_game_service.py tests\test_leaderboard_service.py -v
+```
+
+Made changes.
