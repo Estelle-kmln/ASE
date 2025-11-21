@@ -8,13 +8,16 @@ import requests
 import json
 import time
 import sys
-from urllib3.packages.urllib3.exceptions import InsecureRequestWarning
 
-# Disable SSL warnings for self-signed certificates
-requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+# Try to disable SSL warnings for self-signed certificates
+try:
+    import urllib3
+    urllib3.disable_warnings()
+except:
+    pass
 
 # API Gateway base URL
-BASE_URL = "https://localhost:8443"
+BASE_URL = "http://localhost:8080"
 
 # Test user data
 TEST_USER = {
@@ -277,24 +280,26 @@ class APITester:
         self.log("Waiting for services to be available...")
         
         services = [
-            "/auth/health",
-            "/cards/health",
-            "/game/health",
-            "/leaderboard/health"
+            ("/auth/health", "Auth Service"),
+            ("/cards/health", "Card Service"),
+            ("/game/health", "Game Service"),
+            ("/leaderboard/health", "Leaderboard Service")
         ]
         
         start_time = time.time()
         while time.time() - start_time < timeout:
             all_ready = True
-            for service in services:
+            failed_services = []
+            
+            for endpoint, name in services:
                 try:
-                    response = requests.get(f"{BASE_URL}{service}", verify=False, timeout=5)
+                    response = requests.get(f"{BASE_URL}{endpoint}", verify=False, timeout=5)
                     if response.status_code != 200:
                         all_ready = False
-                        break
-                except:
+                        failed_services.append(f"{name} (HTTP {response.status_code})")
+                except Exception as e:
                     all_ready = False
-                    break
+                    failed_services.append(f"{name} ({type(e).__name__})")
             
             if all_ready:
                 self.log("All services are ready!")
@@ -303,6 +308,13 @@ class APITester:
             time.sleep(2)
         
         self.log("Timeout waiting for services", "FAIL")
+        if failed_services:
+            self.log(f"Failed services: {', '.join(failed_services)}", "FAIL")
+        self.log(f"\nTroubleshooting:", "INFO")
+        self.log(f"  1. Check Docker: cd microservices && docker-compose ps", "INFO")
+        self.log(f"  2. Test directly: curl {BASE_URL}/api/auth/health", "INFO")
+        self.log(f"  3. Check logs: docker-compose logs api-gateway", "INFO")
+        self.log(f"  4. Restart: docker-compose restart", "INFO")
         return False
 
     def run_all_tests(self):

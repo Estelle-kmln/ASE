@@ -1,12 +1,36 @@
-import unittest
-import sqlite3
-import io
-import sys
-from contextlib import redirect_stdout
-from pathlib import Path
+"""Tests for viewing old matches.
 
-# Import the functions we’re testing
-from view_old_matches import get_old_matches, display_old_matches
+DEPRECATED: These tests were written for the old monolithic implementation.
+Match history is now served via the leaderboard-service microservice.
+Please use test_microservices.py for comprehensive API testing instead.
+"""
+
+import unittest
+import sys
+
+def main():
+    print("=" * 80)
+    print("DEPRECATED TEST FILE")
+    print("=" * 80)
+    print()
+    print("This test file is deprecated as the codebase has migrated to microservices.")
+    print()
+    print("Match history is now served by:")
+    print("  - microservices/leaderboard-service/app.py")
+    print()
+    print("To test the application, use:")
+    print("  1. test_microservices.py - Comprehensive API integration tests")
+    print("  2. GET http://localhost:8080/api/leaderboard/recent (with auth token)")
+    print()
+    print("=" * 80)
+    return 0
+
+if __name__ == "__main__":
+    print("\nNote: unittest.main() has been disabled for deprecated tests.")
+    exit(main())
+
+# Old imports - no longer available
+# from view_old_matches import get_old_matches, display_old_matches
 
 TEST_DB_PATH = "test_game.db"
 
