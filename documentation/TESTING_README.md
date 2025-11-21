@@ -25,13 +25,25 @@ docker-compose ps
 **1. Run All Locust Performance Tests:**
 
 ```bash
+# From project root directory
 locust -f tests/locustfile.py
 ```
 
+Then open `http://localhost:8089` in your browser to configure and run tests.
+
 **2. Run All Postman API Tests:**
 
+**Important**: Before running, update the Postman collection variables (see Postman API Tests section below for details).
+
 ```bash
+# Run all Postman tests
 newman run tests/postman_unit_tests.json
+
+# Or with explicit URLs (recommended)
+newman run tests/postman_unit_tests.json \
+  --env-var "game_service_url=http://localhost:5003" \
+  --env-var "user_service_url=http://localhost:5001" \
+  --env-var "card_service_url=http://localhost:5002"
 ```
 
 ---
@@ -171,6 +183,17 @@ Locust performance tests are designed to test the microservices architecture und
 ### Running Locust Tests
 
 #### Quick Start (Web UI)
+
+You can run Locust from either the project root or the tests directory:
+
+**Option 1: From project root (recommended)**
+
+```bash
+# From project root directory
+locust -f tests/locustfile.py
+```
+
+**Option 2: From tests directory**
 
 ```bash
 # Navigate to tests directory
@@ -402,9 +425,21 @@ The Postman collection (`postman_unit_tests.json`) contains unit tests for **thr
 
 ### Running Tests from Command Line
 
+**Before running, ensure:**
+
+1. Docker Desktop is running
+2. Microservices are built and started: `cd microservices && docker-compose up -d --build`
+3. Postman collection variables are updated (see Setup Instructions above)
+
 ```bash
-# Run all Postman tests
+# Run all Postman tests (from project root)
 newman run tests/postman_unit_tests.json
+
+# Or with explicit environment variables
+newman run tests/postman_unit_tests.json \
+  --env-var "game_service_url=http://localhost:5003" \
+  --env-var "user_service_url=http://localhost:5001" \
+  --env-var "card_service_url=http://localhost:5002"
 ```
 
 For more options (HTML reports, environment variables, etc.):
@@ -460,18 +495,43 @@ newman run tests/postman_unit_tests.json --verbose
 
 #### 2. Configure Environment Variables
 
+**IMPORTANT**: The Postman collection comes with default URLs that need to be updated to match your running microservices.
+
 The collection uses the following variables (set in the collection variables):
 
-- `game_service_url` - Base URL for Game Service (default: `http://localhost:8001`)
-- `user_service_url` - Base URL for User Service (default: `http://localhost:8002`)
-- `card_service_url` - Base URL for Card Collection Service (default: `http://localhost:8003`)
+- `game_service_url` - Base URL for Game Service (default: `http://localhost:8001` - **needs update**)
+- `user_service_url` - Base URL for Auth Service (default: `http://localhost:8002` - **needs update**)
+- `card_service_url` - Base URL for Card Service (default: `http://localhost:8003` - **needs update**)
 - `game_id` - Game ID for testing (set dynamically after creating a game)
+
+**Correct values for your microservices:**
+
+- `game_service_url`: `http://localhost:5003`
+- `user_service_url`: `http://localhost:5001` (Auth Service)
+- `card_service_url`: `http://localhost:5002`
 
 **To update these values:**
 
-1. Select the collection in Postman
-2. Go to the **Variables** tab
-3. Update the values to match your microservice URLs
+1. Open Postman
+2. Select the "Battle Cards - Unit Tests" collection
+3. Click on the **Variables** tab
+4. Update the values to:
+   - `game_service_url`: `http://localhost:5003`
+   - `user_service_url`: `http://localhost:5001`
+   - `card_service_url`: `http://localhost:5002`
+5. Click **Save** to persist the changes
+
+**Alternative: Update via Command Line**
+
+You can also update the collection file directly or use newman with environment variables:
+
+```bash
+# Create a newman environment file or use inline variables
+newman run tests/postman_unit_tests.json \
+  --env-var "game_service_url=http://localhost:5003" \
+  --env-var "user_service_url=http://localhost:5001" \
+  --env-var "card_service_url=http://localhost:5002"
+```
 
 #### 3. Running Unit Tests
 
@@ -541,7 +601,19 @@ The same Postman collection can be used for **integration testing** against the 
 - Verify Docker Desktop is running
 - Ensure microservices are running: `cd microservices && docker-compose ps`
 - Rebuild and restart services if code changed: `docker-compose up -d --build`
+- **Verify Postman collection variables are set correctly:**
+  - `game_service_url` should be `http://localhost:5003`
+  - `user_service_url` should be `http://localhost:5001`
+  - `card_service_url` should be `http://localhost:5002`
 - Check that ports match the configured URLs
+- Test service health endpoints:
+
+  ```bash
+  curl http://localhost:5001/health
+  curl http://localhost:5002/health
+  curl http://localhost:5003/health
+  ```
+
 - Ensure Docker containers are healthy
 
 #### Tests Failing with 404 Errors
