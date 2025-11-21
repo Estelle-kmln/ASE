@@ -33,17 +33,9 @@ Then open `http://localhost:8089` in your browser to configure and run tests.
 
 **2. Run All Postman API Tests:**
 
-**Important**: Before running, update the Postman collection variables (see Postman API Tests section below for details).
-
 ```bash
-# Run all Postman tests
+# Run all Postman tests (default URLs are pre-configured)
 newman run tests/postman_unit_tests.json
-
-# Or with explicit URLs (recommended)
-newman run tests/postman_unit_tests.json \
-  --env-var "game_service_url=http://localhost:5003" \
-  --env-var "user_service_url=http://localhost:5001" \
-  --env-var "card_service_url=http://localhost:5002"
 ```
 
 ---
@@ -493,40 +485,27 @@ newman run tests/postman_unit_tests.json --verbose
 3. Select the `postman_unit_tests.json` file
 4. The collection will appear in your Postman workspace
 
-#### 2. Configure Environment Variables
+#### 2. Verify Environment Variables
 
-**IMPORTANT**: The Postman collection comes with default URLs that need to be updated to match your running microservices.
+The collection uses the following variables (pre-configured with correct defaults):
 
-The collection uses the following variables (set in the collection variables):
-
-- `game_service_url` - Base URL for Game Service (default: `http://localhost:8001` - **needs update**)
-- `user_service_url` - Base URL for Auth Service (default: `http://localhost:8002` - **needs update**)
-- `card_service_url` - Base URL for Card Service (default: `http://localhost:8003` - **needs update**)
+- `game_service_url` - Base URL for Game Service (default: `http://localhost:5003`)
+- `user_service_url` - Base URL for Auth Service (default: `http://localhost:5001`)
+- `card_service_url` - Base URL for Card Service (default: `http://localhost:5002`)
 - `game_id` - Game ID for testing (set dynamically after creating a game)
 
-**Correct values for your microservices:**
-
-- `game_service_url`: `http://localhost:5003`
-- `user_service_url`: `http://localhost:5001` (Auth Service)
-- `card_service_url`: `http://localhost:5002`
-
-**To update these values:**
+**Default values are already configured correctly** in the collection file. If you need to override them:
 
 1. Open Postman
 2. Select the "Battle Cards - Unit Tests" collection
 3. Click on the **Variables** tab
-4. Update the values to:
-   - `game_service_url`: `http://localhost:5003`
-   - `user_service_url`: `http://localhost:5001`
-   - `card_service_url`: `http://localhost:5002`
+4. Update values if your services run on different ports
 5. Click **Save** to persist the changes
 
-**Alternative: Update via Command Line**
-
-You can also update the collection file directly or use newman with environment variables:
+**Or override via Command Line:**
 
 ```bash
-# Create a newman environment file or use inline variables
+# Override variables via command line if needed
 newman run tests/postman_unit_tests.json \
   --env-var "game_service_url=http://localhost:5003" \
   --env-var "user_service_url=http://localhost:5001" \
@@ -601,7 +580,7 @@ The same Postman collection can be used for **integration testing** against the 
 - Verify Docker Desktop is running
 - Ensure microservices are running: `cd microservices && docker-compose ps`
 - Rebuild and restart services if code changed: `docker-compose up -d --build`
-- **Verify Postman collection variables are set correctly:**
+- **Verify Postman collection variables** (defaults are pre-configured, but check if you modified them):
   - `game_service_url` should be `http://localhost:5003`
   - `user_service_url` should be `http://localhost:5001`
   - `card_service_url` should be `http://localhost:5002`
