@@ -47,14 +47,6 @@ GET /health
 ```
 **Purpose**: Service health status monitoring  
 **Authentication**: Not required  
-**Example**:
-```bash
-curl http://localhost:8080/health
-```
-**Response**:
-```json
-{"status": "healthy", "service": "auth-service"}
-```
 
 ### **User Registration**
 ```http
