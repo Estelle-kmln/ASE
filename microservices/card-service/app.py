@@ -3,6 +3,7 @@ Card Service - Card database and statistics microservice
 """
 
 import os
+import sys
 import random
 from flask import Flask, request, jsonify
 from flask_jwt_extended import JWTManager, jwt_required
@@ -11,6 +12,10 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 import requests
+
+# Add utils directory to path for input sanitizer
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'utils'))
+from input_sanitizer import InputSanitizer, SecurityMiddleware, require_sanitized_input
 
 # Load environment variables
 load_dotenv()
@@ -23,6 +28,7 @@ app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-chan
 # Initialize extensions
 jwt = JWTManager(app)
 CORS(app)
+security = SecurityMiddleware(app)
 
 # JWT error handlers - convert 422 to 401 for invalid tokens
 @jwt.invalid_token_loader
@@ -93,8 +99,11 @@ def get_all_cards():
 def get_cards_by_type(card_type):
     """Get cards by type (rock, paper, scissors)."""
     try:
-        if card_type.lower() not in ['rock', 'paper', 'scissors']:
-            return jsonify({'error': 'Invalid card type. Must be rock, paper, or scissors'}), 400
+        # Validate and sanitize card type
+        try:
+            card_type = InputSanitizer.validate_card_type(card_type)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
         
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -121,6 +130,11 @@ def get_cards_by_type(card_type):
 def get_card_by_id(card_id):
     """Get a specific card by ID."""
     try:
+        # Validate card ID
+        try:
+            card_id = InputSanitizer.validate_integer(card_id, min_val=1, max_val=10000)
+        except ValueError as e:
+            return jsonify({'error': f'Invalid card ID: {str(e)}'}), 400
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
@@ -144,14 +158,17 @@ def get_card_by_id(card_id):
 
 @app.route('/api/cards/random-deck', methods=['POST'])
 @jwt_required()
+@require_sanitized_input({'size': 'int'})
 def create_random_deck():
     """Create a random deck of 22 cards."""
     try:
         data = request.get_json() or {}
-        deck_size = data.get('size', 22)
         
-        if deck_size < 1 or deck_size > 50:
-            return jsonify({'error': 'Deck size must be between 1 and 50'}), 400
+        # Validate deck size
+        try:
+            deck_size = InputSanitizer.validate_integer(data.get('size', 22), min_val=1, max_val=50)
+        except ValueError as e:
+            return jsonify({'error': f'Invalid deck size: {str(e)}'}), 400
         
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
