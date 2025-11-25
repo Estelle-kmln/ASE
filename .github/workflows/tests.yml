@@ -1,16 +1,18 @@
 name: Microservice Integration Tests
 
 on:
-  push:
-    branches: ["*"]
   pull_request:
     branches: ["*"]
 
 jobs:
-  integration-tests:
-    name: Pytest via API Gateway
+  test:
+    name: ${{ matrix.test-type }} Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        test-type: [Unit, Locust, Postman]
     env:
       BASE_URL: http://localhost:8080
       DATABASE_URL: postgresql://gameuser:gamepassword@localhost:5432/battlecards
@@ -19,19 +21,44 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
+        if: matrix.test-type == 'Unit' || matrix.test-type == 'Locust'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
 
+      - name: Set up Node.js
+        if: matrix.test-type == 'Postman'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Install test dependencies
+        if: matrix.test-type == 'Unit'
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest requests psycopg2-binary
+          pip install requests
+
+      - name: Install Locust
+        if: matrix.test-type == 'Locust'
+        run: |
+          python -m pip install --upgrade pip
+          pip install locust
+
+      - name: Install Newman
+        if: matrix.test-type == 'Postman'
+        run: npm install -g newman
+
+      - name: Generate GAME_HISTORY_KEY
+        working-directory: microservices
+        run: |
+          python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())" > .env
+          echo "GAME_HISTORY_KEY=$(cat .env)" >> $GITHUB_ENV
 
       - name: Build and start microservices
         working-directory: microservices
+        env:
+          GAME_HISTORY_KEY: ${{ env.GAME_HISTORY_KEY }}
         run: |
           docker compose up -d --build
 
@@ -50,16 +77,37 @@ jobs:
           docker compose -f microservices/docker-compose.yml logs
           exit 1
 
-      - name: Run integration pytest suites
+      - name: Run Unit Tests
+        if: matrix.test-type == 'Unit'
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          pytest \
-            tests/test_auth_service.py \
-            tests/test_card_service.py \
-            tests/test_game_service.py \
-            tests/test_leaderboard_service.py \
-            -v --maxfail=1 --disable-warnings
+          python3 -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Run Locust Performance Tests
+        if: matrix.test-type == 'Locust'
+        run: |
+          locust -f tests/locustfile.py \
+            --host=http://localhost:8080 \
+            --headless \
+            --users 10 \
+            --spawn-rate 2 \
+            --run-time 1m \
+            --html=tests/locust_report.html \
+            CombinedUser
+
+      - name: Upload Locust report
+        if: matrix.test-type == 'Locust' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: locust-report-${{ github.run_number }}
+          path: tests/locust_report.html
+
+      - name: Run Postman Tests
+        if: matrix.test-type == 'Postman'
+        run: |
+          newman run tests/microservices_postman_collection.json \
+            --env-var "base_url=http://localhost:8080"
 
       - name: Capture docker compose logs on failure
         if: failure()
@@ -71,4 +119,3 @@ jobs:
         if: always()
         working-directory: microservices
         run: docker compose down -v
-
