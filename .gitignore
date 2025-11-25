@@ -9,6 +9,7 @@
 .env.local
 .env.production
 .env.development
+microservices/.env
 
 # Python
 __pycache__/

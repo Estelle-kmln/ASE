@@ -1208,88 +1208,95 @@ def get_user_games(username):
             return jsonify({"error": "Unauthorized"}), 403
 
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        cursor.execute(
-            """
-            SELECT game_id, turn, is_active, player1_name, player2_name, 
-                   player1_score, player2_score, winner, created_at
-            FROM games 
-            WHERE player1_name = %s OR player2_name = %s 
-            ORDER BY created_at DESC
-        """,
-            (username, username),
-        )
-
-        games = cursor.fetchall()
-
-        history_payloads = {}
-        if include_history and games:
-            history_cursor = conn.cursor(cursor_factory=RealDictCursor)
-            game_ids = [game["game_id"] for game in games]
-            history_cursor.execute(
+            cursor.execute(
                 """
-                SELECT 
-                    game_id,
-                    archived_at,
-                    encrypted_payload,
-                    integrity_hash,
-                    player1_score,
-                    player2_score,
-                    winner
-                FROM game_history
-                WHERE game_id = ANY(%s)
+                SELECT game_id, turn, is_active, player1_name, player2_name, 
+                       player1_score, player2_score, winner, created_at
+                FROM games 
+                WHERE player1_name = %s OR player2_name = %s 
+                ORDER BY created_at DESC
             """,
-                (game_ids,),
+                (username, username),
             )
-            history_rows = history_cursor.fetchall()
-            history_cursor.close()
-            for history_row in history_rows:
+
+            games = cursor.fetchall()
+
+            history_payloads = {}
+            tampered_game_ids = set()
+            if include_history and games:
+                history_cursor = conn.cursor(cursor_factory=RealDictCursor)
                 try:
-                    snapshot = decrypt_history_row(history_row)
-                except ValueError:
-                    conn.close()
-                    return jsonify({"error": HISTORY_TAMPER_MESSAGE}), 409
+                    game_ids = [game["game_id"] for game in games]
+                    history_cursor.execute(
+                        """
+                        SELECT 
+                            game_id,
+                            archived_at,
+                            encrypted_payload,
+                            integrity_hash,
+                            player1_score,
+                            player2_score,
+                            winner
+                        FROM game_history
+                        WHERE game_id = ANY(%s)
+                    """,
+                        (game_ids,),
+                    )
+                    history_rows = history_cursor.fetchall()
+                    for history_row in history_rows:
+                        try:
+                            snapshot = decrypt_history_row(history_row)
+                        except ValueError:
+                            tampered_game_ids.add(history_row["game_id"])
+                            continue
 
-                history_payloads[history_row["game_id"]] = {
-                    "archived_at": (
-                        history_row["archived_at"].isoformat()
-                        if history_row["archived_at"]
-                        else None
-                    ),
-                    "player1_score": history_row["player1_score"],
-                    "player2_score": history_row["player2_score"],
-                    "winner": history_row["winner"],
-                    "snapshot": snapshot,
-                }
+                        history_payloads[history_row["game_id"]] = {
+                            "archived_at": (
+                                history_row["archived_at"].isoformat()
+                                if history_row["archived_at"]
+                                else None
+                            ),
+                            "player1_score": history_row["player1_score"],
+                            "player2_score": history_row["player2_score"],
+                            "winner": history_row["winner"],
+                            "snapshot": snapshot,
+                        }
+                finally:
+                    history_cursor.close()
 
-        conn.close()
+            game_list = []
+            for game in games:
+                game_list.append(
+                    {
+                        "game_id": game["game_id"],
+                        "turn": game["turn"],
+                        "is_active": game["is_active"],
+                        "player1_name": game["player1_name"],
+                        "player2_name": game["player2_name"],
+                        "player1_score": game["player1_score"],
+                        "player2_score": game["player2_score"],
+                        "winner": game["winner"],
+                        "created_at": (
+                            game["created_at"].isoformat()
+                            if game["created_at"]
+                            else None
+                        ),
+                    }
+                )
+                if include_history:
+                    history = history_payloads.get(game["game_id"])
+                    if history:
+                        game_list[-1]["history"] = history
+                    elif game["game_id"] in tampered_game_ids:
+                        game_list[-1]["history_error"] = HISTORY_TAMPER_MESSAGE
 
-        game_list = []
-        for game in games:
-            game_list.append(
-                {
-                    "game_id": game["game_id"],
-                    "turn": game["turn"],
-                    "is_active": game["is_active"],
-                    "player1_name": game["player1_name"],
-                    "player2_name": game["player2_name"],
-                    "player1_score": game["player1_score"],
-                    "player2_score": game["player2_score"],
-                    "winner": game["winner"],
-                    "created_at": (
-                        game["created_at"].isoformat()
-                        if game["created_at"]
-                        else None
-                    ),
-                }
-            )
-            if include_history:
-                history = history_payloads.get(game["game_id"])
-                if history:
-                    game_list[-1]["history"] = history
+            return jsonify({"games": game_list}), 200
 
-        return jsonify({"games": game_list}), 200
+        finally:
+            conn.close()
 
     except Exception as e:
         return jsonify({"error": f"Failed to get user games: {str(e)}"}), 500

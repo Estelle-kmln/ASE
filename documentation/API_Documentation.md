@@ -831,6 +831,26 @@ The system uses the following main tables:
 - **game_history**: Encrypted, tamper-evident snapshots of completed games (requires `GAME_HISTORY_KEY`)
 
 ### **Deployment Instructions**
+
+**Recommended: Use the automated build script** (handles GAME_HISTORY_KEY automatically):
+
+```bash
+# Build and start all services (automatically generates GAME_HISTORY_KEY if needed)
+cd microservices
+./build-and-start.sh
+
+# Stop all services  
+docker compose down
+
+# View logs
+docker compose logs [service-name]
+
+# Check status
+docker compose ps
+```
+
+**Alternative: Manual build** (requires setting GAME_HISTORY_KEY manually):
+
 ```bash
 # Start all services
 docker compose up -d --build
@@ -845,13 +865,16 @@ docker compose logs [service-name]
 docker compose ps
 ```
 
+**Note**: The build script automatically generates and saves a `GAME_HISTORY_KEY` to `.env` if one doesn't exist. This key is required for game history encryption and tamper detection. The key persists across sessions while remaining secure (gitignored).
+
 ---
 
 ## **🛠️ Development Notes**
 
 ### **Data Security**
 - Completed matches are archived into the `game_history` table using symmetric encryption plus an HMAC integrity hash.
-- Provision the `GAME_HISTORY_KEY` environment variable (32-byte url-safe base64) so services can encrypt/decrypt and validate history payloads.
+- The `GAME_HISTORY_KEY` environment variable (32-byte url-safe base64) is **automatically generated** by the `build-and-start.sh` script if not present.
+- The key is saved to `.env` (gitignored) and persists across sessions.
 - Any tampering with stored history is detected server-side; affected endpoints return HTTP 409 to highlight the integrity issue.
 
 ### **Authentication Flow**
