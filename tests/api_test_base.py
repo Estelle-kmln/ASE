@@ -44,8 +44,10 @@ class APIGatewayTestCase(unittest.TestCase):
     """
 
     _gateway_verified = False
-    session = requests.Session()
 
+    def setUp(self) -> None:
+        super().setUp()
+        self.session = requests.Session()
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
