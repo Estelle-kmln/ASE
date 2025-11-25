@@ -70,6 +70,7 @@ services:
       - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
       - JWT_SECRET_KEY=your-super-secret-key-change-in-production
       - CARD_SERVICE_URL=http://card-service:5002
+      - GAME_HISTORY_KEY=KPzxEaZaiwWzcAcCtEN4PJPI195BjbqyNeoc-kT5LEE=
     ports:
       - "5003:5003"
     depends_on:

@@ -1,5 +1,9 @@
 # Battle Cards Microservices .gitignore
 
+# logs
+*.csv 
+
+
 # Environment files
 .env
 .env.local

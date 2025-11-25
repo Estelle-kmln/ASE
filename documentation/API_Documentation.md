@@ -526,10 +526,25 @@ GET /api/games/user/<username>
 ```
 **Purpose**: Retrieve all games for a specific user  
 **Authentication**: Bearer token required  
+**Query Parameters**:
+- `include_history=true` (optional): Embed decrypted, integrity-checked history snapshots for archived matches. Request fails with HTTP 409 if tampering is detected.
 **Example**:
 ```bash
 curl -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:5003/api/games/user/player1
+```
+
+### **Get Archived Game History**
+```http
+GET /api/games/<game_id>/history
+```
+**Purpose**: Retrieve the encrypted-at-rest snapshot for a completed game (only accessible to participants).  
+**Authentication**: Bearer token required  
+**Tamper Detection**: Returns HTTP 409 if the stored integrity hash no longer matches the encrypted payload.  
+**Example**:
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:5003/api/games/GAME_ID/history
 ```
 
 ---
@@ -813,7 +828,7 @@ The system uses the following main tables:
 - **users**: User accounts and authentication
 - **cards**: Card collection (39 total: Rock, Paper, Scissors × 13 power levels each)
 - **games**: Game state and player information
-- **game_history**: Completed games for leaderboard calculations
+- **game_history**: Encrypted, tamper-evident snapshots of completed games (requires `GAME_HISTORY_KEY`)
 
 ### **Deployment Instructions**
 ```bash
@@ -833,6 +848,11 @@ docker compose ps
 ---
 
 ## **🛠️ Development Notes**
+
+### **Data Security**
+- Completed matches are archived into the `game_history` table using symmetric encryption plus an HMAC integrity hash.
+- Provision the `GAME_HISTORY_KEY` environment variable (32-byte url-safe base64) so services can encrypt/decrypt and validate history payloads.
+- Any tampering with stored history is detected server-side; affected endpoints return HTTP 409 to highlight the integrity issue.
 
 ### **Authentication Flow**
 1. User registers/logs in via Auth Service
