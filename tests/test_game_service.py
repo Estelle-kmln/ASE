@@ -7,17 +7,20 @@ import unittest
 import requests
 import time
 import os
-import psycopg2
+try:
+    import psycopg2
+except ImportError:  # pragma: no cover - optional dependency in CI
+    psycopg2 = None
 
-# API Gateway base URL
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8080")
+from tests.api_test_base import APIGatewayTestCase, BASE_URL
+
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://gameuser:gamepassword@localhost:5432/battlecards",
 )
 
 
-class TestGameServiceSetup(unittest.TestCase):
+class TestGameServiceSetup(APIGatewayTestCase):
     """Setup class to get authentication tokens for tests."""
 
     @classmethod
@@ -503,6 +506,7 @@ class TestGameServiceResolveRound(TestGameServiceSetup):
         self.assertIn("error", data)
 
 
+@unittest.skipIf(psycopg2 is None, "psycopg2 is required for history tamper tests")
 class TestGameHistoryEndpoints(TestGameServiceSetup):
     """Tests for immutable game history retrieval and tamper detection."""
 

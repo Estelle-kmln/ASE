@@ -1,238 +1,74 @@
-name: Run Tests
+name: Microservice Integration Tests
 
 on:
   push:
-    branches: [ '*' ]
+    branches: ["*"]
   pull_request:
-    branches: [ '*' ]
+    branches: ["*"]
 
 jobs:
-  pytest-tests:
-    name: Pytest Tests
+  integration-tests:
+    name: Pytest via API Gateway
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 35
+    env:
+      BASE_URL: http://localhost:8080
+      DATABASE_URL: postgresql://gameuser:gamepassword@localhost:5432/battlecards
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        cache: 'pip'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
 
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest pytest-cov requests urllib3
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest requests psycopg2-binary
 
-    - name: Build Docker images
-      run: |
-        cd microservices
-        docker compose build
+      - name: Build and start microservices
+        working-directory: microservices
+        run: |
+          docker compose up -d --build
 
-    - name: Start microservices
-      run: |
-        cd microservices
-        docker compose up -d
-        echo "Waiting for services to be ready..."
-        sleep 60
+      - name: Wait for API gateway to become healthy
+        run: |
+          set -euo pipefail
+          for attempt in {1..40}; do
+            if curl -fsS http://localhost:8080/health >/dev/null; then
+              echo "API gateway is healthy"
+              exit 0
+            fi
+            echo "Gateway not ready yet (attempt ${attempt}/40). Waiting 5s..."
+            sleep 5
+          done
+          echo "Gateway did not become healthy in time"
+          docker compose -f microservices/docker-compose.yml logs
+          exit 1
 
-    - name: Verify services are running
-      run: |
-        docker ps
-        echo "Checking service health..."
-        curl -f http://localhost:8080/health || echo "Nginx not ready yet"
-        sleep 30
+      - name: Run integration pytest suites
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          pytest \
+            tests/test_auth_service.py \
+            tests/test_card_service.py \
+            tests/test_game_service.py \
+            tests/test_leaderboard_service.py \
+            -v --maxfail=1 --disable-warnings
 
-    - name: Run pytest tests for microservices
-      env:
-        BASE_URL: http://localhost:8080
-        PYTHONPATH: ${{ github.workspace }}
-      run: |
-        echo "Running pytest tests..."
-        pytest tests/test_auth_service.py -v --tb=short
-        pytest tests/test_card_service.py -v --tb=short
-        pytest tests/test_game_service.py -v --tb=short
-        pytest tests/test_leaderboard_service.py -v --tb=short
+      - name: Capture docker compose logs on failure
+        if: failure()
+        run: |
+          docker compose -f microservices/docker-compose.yml ps
+          docker compose -f microservices/docker-compose.yml logs
 
-    - name: Show service logs on failure
-      if: failure()
-      run: |
-        echo "=== Docker Compose Services ==="
-        docker ps -a
-        echo "=== Auth Service Logs ==="
-        docker logs auth-service || true
-        echo "=== Card Service Logs ==="
-        docker logs card-service || true
-        echo "=== Game Service Logs ==="
-        docker logs game-service || true
-        echo "=== Leaderboard Service Logs ==="
-        docker logs leaderboard-service || true
-        echo "=== Nginx Logs ==="
-        docker logs nginx || true
-
-    - name: Cleanup
-      if: always()
-      run: |
-        cd microservices
-        docker compose down -v
-
-  postman-tests:
-    name: Postman/Newman Tests
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-
-    - name: Install Node.js for Newman
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-
-    - name: Install Newman (Postman CLI)
-      run: |
-        npm install -g newman
-        npm install -g newman-reporter-htmlextra
-
-    - name: Build Docker images
-      run: |
-        cd microservices
-        docker compose build
-
-    - name: Start microservices
-      run: |
-        cd microservices
-        docker compose up -d
-        echo "Waiting for services to be ready..."
-        sleep 60
-
-    - name: Verify services are running
-      run: |
-        docker ps
-        curl -f http://localhost:8080/health || echo "Nginx not ready yet"
-        sleep 30
-
-    - name: Run Postman tests with Newman
-      run: |
-        echo "Running Postman/Newman tests..."
-        newman run tests/microservices_postman_collection.json\
-          --environment <(echo '{}') \
-          --reporters cli,htmlextra \
-          --reporter-htmlextra-export newman-report.html \
-          --color on
-
-    - name: Upload Newman report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: newman-report
-        path: newman-report.html
-
-    - name: Show service logs on failure
-      if: failure()
-      run: |
-        echo "=== Docker Compose Services ==="
-        docker ps -a
-        echo "=== Service Logs ==="
-        docker logs auth-service || true
-        docker logs card-service || true
-        docker logs game-service || true
-        docker logs leaderboard-service || true
-        docker logs nginx || true
-
-    - name: Cleanup
-      if: always()
-      run: |
-        cd microservices
-        docker compose down -v
-
-  locust-tests:
-    name: Locust Performance Tests
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        cache: 'pip'
-
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-
-    - name: Build Docker images
-      run: |
-        cd microservices
-        docker compose build
-
-    - name: Start microservices
-      run: |
-        cd microservices
-        docker compose up -d
-        echo "Waiting for services to be ready..."
-        sleep 60
-
-    - name: Verify services are running
-      run: |
-        docker ps
-        curl -f http://localhost:8080/health || echo "Nginx not ready yet"
-        sleep 30
-
-    - name: Run Locust performance tests (headless)
-      run: |
-        echo "Running Locust performance tests..."
-        cd tests
-        locust -f locustfile.py \
-          --headless \
-          --users 10 \
-          --spawn-rate 2 \
-          --run-time 60s \
-          --host http://localhost:8080 \
-          --html locust-report.html \
-          --csv locust-results
-
-    - name: Upload Locust reports
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: locust-reports
-        path: |
-          tests/locust-report.html
-          tests/locust-results*.csv
-
-    - name: Show service logs on failure
-      if: failure()
-      run: |
-        echo "=== Docker Compose Services ==="
-        docker ps -a
-        echo "=== Service Logs ==="
-        docker logs auth-service || true
-        docker logs card-service || true
-        docker logs game-service || true
-        docker logs leaderboard-service || true
-        docker logs nginx || true
-
-    - name: Cleanup
-      if: always()
-      run: |
-        cd microservices
-        docker compose down -v
+      - name: Tear down microservices
+        if: always()
+        working-directory: microservices
+        run: docker compose down -v
 

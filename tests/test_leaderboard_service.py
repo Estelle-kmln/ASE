@@ -6,13 +6,11 @@ Tests all leaderboard service methods with valid and invalid inputs.
 import unittest
 import requests
 import time
-import os
 
-# API Gateway base URL
-BASE_URL = os.getenv('BASE_URL', 'http://localhost:8080')
+from tests.api_test_base import APIGatewayTestCase, BASE_URL
 
 
-class TestLeaderboardServiceSetup(unittest.TestCase):
+class TestLeaderboardServiceSetup(APIGatewayTestCase):
     """Setup class to get authentication token for tests."""
     
     @classmethod
