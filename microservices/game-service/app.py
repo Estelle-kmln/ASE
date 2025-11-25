@@ -208,6 +208,7 @@ def archive_game_history(
             integrity_hash,
         ),
     )
+    cursor.close()
 
 
 def _raw_payload_to_bytes(raw_payload):
@@ -1242,6 +1243,7 @@ def get_user_games(username):
                 (game_ids,),
             )
             history_rows = history_cursor.fetchall()
+            history_cursor.close()
             for history_row in history_rows:
                 try:
                     snapshot = decrypt_history_row(history_row)
