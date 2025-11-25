@@ -524,14 +524,13 @@ class TestGameHistoryEndpoints(TestGameServiceSetup):
 
     def _tamper_history_integrity(self, game_id):
         """Directly modify the history hash to simulate tampering."""
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE game_history SET integrity_hash = 'deadbeef' WHERE game_id = %s",
-            (game_id,),
-        )
-        conn.commit()
-        conn.close()
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE game_history SET integrity_hash = 'deadbeef' WHERE game_id = %s",
+                    (game_id,),
+                )
+                conn.commit()
 
     def test_history_endpoint_returns_snapshot(self):
         """Completed games expose decrypted history snapshots."""

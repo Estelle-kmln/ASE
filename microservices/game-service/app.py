@@ -1160,7 +1160,7 @@ def end_game(game_id):
         try:
             p1_deck = json.loads(game["player1_deck_cards"] or "[]")
             p2_deck = json.loads(game["player2_deck_cards"] or "[]")
-        except:
+        except (json.JSONDecodeError, TypeError):
             p1_deck = p2_deck = []
 
         # End the game

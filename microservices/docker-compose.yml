@@ -70,7 +70,10 @@ services:
       - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
       - JWT_SECRET_KEY=your-super-secret-key-change-in-production
       - CARD_SERVICE_URL=http://card-service:5002
-      - GAME_HISTORY_KEY=KPzxEaZaiwWzcAcCtEN4PJPI195BjbqyNeoc-kT5LEE=
+      # IMPORTANT: Set GAME_HISTORY_KEY to a secure, random 32-byte base64 string.
+      # You can generate one with:
+      #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - GAME_HISTORY_KEY=${GAME_HISTORY_KEY:-REPLACE_WITH_YOUR_OWN_32_BYTE_KEY}
     ports:
       - "5003:5003"
     depends_on:
