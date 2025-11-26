@@ -5,4 +5,4 @@ psycopg2-binary==2.9.9
 python-dotenv==1.0.1
 gunicorn==21.2.0
 requests==2.31.0
-cryptography==43.0.0
+cryptography==44.0.1
