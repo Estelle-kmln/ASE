@@ -78,10 +78,8 @@ def register():
             return jsonify({'error': 'Request body is required'}), 400
         
         # Validate required fields
-        required_fields = ['username', 'password']
-        missing_fields = [field for field in required_fields if not data.get(field)]
-        if missing_fields:
-            return jsonify({'error': f'Missing required fields: {", ".join(missing_fields)}'}), 400
+        if not data.get('username') or not data.get('password'):
+            return jsonify({'error': 'Username and password are required'}), 400
         
         # Sanitize and validate inputs
         try:

@@ -19,7 +19,7 @@ class InputSanitizer:
     SQL_INJECTION_PATTERNS = [
         r"(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|SCRIPT)\b)",
         r"(--|#|\/\*|\*\/)",
-        r"(\bOR\b.*=.*=|\bAND\b.*=.*=)",
+        r"(\bOR\b.*=.*|\bAND\b.*=.*)",
         r"(0x[0-9a-fA-F]+)",
         r"(\bCHAR\b|\bASCII\b|\bSUBSTRING\b)"
     ]
@@ -140,7 +140,7 @@ class InputSanitizer:
         if len(username) < 3:
             raise ValueError("Username must be at least 3 characters long")
         
-        return username.lower()  # Normalize to lowercase
+        return username  # Keep original case
     
     @staticmethod
     def validate_password(password: str) -> str:
@@ -276,10 +276,25 @@ class InputSanitizer:
         Raises:
             ValueError: If value is invalid
         """
+        # Check for string representations that would cause overflow
+        if isinstance(value, str):
+            # Reject extremely long numeric strings
+            if len(value.strip()) > 20:  # Larger than max 64-bit integer
+                raise ValueError("Integer value too large")
+            
+            # Check if it's a valid integer format (no decimals, spaces, etc.)
+            value = value.strip()
+            if not value or not re.match(r'^-?\d+$', value):
+                raise ValueError("Invalid integer value")
+        
         try:
             int_val = int(value)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OverflowError):
             raise ValueError("Invalid integer value")
+        
+        # Additional check for extremely large values
+        if abs(int_val) > 9223372036854775807:  # Max 64-bit signed integer
+            raise ValueError("Integer value too large")
         
         if min_val is not None and int_val < min_val:
             raise ValueError(f"Value must be at least {min_val}")
