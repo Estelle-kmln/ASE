@@ -3,6 +3,7 @@ Auth Service - User authentication and profile management microservice
 """
 
 import os
+import sys
 import bcrypt
 from datetime import timedelta, datetime
 from flask import Flask, request, jsonify
@@ -11,6 +12,10 @@ from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
+
+# Add utils directory to path for input sanitizer
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'utils'))
+from input_sanitizer import InputSanitizer, SecurityMiddleware, require_sanitized_input
 
 # Load environment variables
 load_dotenv()
@@ -24,6 +29,7 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 # Initialize extensions
 jwt = JWTManager(app)
 CORS(app)
+security = SecurityMiddleware(app)
 
 # JWT error handlers - convert 422 to 401 for invalid tokens
 @jwt.invalid_token_loader
@@ -62,29 +68,31 @@ def health_check():
     return jsonify({'status': 'healthy', 'service': 'auth-service'}), 200
 
 @app.route('/api/auth/register', methods=['POST'])
+@require_sanitized_input({'username': 'username', 'password': 'password', 'email': 'email'})
 def register():
     """Register a new user."""
     try:
         data = request.get_json()
         
-        if not data or not data.get('username') or not data.get('password'):
+        if not data:
+            return jsonify({'error': 'Request body is required'}), 400
+        
+        # Validate required fields
+        if not data.get('username') or not data.get('password'):
             return jsonify({'error': 'Username and password are required'}), 400
         
-        username = data['username'].strip()
-        password = data['password'].strip()
-        
-        # Validate input
-        if len(username) < 3:
-            return jsonify({'error': 'Username must be at least 3 characters long'}), 400
-        if len(password) < 4:
-            return jsonify({'error': 'Password must be at least 4 characters long'}), 400
-        
-        # Clean and validate input for encoding issues
+        # Sanitize and validate inputs
         try:
-            username = username.encode('utf-8', errors='ignore').decode('utf-8')
-            password = password.encode('utf-8', errors='ignore').decode('utf-8')
-        except Exception:
-            return jsonify({'error': 'Invalid characters in username or password'}), 400
+            username = InputSanitizer.validate_username(data['username'])
+            password = InputSanitizer.validate_password(data['password'])
+            
+            # Optional email validation
+            email = None
+            if 'email' in data and data['email']:
+                email = InputSanitizer.validate_email(data['email'])
+                
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
         
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -97,10 +105,16 @@ def register():
         
         # Hash password and create user
         hashed_password = hash_password(password)
-        cursor.execute(
-            "INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id",
-            (username, hashed_password)
-        )
+        if email:
+            cursor.execute(
+                "INSERT INTO users (username, password, email) VALUES (%s, %s, %s) RETURNING id",
+                (username, hashed_password, email)
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id",
+                (username, hashed_password)
+            )
         user_id = cursor.fetchone()[0]
         conn.commit()
         conn.close()
@@ -121,23 +135,25 @@ def register():
         return jsonify({'error': f'Registration failed: {str(e)}'}), 500
 
 @app.route('/api/auth/login', methods=['POST'])
+@require_sanitized_input({'username': 'username', 'password': 'password'})
 def login():
     """Authenticate user and return JWT token."""
     try:
         data = request.get_json()
         
-        if not data or not data.get('username') or not data.get('password'):
+        if not data:
+            return jsonify({'error': 'Request body is required'}), 400
+        
+        # Validate required fields
+        if not data.get('username') or not data.get('password'):
             return jsonify({'error': 'Username and password are required'}), 400
         
-        username = data['username'].strip()
-        password = data['password'].strip()
-        
-        # Clean and validate input for encoding issues
+        # Sanitize and validate inputs
         try:
-            username = username.encode('utf-8', errors='ignore').decode('utf-8')
-            password = password.encode('utf-8', errors='ignore').decode('utf-8')
-        except Exception:
-            return jsonify({'error': 'Invalid characters in username or password'}), 400
+            username = InputSanitizer.validate_username(data['username'])
+            password = InputSanitizer.validate_password(data['password'])
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
         
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -215,17 +231,11 @@ def update_profile():
         
         # Update password if provided
         if 'password' in data and data['password']:
-            new_password = data['password'].strip()
-            if len(new_password) < 4:
-                conn.close()
-                return jsonify({'error': 'Password must be at least 4 characters long'}), 400
-            
-            # Clean and validate input
             try:
-                new_password = new_password.encode('utf-8', errors='ignore').decode('utf-8')
-            except Exception:
+                new_password = InputSanitizer.validate_password(data['password'])
+            except ValueError as e:
                 conn.close()
-                return jsonify({'error': 'Invalid characters in password'}), 400
+                return jsonify({'error': str(e)}), 400
             
             hashed_password = hash_password(new_password)
             cursor.execute(

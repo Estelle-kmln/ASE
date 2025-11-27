@@ -3,6 +3,7 @@ Game Service - Game logic and state management microservice
 """
 
 import os
+import sys
 import json
 import uuid
 import random
@@ -18,6 +19,10 @@ import requests
 
 from security import get_history_security
 
+# Add utils directory to path for input sanitizer
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'utils'))
+from input_sanitizer import InputSanitizer, SecurityMiddleware, require_sanitized_input
+
 # Load environment variables
 load_dotenv()
 
@@ -31,7 +36,7 @@ app.config["JWT_SECRET_KEY"] = os.getenv(
 # Initialize extensions
 jwt = JWTManager(app)
 CORS(app)
-
+security = SecurityMiddleware(app)
 
 # JWT error handlers - convert 422 to 401 for invalid tokens
 @jwt.invalid_token_loader
@@ -237,6 +242,7 @@ def health_check():
 
 @app.route("/api/games", methods=["POST"])
 @jwt_required()
+@require_sanitized_input({'player2_name': 'username'})
 def create_game():
     """Create a new game."""
     try:
@@ -246,8 +252,16 @@ def create_game():
         if not data or not data.get("player2_name"):
             return jsonify({"error": "Player 2 name is required"}), 400
 
-        player1_name = current_user
-        player2_name = data["player2_name"].strip()
+        # Sanitize player names
+        try:
+            player1_name = InputSanitizer.validate_username(current_user)
+            player2_name = InputSanitizer.validate_username(data["player2_name"])
+        except ValueError as e:
+            return jsonify({'error': f'Invalid player name: {str(e)}'}), 400
+        
+        # Prevent self-play
+        if player1_name == player2_name:
+            return jsonify({'error': 'Cannot create game with yourself'}), 400
 
         # Get JWT token from request
         token = request.headers.get("Authorization", "").replace("Bearer ", "")
@@ -314,6 +328,9 @@ def create_game():
 def get_game(game_id):
     """Get game state."""
     try:
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+            
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -444,6 +461,9 @@ def get_game_history(game_id):
 def get_player_hand(game_id):
     """Get current player's hand."""
     try:
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+            
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -482,6 +502,9 @@ def get_player_hand(game_id):
 def draw_hand(game_id):
     """Draw a new hand for the current player."""
     try:
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+            
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -538,15 +561,19 @@ def draw_hand(game_id):
 
         # Update database
         cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            UPDATE games 
-            SET {deck_field} = %s, {hand_field} = %s 
-            WHERE game_id = %s
-        """,
-            (json.dumps(remaining_deck), json.dumps(hand), game_id),
-        )
-
+        if is_player1:
+            cursor.execute("""
+                UPDATE games 
+                SET player1_deck_cards = %s, player1_hand_cards = %s 
+                WHERE game_id = %s
+            """, (json.dumps(remaining_deck), json.dumps(hand), game_id))
+        else:
+            cursor.execute("""
+                UPDATE games 
+                SET player2_deck_cards = %s, player2_hand_cards = %s 
+                WHERE game_id = %s
+            """, (json.dumps(remaining_deck), json.dumps(hand), game_id))
+        
         conn.commit()
         conn.close()
 
@@ -568,16 +595,24 @@ def draw_hand(game_id):
 
 @app.route("/api/games/<game_id>/play-card", methods=["POST"])
 @jwt_required()
+@require_sanitized_input({'card_index': 'int'})
 def play_card(game_id):
     """Play a card from hand."""
     try:
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+            
         current_user = get_jwt_identity()
         data = request.get_json()
 
         if not data or "card_index" not in data:
             return jsonify({"error": "Card index is required"}), 400
 
-        card_index = data["card_index"]
+        # Validate card index
+        try:
+            card_index = InputSanitizer.validate_integer(data["card_index"], min_val=0, max_val=20)
+        except ValueError as e:
+            return jsonify({'error': f'Invalid card index: {str(e)}'}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -628,15 +663,19 @@ def play_card(game_id):
 
         # Update database
         cursor = conn.cursor()
-        cursor.execute(
-            f"""
-            UPDATE games 
-            SET {hand_field} = %s, {played_field} = %s 
-            WHERE game_id = %s
-        """,
-            (json.dumps(remaining_hand), json.dumps(played_card), game_id),
-        )
-
+        if is_player1:
+            cursor.execute("""
+                UPDATE games 
+                SET player1_hand_cards = %s, player1_played_card = %s 
+                WHERE game_id = %s
+            """, (json.dumps(remaining_hand), json.dumps(played_card), game_id))
+        else:
+            cursor.execute("""
+                UPDATE games 
+                SET player2_hand_cards = %s, player2_played_card = %s 
+                WHERE game_id = %s
+            """, (json.dumps(remaining_hand), json.dumps(played_card), game_id))
+        
         conn.commit()
 
         # Refresh game state to check if both players have played
@@ -796,6 +835,9 @@ def auto_resolve_round(game, conn):
 def resolve_round(game_id):
     """Resolve a round after both players have played cards."""
     try:
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+            
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -953,6 +995,9 @@ def resolve_round(game_id):
 def check_tie_breaker_status(game_id):
     """Check if tie-breaker round is possible."""
     try:
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+            
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -1010,6 +1055,9 @@ def check_tie_breaker_status(game_id):
 def tie_breaker_round(game_id):
     """Play a tie-breaker round using remaining cards when game ends in tie."""
     try:
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+            
         current_user = get_jwt_identity()
         data = request.get_json()
 
@@ -1140,6 +1188,9 @@ def tie_breaker_round(game_id):
 def end_game(game_id):
     """End a game."""
     try:
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+            
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -1198,6 +1249,12 @@ def end_game(game_id):
 def get_user_games(username):
     """Get all games for a user."""
     try:
+        # Validate username format
+        try:
+            username = InputSanitizer.validate_username(username)
+        except ValueError as e:
+            return jsonify({'error': f'Invalid username: {str(e)}'}), 400
+            
         current_user = get_jwt_identity()
         include_history = (
             request.args.get("include_history", "false").lower() == "true"
@@ -1307,6 +1364,9 @@ def get_user_games(username):
 def get_turn_info(game_id):
     """Get detailed turn information including who needs to act next."""
     try:
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+            
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
