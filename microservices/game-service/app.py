@@ -201,11 +201,8 @@ def create_game():
 def get_game(game_id):
     """Get game state."""
     try:
-        # Validate game_id format
-        try:
-            game_id = InputSanitizer.validate_game_id(game_id)
-        except ValueError as e:
-            return jsonify({'error': f'Invalid game ID: {str(e)}'}), 400
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
             
         current_user = get_jwt_identity()
         
@@ -260,11 +257,8 @@ def get_game(game_id):
 def get_player_hand(game_id):
     """Get current player's hand."""
     try:
-        # Validate game_id format
-        try:
-            game_id = InputSanitizer.validate_game_id(game_id)
-        except ValueError as e:
-            return jsonify({'error': f'Invalid game ID: {str(e)}'}), 400
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
             
         current_user = get_jwt_identity()
         
@@ -306,11 +300,8 @@ def get_player_hand(game_id):
 def draw_hand(game_id):
     """Draw a new hand for the current player."""
     try:
-        # Validate game_id format
-        try:
-            game_id = InputSanitizer.validate_game_id(game_id)
-        except ValueError as e:
-            return jsonify({'error': f'Invalid game ID: {str(e)}'}), 400
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
             
         current_user = get_jwt_identity()
         
@@ -392,11 +383,8 @@ def draw_hand(game_id):
 def play_card(game_id):
     """Play a card from hand."""
     try:
-        # Validate game_id format
-        try:
-            game_id = InputSanitizer.validate_game_id(game_id)
-        except ValueError as e:
-            return jsonify({'error': f'Invalid game ID: {str(e)}'}), 400
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
             
         current_user = get_jwt_identity()
         data = request.get_json()
@@ -589,11 +577,8 @@ def auto_resolve_round(game, conn):
 def resolve_round(game_id):
     """Resolve a round after both players have played cards."""
     try:
-        # Validate game_id format
-        try:
-            game_id = InputSanitizer.validate_game_id(game_id)
-        except ValueError as e:
-            return jsonify({'error': f'Invalid game ID: {str(e)}'}), 400
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
             
         current_user = get_jwt_identity()
         
@@ -713,11 +698,8 @@ def resolve_round(game_id):
 def check_tie_breaker_status(game_id):
     """Check if tie-breaker round is possible."""
     try:
-        # Validate game_id format
-        try:
-            game_id = InputSanitizer.validate_game_id(game_id)
-        except ValueError as e:
-            return jsonify({'error': f'Invalid game ID: {str(e)}'}), 400
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
             
         current_user = get_jwt_identity()
         
@@ -765,11 +747,8 @@ def check_tie_breaker_status(game_id):
 def tie_breaker_round(game_id):
     """Play a tie-breaker round using remaining cards when game ends in tie."""
     try:
-        # Validate game_id format
-        try:
-            game_id = InputSanitizer.validate_game_id(game_id)
-        except ValueError as e:
-            return jsonify({'error': f'Invalid game ID: {str(e)}'}), 400
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
             
         current_user = get_jwt_identity()
         data = request.get_json()
@@ -873,11 +852,8 @@ def tie_breaker_round(game_id):
 def end_game(game_id):
     """End a game."""
     try:
-        # Validate game_id format
-        try:
-            game_id = InputSanitizer.validate_game_id(game_id)
-        except ValueError as e:
-            return jsonify({'error': f'Invalid game ID: {str(e)}'}), 400
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
             
         current_user = get_jwt_identity()
         
@@ -967,11 +943,8 @@ def get_user_games(username):
 def get_turn_info(game_id):
     """Get detailed turn information including who needs to act next."""
     try:
-        # Validate game_id format
-        try:
-            game_id = InputSanitizer.validate_game_id(game_id)
-        except ValueError as e:
-            return jsonify({'error': f'Invalid game ID: {str(e)}'}), 400
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
             
         current_user = get_jwt_identity()
         
