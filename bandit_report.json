@@ -1,6 +1,6 @@
 {
   "errors": [],
-  "generated_at": "2025-12-01T12:21:58Z",
+  "generated_at": "2025-12-01T16:40:31Z",
   "metrics": {
     ".\\debug_pattern.py": {
       "CONFIDENCE.HIGH": 0,
@@ -224,15 +224,28 @@
       "skipped_tests": 0
     },
     ".\\scripts\\static_analysis.py": {
-      "CONFIDENCE.HIGH": 8,
+      "CONFIDENCE.HIGH": 7,
       "CONFIDENCE.LOW": 0,
       "CONFIDENCE.MEDIUM": 0,
       "CONFIDENCE.UNDEFINED": 0,
       "SEVERITY.HIGH": 0,
-      "SEVERITY.LOW": 8,
+      "SEVERITY.LOW": 7,
       "SEVERITY.MEDIUM": 0,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 280,
+      "loc": 266,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    ".\\scripts\\test_github_actions.py": {
+      "CONFIDENCE.HIGH": 4,
+      "CONFIDENCE.LOW": 0,
+      "CONFIDENCE.MEDIUM": 0,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 4,
+      "SEVERITY.MEDIUM": 0,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 95,
       "nosec": 0,
       "skipped_tests": 0
     },
@@ -341,15 +354,15 @@
       "skipped_tests": 0
     },
     "_totals": {
-      "CONFIDENCE.HIGH": 29,
+      "CONFIDENCE.HIGH": 32,
       "CONFIDENCE.LOW": 151,
       "CONFIDENCE.MEDIUM": 23,
       "CONFIDENCE.UNDEFINED": 0,
       "SEVERITY.HIGH": 4,
-      "SEVERITY.LOW": 44,
+      "SEVERITY.LOW": 47,
       "SEVERITY.MEDIUM": 155,
       "SEVERITY.UNDEFINED": 0,
-      "loc": 6741,
+      "loc": 6822,
       "nosec": 0,
       "skipped_tests": 0
     }
@@ -720,9 +733,9 @@
       "test_name": "blacklist"
     },
     {
-      "code": "58                 with open('bandit_report.txt', 'w', encoding='utf-8') as f:\n59                     subprocess.run(text_cmd, stdout=f, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='ignore')\n60             \n",
+      "code": "58                 with open('bandit_report.txt', 'w', encoding='utf-8') as f:\n59                     subprocess.run(text_cmd, stdout=f, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='ignore', timeout=300)\n60             \n",
       "col_offset": 20,
-      "end_col_offset": 124,
+      "end_col_offset": 137,
       "filename": ".\\scripts\\static_analysis.py",
       "issue_confidence": "HIGH",
       "issue_cwe": {
@@ -740,9 +753,9 @@
       "test_name": "subprocess_without_shell_equals_true"
     },
     {
-      "code": "60             \n61             result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')\n62             \n",
+      "code": "60             \n61             result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=300)\n62             \n",
       "col_offset": 21,
-      "end_col_offset": 107,
+      "end_col_offset": 120,
       "filename": ".\\scripts\\static_analysis.py",
       "issue_confidence": "HIGH",
       "issue_cwe": {
@@ -760,9 +773,9 @@
       "test_name": "subprocess_without_shell_equals_true"
     },
     {
-      "code": "125             \n126             result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')\n127             \n",
+      "code": "137             \n138             result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=120)\n139             \n",
       "col_offset": 21,
-      "end_col_offset": 107,
+      "end_col_offset": 120,
       "filename": ".\\scripts\\static_analysis.py",
       "issue_confidence": "HIGH",
       "issue_cwe": {
@@ -771,18 +784,18 @@
       },
       "issue_severity": "LOW",
       "issue_text": "subprocess call - check for execution of untrusted input.",
-      "line_number": 126,
+      "line_number": 138,
       "line_range": [
-        126
+        138
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html",
       "test_id": "B603",
       "test_name": "subprocess_without_shell_equals_true"
     },
     {
-      "code": "226                 try:\n227                     text_result = subprocess.run([sys.executable, '-m', 'pip_audit', '--desc'], capture_output=True, text=True, encoding='utf-8', errors='ignore')\n228                     with open('pip_audit_report.txt', 'w', encoding='utf-8') as f:\n",
+      "code": "201                 try:\n202                     text_result = subprocess.run([sys.executable, '-m', 'pip_audit', '--desc', '--timeout', '60'], \n203                                                capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=120)\n204                     with open('pip_audit_report.txt', 'w', encoding='utf-8') as f:\n",
       "col_offset": 34,
-      "end_col_offset": 162,
+      "end_col_offset": 126,
       "filename": ".\\scripts\\static_analysis.py",
       "issue_confidence": "HIGH",
       "issue_cwe": {
@@ -791,37 +804,17 @@
       },
       "issue_severity": "LOW",
       "issue_text": "subprocess call - check for execution of untrusted input.",
-      "line_number": 227,
+      "line_number": 202,
       "line_range": [
-        227
+        202,
+        203
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html",
       "test_id": "B603",
       "test_name": "subprocess_without_shell_equals_true"
     },
     {
-      "code": "229                         f.write(text_result.stdout)\n230                 except:\n231                     pass  # Ignore errors for text report\n232                     \n",
-      "col_offset": 16,
-      "end_col_offset": 24,
-      "filename": ".\\scripts\\static_analysis.py",
-      "issue_confidence": "HIGH",
-      "issue_cwe": {
-        "id": 703,
-        "link": "https://cwe.mitre.org/data/definitions/703.html"
-      },
-      "issue_severity": "LOW",
-      "issue_text": "Try, Except, Pass detected.",
-      "line_number": 230,
-      "line_range": [
-        230,
-        231
-      ],
-      "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b110_try_except_pass.html",
-      "test_id": "B110",
-      "test_name": "try_except_pass"
-    },
-    {
-      "code": "250             # Check if docker scout is available\n251             result = subprocess.run(['docker', 'scout', 'version'], \n252                                   capture_output=True, text=True, encoding='utf-8', errors='ignore')\n253             \n",
+      "code": "232             # Check if docker scout is available\n233             result = subprocess.run(['docker', 'scout', 'version'], \n234                                   capture_output=True, text=True, encoding='utf-8', errors='ignore')\n235             \n",
       "col_offset": 21,
       "end_col_offset": 100,
       "filename": ".\\scripts\\static_analysis.py",
@@ -832,17 +825,17 @@
       },
       "issue_severity": "LOW",
       "issue_text": "Starting a process with a partial executable path",
-      "line_number": 251,
+      "line_number": 233,
       "line_range": [
-        251,
-        252
+        233,
+        234
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b607_start_process_with_partial_path.html",
       "test_id": "B607",
       "test_name": "start_process_with_partial_path"
     },
     {
-      "code": "250             # Check if docker scout is available\n251             result = subprocess.run(['docker', 'scout', 'version'], \n252                                   capture_output=True, text=True, encoding='utf-8', errors='ignore')\n253             \n",
+      "code": "232             # Check if docker scout is available\n233             result = subprocess.run(['docker', 'scout', 'version'], \n234                                   capture_output=True, text=True, encoding='utf-8', errors='ignore')\n235             \n",
       "col_offset": 21,
       "end_col_offset": 100,
       "filename": ".\\scripts\\static_analysis.py",
@@ -853,10 +846,90 @@
       },
       "issue_severity": "LOW",
       "issue_text": "subprocess call - check for execution of untrusted input.",
-      "line_number": 251,
+      "line_number": 233,
       "line_range": [
-        251,
-        252
+        233,
+        234
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html",
+      "test_id": "B603",
+      "test_name": "subprocess_without_shell_equals_true"
+    },
+    {
+      "code": "6 \n7 import subprocess\n8 import sys\n",
+      "col_offset": 0,
+      "end_col_offset": 17,
+      "filename": ".\\scripts\\test_github_actions.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Consider possible security implications associated with the subprocess module.",
+      "line_number": 7,
+      "line_range": [
+        7
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.2/blacklists/blacklist_imports.html#b404-import-subprocess",
+      "test_id": "B404",
+      "test_name": "blacklist"
+    },
+    {
+      "code": "25         \n26         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)\n27         \n",
+      "col_offset": 17,
+      "end_col_offset": 80,
+      "filename": ".\\scripts\\test_github_actions.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "subprocess call - check for execution of untrusted input.",
+      "line_number": 26,
+      "line_range": [
+        26
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html",
+      "test_id": "B603",
+      "test_name": "subprocess_without_shell_equals_true"
+    },
+    {
+      "code": "47         \n48         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)\n49         \n",
+      "col_offset": 17,
+      "end_col_offset": 80,
+      "filename": ".\\scripts\\test_github_actions.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "subprocess call - check for execution of untrusted input.",
+      "line_number": 48,
+      "line_range": [
+        48
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html",
+      "test_id": "B603",
+      "test_name": "subprocess_without_shell_equals_true"
+    },
+    {
+      "code": "69         \n70         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)\n71         \n",
+      "col_offset": 17,
+      "end_col_offset": 81,
+      "filename": ".\\scripts\\test_github_actions.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 78,
+        "link": "https://cwe.mitre.org/data/definitions/78.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "subprocess call - check for execution of untrusted input.",
+      "line_number": 70,
+      "line_range": [
+        70
       ],
       "more_info": "https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html",
       "test_id": "B603",

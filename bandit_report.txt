@@ -1,4 +1,4 @@
-Run started:2025-12-01 12:21:56.833375+00:00
+Run started:2025-12-01 16:40:30.158020+00:00
 
 Test results:
 >> Issue: [B201:flask_debug_true] A Flask app appears to be run with debug=True, which exposes the Werkzeug debugger and allows the execution of arbitrary code.
@@ -183,7 +183,7 @@ Test results:
    More Info: https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html
    Location: .\scripts\static_analysis.py:59:20
 58	                with open('bandit_report.txt', 'w', encoding='utf-8') as f:
-59	                    subprocess.run(text_cmd, stdout=f, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='ignore')
+59	                    subprocess.run(text_cmd, stdout=f, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='ignore', timeout=300)
 60	            
 
 --------------------------------------------------
@@ -193,7 +193,7 @@ Test results:
    More Info: https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html
    Location: .\scripts\static_analysis.py:61:21
 60	            
-61	            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
+61	            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=300)
 62	            
 
 --------------------------------------------------
@@ -201,53 +201,83 @@ Test results:
    Severity: Low   Confidence: High
    CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
    More Info: https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html
-   Location: .\scripts\static_analysis.py:126:21
-125	            
-126	            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
-127	            
+   Location: .\scripts\static_analysis.py:138:21
+137	            
+138	            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=120)
+139	            
 
 --------------------------------------------------
 >> Issue: [B603:subprocess_without_shell_equals_true] subprocess call - check for execution of untrusted input.
    Severity: Low   Confidence: High
    CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
    More Info: https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html
-   Location: .\scripts\static_analysis.py:227:34
-226	                try:
-227	                    text_result = subprocess.run([sys.executable, '-m', 'pip_audit', '--desc'], capture_output=True, text=True, encoding='utf-8', errors='ignore')
-228	                    with open('pip_audit_report.txt', 'w', encoding='utf-8') as f:
-
---------------------------------------------------
->> Issue: [B110:try_except_pass] Try, Except, Pass detected.
-   Severity: Low   Confidence: High
-   CWE: CWE-703 (https://cwe.mitre.org/data/definitions/703.html)
-   More Info: https://bandit.readthedocs.io/en/1.9.2/plugins/b110_try_except_pass.html
-   Location: .\scripts\static_analysis.py:230:16
-229	                        f.write(text_result.stdout)
-230	                except:
-231	                    pass  # Ignore errors for text report
-232	                    
+   Location: .\scripts\static_analysis.py:202:34
+201	                try:
+202	                    text_result = subprocess.run([sys.executable, '-m', 'pip_audit', '--desc', '--timeout', '60'], 
+203	                                               capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=120)
+204	                    with open('pip_audit_report.txt', 'w', encoding='utf-8') as f:
 
 --------------------------------------------------
 >> Issue: [B607:start_process_with_partial_path] Starting a process with a partial executable path
    Severity: Low   Confidence: High
    CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
    More Info: https://bandit.readthedocs.io/en/1.9.2/plugins/b607_start_process_with_partial_path.html
-   Location: .\scripts\static_analysis.py:251:21
-250	            # Check if docker scout is available
-251	            result = subprocess.run(['docker', 'scout', 'version'], 
-252	                                  capture_output=True, text=True, encoding='utf-8', errors='ignore')
-253	            
+   Location: .\scripts\static_analysis.py:233:21
+232	            # Check if docker scout is available
+233	            result = subprocess.run(['docker', 'scout', 'version'], 
+234	                                  capture_output=True, text=True, encoding='utf-8', errors='ignore')
+235	            
 
 --------------------------------------------------
 >> Issue: [B603:subprocess_without_shell_equals_true] subprocess call - check for execution of untrusted input.
    Severity: Low   Confidence: High
    CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
    More Info: https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html
-   Location: .\scripts\static_analysis.py:251:21
-250	            # Check if docker scout is available
-251	            result = subprocess.run(['docker', 'scout', 'version'], 
-252	                                  capture_output=True, text=True, encoding='utf-8', errors='ignore')
-253	            
+   Location: .\scripts\static_analysis.py:233:21
+232	            # Check if docker scout is available
+233	            result = subprocess.run(['docker', 'scout', 'version'], 
+234	                                  capture_output=True, text=True, encoding='utf-8', errors='ignore')
+235	            
+
+--------------------------------------------------
+>> Issue: [B404:blacklist] Consider possible security implications associated with the subprocess module.
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.2/blacklists/blacklist_imports.html#b404-import-subprocess
+   Location: .\scripts\test_github_actions.py:7:0
+6	
+7	import subprocess
+8	import sys
+
+--------------------------------------------------
+>> Issue: [B603:subprocess_without_shell_equals_true] subprocess call - check for execution of untrusted input.
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html
+   Location: .\scripts\test_github_actions.py:26:17
+25	        
+26	        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+27	        
+
+--------------------------------------------------
+>> Issue: [B603:subprocess_without_shell_equals_true] subprocess call - check for execution of untrusted input.
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html
+   Location: .\scripts\test_github_actions.py:48:17
+47	        
+48	        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+49	        
+
+--------------------------------------------------
+>> Issue: [B603:subprocess_without_shell_equals_true] subprocess call - check for execution of untrusted input.
+   Severity: Low   Confidence: High
+   CWE: CWE-78 (https://cwe.mitre.org/data/definitions/78.html)
+   More Info: https://bandit.readthedocs.io/en/1.9.2/plugins/b603_subprocess_without_shell_equals_true.html
+   Location: .\scripts\test_github_actions.py:70:17
+69	        
+70	        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+71	        
 
 --------------------------------------------------
 >> Issue: [B311:blacklist] Standard pseudo-random generators are not suitable for security/cryptographic purposes.
@@ -2458,21 +2488,21 @@ Test results:
 --------------------------------------------------
 
 Code scanned:
-	Total lines of code: 6741
+	Total lines of code: 6822
 	Total lines skipped (#nosec): 0
 	Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 0
 
 Run metrics:
 	Total issues (by severity):
 		Undefined: 0
-		Low: 44
+		Low: 47
 		Medium: 155
 		High: 4
 	Total issues (by confidence):
 		Undefined: 0
 		Low: 151
 		Medium: 23
-		High: 29
+		High: 32
 Files skipped (2):
 	.\json (No such file or directory)
 	.\txt (No such file or directory)
