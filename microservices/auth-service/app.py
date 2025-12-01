@@ -119,12 +119,16 @@ def register():
         conn.commit()
         conn.close()
         
-        # Create access token
+        # Create access token (JWT bearer token)
         access_token = create_access_token(identity=username)
+        # OAuth2-style metadata
+        expires_in = int(app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
         
         return jsonify({
             'message': 'User registered successfully',
             'access_token': access_token,
+            'token_type': 'bearer',
+            'expires_in': expires_in,
             'user': {
                 'id': user_id,
                 'username': username
@@ -166,12 +170,16 @@ def login():
         if not user or not verify_password(password, user['password']):
             return jsonify({'error': 'Invalid username or password'}), 401
         
-        # Create access token
+        # Create access token (JWT bearer token)
         access_token = create_access_token(identity=username)
+        # OAuth2-style metadata
+        expires_in = int(app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
         
         return jsonify({
             'message': 'Login successful',
             'access_token': access_token,
+            'token_type': 'bearer',
+            'expires_in': expires_in,
             'user': {
                 'id': user['id'],
                 'username': user['username']
