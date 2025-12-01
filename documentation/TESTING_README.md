@@ -36,7 +36,7 @@ docker-compose ps
 **1. Run All Locust Performance Tests:**
 
 ```bash
-# From project root directory
+# From project root directory (not microservices folder)
 locust -f tests/locustfile.py
 ```
 
@@ -192,7 +192,7 @@ You can run Locust from either the project root or the tests directory:
 **Option 1: From project root (recommended)**
 
 ```bash
-# From project root directory
+# From project root directory (not microservices folder)
 locust -f tests/locustfile.py
 ```
 
@@ -435,7 +435,7 @@ The Postman collection (`postman_unit_tests.json`) contains unit tests for **thr
 3. Postman collection variables are updated (see Setup Instructions above)
 
 ```bash
-# Run all Postman tests (from project root)
+# Run all Postman tests (from project root directory, not microservices folder)
 newman run tests/postman_unit_tests.json
 
 # Or with explicit environment variables
