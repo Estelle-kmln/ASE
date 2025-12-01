@@ -1,20 +1,61 @@
 # Testing Documentation
 
-This document describes both Python unit tests and Postman API tests for the Battle Cards game.
+This document describes Python unit tests (pytest/unittest), Locust performance tests, and Postman API tests for the Battle Cards game microservices.
 
-## Quick Start: Run 1. Pytests and 2. Docker Tests
+## Quick Start
 
-1. **Pytests**: `./venv/bin/python tests/run_all_tests.py`
+**Before running any tests, ensure Docker Desktop is running and microservices are built and started:**
 
-2. **Docker Tests**: `docker-compose build && docker-compose up -d && docker-compose exec -T game-app python tests/run_all_tests.py`
+1. **Start Docker Desktop** (if not already running)
+2. **Build and start all microservices:**
+
+**Recommended: Use the automated build script** (handles GAME_HISTORY_KEY automatically):
+
+```bash
+cd microservices
+./build-and-start.sh
+```
+
+**Alternative: Manual build** (requires setting GAME_HISTORY_KEY manually):
+
+```bash
+cd microservices
+docker-compose up -d --build
+```
+
+**Note**: The build script automatically generates and saves a `GAME_HISTORY_KEY` to `.env` if one doesn't exist. This key is required for game history encryption and is gitignored for security.
+
+Wait for all services to be healthy (this may take 1-2 minutes). You can check service status with:
+
+```bash
+docker-compose ps
+```
+
+**Then run tests:**
+
+**1. Run All Locust Performance Tests:**
+
+```bash
+# From project root directory (not microservices folder)
+locust -f tests/locustfile.py
+```
+
+Then open `http://localhost:8089` in your browser to configure and run tests.
+
+**2. Run All Postman API Tests:**
+
+```bash
+# Run all Postman tests (default URLs are pre-configured)
+newman run tests/postman_unit_tests.json
+```
 
 ---
 
-## Python Unit Tests
+## Python Unit Tests (Unittest/Pytest)
 
 ### Overview
 
-The project includes comprehensive Python unit tests covering all core game functionality. All tests can be run using a single master test runner script.
+The project includes comprehensive Python unit tests covering all core game functionality. All tests can be run using a single master test runner script that executes both custom test functions and unittest-based tests.
 
 ### Prerequisites
 
@@ -38,27 +79,11 @@ The project includes comprehensive Python unit tests covering all core game func
    ```
 
 3. **Docker (for database-dependent tests)**:
-   - Ensure Docker is running
-   - Start PostgreSQL: `docker-compose up -d postgresql`
+   - Start Docker Desktop (if not already running)
+   - Build and start PostgreSQL: `cd microservices && docker-compose up -d --build postgresql`
    - Database available at `localhost:5432`
 
 ### Running Python Unit Tests
-
-#### Run All Tests (Recommended)
-
-```bash
-# Activate virtual environment
-source venv/bin/activate
-
-# Run all tests
-python3 tests/run_all_tests.py
-```
-
-This will execute:
-
-- Custom test functions (game logic, hand management)
-- Unittest-based tests (scoring, profiles, views)
-- Display a comprehensive summary
 
 #### Run Individual Test Modules
 
@@ -120,6 +145,253 @@ python3 -m unittest tests.test_view_old_matches -v
 
 ---
 
+## Locust Performance Tests
+
+### Overview
+
+Locust performance tests are designed to test the microservices architecture under load. The test suite includes dedicated user classes for each microservice and a combined user class that simulates realistic game workflows.
+
+### Prerequisites
+
+1. **Start Docker Desktop**:
+   - Ensure Docker Desktop is running on your machine
+   - You can verify Docker is running with: `docker ps`
+
+2. **Install Locust**:
+
+   ```bash
+   pip install locust
+   ```
+
+3. **Build and Start Microservices**:
+
+   **Important**: Always use `--build` flag when starting services to ensure code changes are included:
+
+   ```bash
+   cd microservices
+   docker-compose up -d --build
+   ```
+
+   This will:
+   - Rebuild Docker images with your latest code changes
+   - Start all microservices containers
+   - Wait for services to become healthy
+
+   Wait for all services to be ready (check with `docker-compose ps`). Services should be available at:
+   - Auth Service: `http://localhost:5001`
+   - Card Service: `http://localhost:5002`
+   - Game Service: `http://localhost:5003`
+   - Leaderboard Service: `http://localhost:5004`
+
+### Running Locust Tests
+
+#### Quick Start (Web UI)
+
+You can run Locust from either the project root or the tests directory:
+
+**Option 1: From project root (recommended)**
+
+```bash
+# From project root directory (not microservices folder)
+locust -f tests/locustfile.py
+```
+
+**Option 2: From tests directory**
+
+```bash
+# Navigate to tests directory
+cd tests
+
+# Start Locust web UI
+locust -f locustfile.py
+```
+
+Then open your browser to `http://localhost:8089` to configure and run tests through the web interface.
+
+#### Quick Start Script
+
+```bash
+# Use the quick start script (checks services and starts Locust)
+./tests/quick-start-locust.sh
+```
+
+#### Advanced: Run Specific User Classes
+
+```bash
+# Test only Auth Service
+locust -f tests/locustfile.py --host=http://localhost:5001 AuthServiceUser
+
+# Test only Card Service
+locust -f tests/locustfile.py --host=http://localhost:5002 CardServiceUser
+
+# Test only Game Service
+locust -f tests/locustfile.py --host=http://localhost:5003 GameServiceUser
+
+# Test only Leaderboard Service
+locust -f tests/locustfile.py --host=http://localhost:5004 LeaderboardServiceUser
+
+# Test combined workflow (all services)
+locust -f tests/locustfile.py --host=http://localhost:5001 CombinedUser
+```
+
+#### Headless Mode (Automated)
+
+```bash
+# Run with specific parameters (no web UI)
+locust -f tests/locustfile.py \
+  --host=http://localhost:5001 \
+  --headless \
+  --users 100 \
+  --spawn-rate 10 \
+  --run-time 5m \
+  --html=report.html \
+  CombinedUser
+```
+
+#### Using the Advanced Test Runner
+
+```bash
+# Use the advanced test runner script
+./tests/run-locust-tests.sh -u 100 -r 10 -t 5m -m headless -c CombinedUser
+```
+
+Options:
+
+- `-u, --users NUM`: Number of concurrent users (default: 50)
+- `-r, --spawn-rate NUM`: Users to spawn per second (default: 5)
+- `-t, --time TIME`: Test duration (e.g., 2m, 5m, 1h) (default: 2m)
+- `-m, --mode MODE`: Test mode: web, headless (default: web)
+- `-c, --class CLASS`: User class to test (default: CombinedUser)
+- `-h, --host HOST`: Base host URL (default: <http://localhost:5001>)
+
+### Test Coverage
+
+The Locust test suite includes the following user classes:
+
+#### AuthServiceUser
+
+Tests authentication service endpoints:
+
+- User registration (`POST /api/auth/register`)
+- User login (`POST /api/auth/login`)
+- Get profile (`GET /api/auth/profile`)
+- Token validation (`POST /api/auth/validate`)
+- Health check (`GET /health`)
+
+**Host**: `http://localhost:5001`
+
+#### CardServiceUser
+
+Tests card service endpoints:
+
+- Get all cards (`GET /api/cards`)
+- Get cards by type (`GET /api/cards/by-type/{type}`)
+- Get card by ID (`GET /api/cards/{card_id}`)
+- Create random deck (`POST /api/cards/random-deck`)
+- Get card statistics (`GET /api/cards/statistics`)
+- Get card types (`GET /api/cards/types`)
+- Health check (`GET /health`)
+
+**Host**: `http://localhost:5002`
+
+#### GameServiceUser
+
+Tests game service endpoints:
+
+- Create game (`POST /api/games`)
+- Get game state (`GET /api/games/{game_id}`)
+- Get player hand (`GET /api/games/{game_id}/hand`)
+- Draw hand (`POST /api/games/{game_id}/draw-hand`)
+- Play card (`POST /api/games/{game_id}/play-card`)
+- Get turn info (`GET /api/games/{game_id}/turn-info`)
+- Health check (`GET /health`)
+
+**Host**: `http://localhost:5003`
+
+#### LeaderboardServiceUser
+
+Tests leaderboard service endpoints:
+
+- Get leaderboard (`GET /api/leaderboard`)
+- Get player statistics (`GET /api/leaderboard/player/{player_name}`)
+- Get recent games (`GET /api/leaderboard/recent-games`)
+- Get top players (`GET /api/leaderboard/top-players`)
+- Get global statistics (`GET /api/leaderboard/statistics`)
+- Health check (`GET /health`)
+
+**Host**: `http://localhost:5004`
+
+#### CombinedUser
+
+Simulates realistic game workflows across all services:
+
+- Complete game workflow (register → get cards → create deck → create game → play)
+- View leaderboard and statistics
+- Get user profile
+
+**Host**: `http://localhost:5001` (starts at auth service)
+
+### Test Configuration
+
+Each user class has configurable:
+
+- **Wait time**: Time between requests (e.g., `between(1, 3)` seconds)
+- **Task weights**: Relative frequency of different tasks (higher number = more frequent)
+- **Authentication**: Automatic token management for protected endpoints
+
+### Understanding Results
+
+When running Locust tests, you'll see:
+
+- **Request statistics**: Response times, request counts, failure rates
+- **Response time percentiles**: p50, p66, p75, p80, p90, p95, p98, p99, p100
+- **Failure information**: Which requests failed and why
+- **Real-time charts**: Visual representation of performance metrics
+
+### Best Practices
+
+1. **Start Small**: Begin with low user counts (10-50) to verify tests work correctly
+2. **Gradual Ramp-up**: Use spawn-rate to gradually increase load
+3. **Monitor Services**: Watch service logs and resource usage during tests
+4. **Test Individual Services**: Use specific user classes to isolate performance issues
+5. **Test Realistic Workflows**: Use CombinedUser for end-to-end performance testing
+
+### Troubleshooting
+
+#### Services Not Responding
+
+```bash
+# Check if services are running
+curl http://localhost:5001/health
+curl http://localhost:5002/health
+curl http://localhost:5003/health
+curl http://localhost:5004/health
+```
+
+#### Authentication Failures
+
+- Ensure auth service is running and accessible
+- Check that test users can be created/authenticated
+- Verify token format matches service expectations
+
+#### High Failure Rates
+
+- Check service logs for errors
+- Verify database connections
+- Monitor resource usage (CPU, memory, network)
+- Reduce user count or spawn rate
+
+#### Connection Errors
+
+- Verify Docker Desktop is running
+- Ensure all services are running: `cd microservices && docker-compose ps`
+- Rebuild and restart services if code changed: `docker-compose up -d --build`
+- Check firewall/network settings
+- Ensure ports are not blocked
+- Verify Docker containers are healthy
+
+---
+
 ## Postman API Tests
 
 ### Overview
@@ -130,161 +402,56 @@ The Postman collection (`postman_unit_tests.json`) contains unit tests for **thr
 2. **User Service** - User account management and authentication
 3. **Card Collection Service** - Card retrieval and filtering
 
-## Requirements Met
+### Prerequisites
 
-✅ **At least 3 internal microservices tested** (Game, User, Card Collection)
-✅ **Each endpoint has:**
+1. **Start Docker Desktop**:
+   - Ensure Docker Desktop is running on your machine
+   - You can verify Docker is running with: `docker ps`
 
-- One test for valid input (expecting 200 OK)
-- One test for invalid input (expecting error response)
+2. **Build and Start Microservices**:
 
-## Test Coverage
+   **Important**: Always use `--build` flag when starting services to ensure code changes are included:
 
-### Game Service (8 tests)
+   ```bash
+   cd microservices
+   docker-compose up -d --build
+   ```
 
-- `POST /games/decks/random` - Create random deck (valid/invalid method)
-- `POST /games` - Start new game (valid/missing player name)
-- `GET /games/{gameId}` - Get game by ID (valid/non-existent ID)
-- `POST /games/decks/validate` - Validate deck (valid/wrong number of cards)
+   Wait for all services to be ready (check with `docker-compose ps`).
 
-### User Service (8 tests)
+3. **Install Newman** (Postman's CLI collection runner):
 
-- `POST /users/accounts` - Create account (valid/empty username)
-- `POST /users/login` - Login (valid/wrong password)
-- `GET /users/profile/{username}` - Get profile (valid/non-existent user)
-- `PUT /users/profile/{username}` - Update profile (valid/empty password)
+   ```bash
+   # Install newman globally
+   npm install -g newman
+   ```
 
-### Card Collection Service (6 tests)
+### Running Tests from Command Line
 
-- `GET /cards` - Get all cards (valid/wrong method)
-- `GET /cards?type={type}` - Get cards by type (valid/invalid type)
-- `GET /cards/{cardId}` - Get card by ID (valid/non-existent ID)
+**Before running, ensure:**
 
-**Total: 22 tests** (11 valid input tests, 11 invalid input tests)
-
-## Setup Instructions
-
-### 1. Import the Collection
-
-1. Open Postman
-2. Click **Import** button
-3. Select the `postman_unit_tests.json` file
-4. The collection will appear in your Postman workspace
-
-### 2. Configure Environment Variables
-
-The collection uses the following variables (set in the collection variables):
-
-- `game_service_url` - Base URL for Game Service (default: `http://localhost:8001`)
-- `user_service_url` - Base URL for User Service (default: `http://localhost:8002`)
-- `card_service_url` - Base URL for Card Collection Service (default: `http://localhost:8003`)
-- `game_id` - Game ID for testing (set dynamically after creating a game)
-
-**To update these values:**
-
-1. Select the collection in Postman
-2. Go to the **Variables** tab
-3. Update the values to match your microservice URLs
-
-### 3. Running Unit Tests
-
-#### Option A: Run Individual Tests
-
-1. Select a test request in the collection
-2. Click **Send**
-3. View the test results in the **Test Results** tab
-
-#### Option B: Run All Tests in a Folder
-
-1. Right-click on a folder (e.g., "Game Service")
-2. Select **Run folder**
-3. Click **Run** to execute all tests in that folder
-
-#### Option C: Run Entire Collection
-
-1. Click on the collection name
-2. Click **Run** button
-3. Select which tests to run
-4. Click **Run Battle Cards - Unit Tests**
-
-## Test Structure
-
-Each test includes:
-
-1. **Request** - HTTP method, URL, headers, and body (if applicable)
-2. **Test Scripts** - Automated assertions that verify:
-   - Status code (200 OK for valid, 400/401/404/405 for invalid)
-   - Response structure
-   - Error messages (for invalid inputs)
-
-## Expected Responses
-
-### Valid Input Tests
-
-- **Status Code**: 200 OK (or 201 Created for POST requests)
-- **Response Body**: Contains expected data structure
-- **No Error**: Response should not contain error messages
-
-### Invalid Input Tests
-
-- **Status Code**: 400 (Bad Request), 401 (Unauthorized), 404 (Not Found), or 405 (Method Not Allowed)
-- **Response Body**: Contains error message
-- **Error Field**: Response includes an `error` or `error_message` field
-
-## Integration Testing
-
-The same Postman collection can be used for **integration testing** against the API Gateway:
-
-1. Update the collection variables to point to the API Gateway URL
-2. Update request paths to include the gateway routing (e.g., `/api/games/...`)
-3. Run the same tests to verify end-to-end functionality
-
-## Notes
-
-- **Unit Tests**: Test each microservice in isolation (direct service URLs)
-- **Integration Tests**: Test through the API Gateway with full architecture running
-- Some tests may need adjustment based on your actual API implementation
-- Ensure microservices are running before executing tests
-- Some tests depend on data existing in the database (e.g., user accounts, games)
-
-## Troubleshooting
-
-### Tests Failing with Connection Errors
-
-- Verify microservices are running
-- Check that ports match the configured URLs
-- Ensure Docker containers are up if using Docker Compose
-
-### Tests Failing with 404 Errors
-
-- Verify the endpoint paths match your API implementation
-- Check that routes are properly configured in your microservices
-
-### Tests Failing with Wrong Status Codes
-
-- Review your API implementation to ensure it returns expected status codes
-- Update test assertions if your API uses different status codes
-
-## Example: Running Tests for Game Service
+1. Docker Desktop is running
+2. Microservices are built and started: `cd microservices && docker-compose up -d --build`
+3. Postman collection variables are updated (see Setup Instructions above)
 
 ```bash
-# 1. Start your microservices
-docker-compose up -d
+# Run all Postman tests (from project root directory, not microservices folder)
+newman run tests/postman_unit_tests.json
 
-# 2. Verify Game Service is running on port 8001
-curl http://localhost:8001/health
-
-# 3. In Postman:
-#    - Import postman_unit_tests.json
-#    - Select "Game Service" folder
-#    - Click "Run folder"
-#    - Review test results
+# Or with explicit environment variables
+newman run tests/postman_unit_tests.json \
+  --env-var "game_service_url=http://localhost:5003" \
+  --env-var "user_service_url=http://localhost:5001" \
+  --env-var "card_service_url=http://localhost:5002"
 ```
 
-## Exporting Test Results
+For more options (HTML reports, environment variables, etc.):
 
-To export test results:
+```bash
+# Run with HTML report
+newman run tests/postman_unit_tests.json --reporters html --reporter-html-export report.html
 
-1. After running tests, click **Export Results**
-2. Save as JSON or HTML
-3. Include in your project documentation
+# Run with verbose output
+newman run tests/postman_unit_tests.json --verbose
+```
+

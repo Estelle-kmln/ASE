@@ -3,6 +3,7 @@ Leaderboard Service - Game results and rankings microservice
 """
 
 import os
+import sys
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from flask_jwt_extended import JWTManager, jwt_required
@@ -10,6 +11,10 @@ from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
+
+# Add utils directory to path for input sanitizer
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'utils'))
+from input_sanitizer import InputSanitizer, SecurityMiddleware, require_sanitized_input
 
 # Load environment variables
 load_dotenv()
@@ -22,6 +27,23 @@ app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-chan
 # Initialize extensions
 jwt = JWTManager(app)
 CORS(app)
+security = SecurityMiddleware(app)
+
+# JWT error handlers - convert 422 to 401 for invalid tokens
+@jwt.invalid_token_loader
+def invalid_token_callback(error_string):
+    """Handle invalid token errors."""
+    return jsonify({'error': 'Invalid token'}), 401
+
+@jwt.unauthorized_loader
+def unauthorized_callback(error_string):
+    """Handle missing token errors."""
+    return jsonify({'error': 'Missing authorization header'}), 401
+
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_payload):
+    """Handle expired token errors."""
+    return jsonify({'error': 'Token has expired'}), 401
 
 # Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://gameuser:gamepassword@localhost:5432/battlecards')
@@ -40,9 +62,12 @@ def health_check():
 def get_leaderboard():
     """Get the global leaderboard."""
     try:
-        limit = request.args.get('limit', 10, type=int)
-        if limit > 100:
-            limit = 100
+        # Validate and sanitize limit parameter
+        limit_param = request.args.get('limit', '10')
+        try:
+            limit = InputSanitizer.validate_integer(limit_param, min_val=1, max_val=100)
+        except ValueError:
+            limit = 10  # Default to 10 if invalid
         
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -128,6 +153,11 @@ def get_leaderboard():
 def get_player_stats(player_name):
     """Get detailed statistics for a specific player."""
     try:
+        # Validate and sanitize player name
+        try:
+            player_name = InputSanitizer.validate_username(player_name)
+        except ValueError as e:
+            return jsonify({'error': f'Invalid player name: {str(e)}'}), 400
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
@@ -225,9 +255,12 @@ def get_player_stats(player_name):
 def get_recent_games():
     """Get recent completed games."""
     try:
-        limit = request.args.get('limit', 10, type=int)
-        if limit > 50:
-            limit = 50
+        # Validate and sanitize limit parameter
+        limit_param = request.args.get('limit', '10')
+        try:
+            limit = InputSanitizer.validate_integer(limit_param, min_val=1, max_val=50)
+        except ValueError:
+            limit = 10  # Default to 10 if invalid
         
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)

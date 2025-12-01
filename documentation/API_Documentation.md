@@ -16,24 +16,28 @@ This document provides comprehensive documentation for the Battle Card Game micr
 
 The Battle Card Game consists of 5 microservices running on different ports:
 
-| Service | Port | Purpose | Status |
-|---------|------|---------|--------|
-| **🔐 Auth Service** | 5001 | User authentication and profile management | ✅ Active |
-| **🃏 Card Service** | 5002 | Card collection and deck management | ✅ Active |
-| **🎯 Game Service** | 5003 | Game logic and battle mechanics | ✅ Active |
-| **🏆 Leaderboard Service** | 5004 | Rankings and statistics | ✅ Active |
+| Service | Gateway Path | Purpose | Status |
+|---------|--------------|---------|--------|
+| **🔐 Auth Service** | /api/auth | User authentication and profile management | ✅ Active |
+| **🃏 Card Service** | /api/cards | Card collection and deck management | ✅ Active |
+| **🎯 Game Service** | /api/games | Game logic and battle mechanics | ✅ Active |
+| **🏆 Leaderboard Service** | /api/leaderboard | Rankings and statistics | ✅ Active |
+| **🌐 Nginx Gateway** | 8080 | API Gateway and reverse proxy | ✅ Active |
 | **🗄️ PostgreSQL Database** | 5432 | Data persistence | ✅ Active |
 
 ### **Technology Stack**
 - **Backend**: Python Flask with Gunicorn
 - **Database**: PostgreSQL 16
 - **Authentication**: JWT (JSON Web Tokens)
+- **API Gateway**: Nginx (reverse proxy on port 8080)
 - **Containerization**: Docker & Docker Compose
-- **API Gateway**: Nginx (reverse proxy)
+
+### **API Access**
+All services are accessed through the Nginx gateway at `http://localhost:8080`. Direct service access is not recommended in production.
 
 ---
 
-## **🔐 Authentication Service** (`localhost:5001`)
+## **🔐 Authentication Service** (`/api/auth`)
 
 All API endpoints except health checks require authentication using Bearer tokens.
 
@@ -43,14 +47,6 @@ GET /health
 ```
 **Purpose**: Service health status monitoring  
 **Authentication**: Not required  
-**Example**:
-```bash
-curl http://localhost:5001/health
-```
-**Response**:
-```json
-{"status": "healthy", "service": "auth-service"}
-```
 
 ### **User Registration**
 ```http
@@ -68,7 +64,7 @@ POST /api/auth/register
 ```
 **Example**:
 ```bash
-curl -X POST http://localhost:5001/api/auth/register \
+curl -X POST http://localhost:8080/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"username":"player1","email":"player1@example.com","password":"password123"}'
 ```
@@ -99,7 +95,7 @@ POST /api/auth/login
 ```
 **Example**:
 ```bash
-curl -X POST http://localhost:5001/api/auth/login \
+curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"player1","password":"password123"}'
 ```
@@ -113,7 +109,7 @@ GET /api/auth/profile
 **Example**:
 ```bash
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:5001/api/auth/profile
+  http://localhost:8080/api/auth/profile
 ```
 
 ### **Update User Profile**
@@ -132,7 +128,7 @@ POST /api/auth/validate
 
 ---
 
-## **🃏 Card Service** (`localhost:5002`)
+## **🃏 Card Service** (`/api/cards`)
 
 Manages the card collection and deck operations for the battle card game.
 
@@ -152,7 +148,7 @@ GET /api/cards
 **Example**:
 ```bash
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:5002/api/cards
+  http://localhost:8080/api/cards
 ```
 **Response**:
 ```json
@@ -175,13 +171,13 @@ GET /api/cards/by-type/<type>
 **Examples**:
 ```bash
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:5002/api/cards/by-type/rock
+  http://localhost:8080/api/cards/by-type/rock
 
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:5002/api/cards/by-type/paper
+  http://localhost:8080/api/cards/by-type/paper
 
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:5002/api/cards/by-type/scissors
+  http://localhost:8080/api/cards/by-type/scissors
 ```
 
 ### **Get Specific Card**
@@ -193,7 +189,7 @@ GET /api/cards/<card_index>
 **Example**:
 ```bash
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:5002/api/cards/1
+  http://localhost:8080/api/cards/1
 ```
 
 ### **Get Available Card Types**
@@ -220,7 +216,7 @@ POST /api/cards/random-deck
 curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"size":22}' \
-  http://localhost:5002/api/cards/random-deck
+  http://localhost:8080/api/cards/random-deck
 ```
 **Response**:
 ```json
@@ -243,12 +239,12 @@ GET /api/cards/statistics
 **Example**:
 ```bash
 curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:5002/api/cards/statistics
+  http://localhost:8080/api/cards/statistics
 ```
 
 ---
 
-## **🎯 Game Service** (`localhost:5003`)
+## **🎯 Game Service** (`/api/games`)
 
 Handles all game logic, battle mechanics, and game state management.
 
@@ -276,7 +272,7 @@ POST /api/games
 curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"player2_name":"opponent"}' \
-  http://localhost:5003/api/games
+  http://localhost:8080/api/games
 ```
 **Response**:
 ```json
@@ -530,10 +526,25 @@ GET /api/games/user/<username>
 ```
 **Purpose**: Retrieve all games for a specific user  
 **Authentication**: Bearer token required  
+**Query Parameters**:
+- `include_history=true` (optional): Embed decrypted, integrity-checked history snapshots for archived matches. Request fails with HTTP 409 if tampering is detected.
 **Example**:
 ```bash
 curl -H "Authorization: Bearer YOUR_TOKEN" \
   http://localhost:5003/api/games/user/player1
+```
+
+### **Get Archived Game History**
+```http
+GET /api/games/<game_id>/history
+```
+**Purpose**: Retrieve the encrypted-at-rest snapshot for a completed game (only accessible to participants).  
+**Authentication**: Bearer token required  
+**Tamper Detection**: Returns HTTP 409 if the stored integrity hash no longer matches the encrypted payload.  
+**Example**:
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:5003/api/games/GAME_ID/history
 ```
 
 ---
@@ -645,10 +656,10 @@ Since this is a **two-player game**, you need **two separate terminals** - one f
 #### **1. User Registration (Run once)**
 ```bash
 # Register Player 1 (Alice)
-curl -X POST http://localhost:5001/api/auth/register -H "Content-Type: application/json" -d '{"username":"alice","email":"alice@example.com","password":"password123"}'
+curl -X POST http://localhost:8080/api/auth/register -H "Content-Type: application/json" -d '{"username":"alice","email":"alice@example.com","password":"password123"}'
 
 # Register Player 2 (Bob)  
-curl -X POST http://localhost:5001/api/auth/register -H "Content-Type: application/json" -d '{"username":"bob","email":"bob@example.com","password":"password123"}'
+curl -X POST http://localhost:8080/api/auth/register -H "Content-Type: application/json" -d '{"username":"bob","email":"bob@example.com","password":"password123"}'
 ```
 
 #### **2. Setup Two Terminals**
@@ -656,16 +667,16 @@ curl -X POST http://localhost:5001/api/auth/register -H "Content-Type: applicati
 ##### **🟦 Terminal 1 (Alice's Terminal)**
 ```bash
 # Login as Alice and save token (Bash/Linux)
-ALICE_TOKEN=$(curl -X POST http://localhost:5001/api/auth/login -H "Content-Type: application/json" -d '{"username":"alice","password":"password123"}' | jq -r '.access_token')
+ALICE_TOKEN=$(curl -X POST http://localhost:8080/api/auth/login -H "Content-Type: application/json" -d '{"username":"alice","password":"password123"}' | jq -r '.access_token')
 
 # Login as Alice and save token (PowerShell/Windows)
-$ALICE_TOKEN = (curl -X POST http://localhost:5001/api/auth/login -H "Content-Type: application/json" -d '{"username":"alice","password":"password123"}' | ConvertFrom-Json).access_token
+$ALICE_TOKEN = (curl -X POST http://localhost:8080/api/auth/login -H "Content-Type: application/json" -d '{"username":"alice","password":"password123"}' | ConvertFrom-Json).access_token
 
 # Create a new game (Alice is Player 1)
-GAME_ID=$(curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" -H "Content-Type: application/json" -d '{"player2_name":"bob"}' http://localhost:5003/api/games | jq -r '.game_id')
+GAME_ID=$(curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" -H "Content-Type: application/json" -d '{"player2_name":"bob"}' http://localhost:8080/api/games | jq -r '.game_id')
 
 # PowerShell version:
-$GAME_ID = (curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" -H "Content-Type: application/json" -d '{"player2_name":"bob"}' http://localhost:5003/api/games | ConvertFrom-Json).game_id
+$GAME_ID = (curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" -H "Content-Type: application/json" -d '{"player2_name":"bob"}' http://localhost:8080/api/games | ConvertFrom-Json).game_id
 
 # Share the GAME_ID with Bob's terminal!
 echo "Game ID: $GAME_ID"
@@ -674,10 +685,10 @@ echo "Game ID: $GAME_ID"
 ##### **🟨 Terminal 2 (Bob's Terminal)**
 ```bash
 # Login as Bob and save token (Bash/Linux)
-BOB_TOKEN=$(curl -X POST http://localhost:5001/api/auth/login -H "Content-Type: application/json" -d '{"username":"bob","password":"password123"}' | jq -r '.access_token')
+BOB_TOKEN=$(curl -X POST http://localhost:8080/api/auth/login -H "Content-Type: application/json" -d '{"username":"bob","password":"password123"}' | jq -r '.access_token')
 
 # Login as Bob and save token (PowerShell/Windows)
-$BOB_TOKEN = (curl -X POST http://localhost:5001/api/auth/login -H "Content-Type: application/json" -d '{"username":"bob","password":"password123"}' | ConvertFrom-Json).access_token
+$BOB_TOKEN = (curl -X POST http://localhost:8080/api/auth/login -H "Content-Type: application/json" -d '{"username":"bob","password":"password123"}' | ConvertFrom-Json).access_token
 
 # Set the GAME_ID (copy from Alice's terminal)
 GAME_ID="your-game-id-here"  # Replace with actual game ID from Alice
@@ -691,40 +702,40 @@ $GAME_ID = "your-game-id-here"  # Replace with actual game ID from Alice
 ##### **🟦 Alice's Turn (Terminal 1)**
 ```bash
 # Alice: Draw cards to hand
-curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:5003/api/games/$GAME_ID/draw-hand
+curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:8080/api/games/$GAME_ID/draw-hand
 
 # Alice: View her hand
-curl -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:5003/api/games/$GAME_ID/hand
+curl -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:8080/api/games/$GAME_ID/hand
 
 # Alice: Play a card (choose index 0, 1, or 2)
-curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" -H "Content-Type: application/json" -d '{"card_index":0}' http://localhost:5003/api/games/$GAME_ID/play-card
+curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" -H "Content-Type: application/json" -d '{"card_index":0}' http://localhost:8080/api/games/$GAME_ID/play-card
 ```
 
 ##### **🟨 Bob's Turn (Terminal 2)**  
 ```bash
 # Bob: Draw cards to hand
-curl -X POST -H "Authorization: Bearer $BOB_TOKEN" http://localhost:5003/api/games/$GAME_ID/draw-hand
+curl -X POST -H "Authorization: Bearer $BOB_TOKEN" http://localhost:8080/api/games/$GAME_ID/draw-hand
 
 # Bob: View his hand
-curl -H "Authorization: Bearer $BOB_TOKEN" http://localhost:5003/api/games/$GAME_ID/hand
+curl -H "Authorization: Bearer $BOB_TOKEN" http://localhost:8080/api/games/$GAME_ID/hand
 
 # Bob: Play a card (choose index 0, 1, or 2)
-curl -X POST -H "Authorization: Bearer $BOB_TOKEN" -H "Content-Type: application/json" -d '{"card_index":1}' http://localhost:5003/api/games/$GAME_ID/play-card
+curl -X POST -H "Authorization: Bearer $BOB_TOKEN" -H "Content-Type: application/json" -d '{"card_index":1}' http://localhost:8080/api/games/$GAME_ID/play-card
 ```
 
 ##### **🎯 Resolve Round (Either Terminal)**
 ```bash
 # After BOTH players have played their cards, resolve the round
-curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:5003/api/games/$GAME_ID/resolve-round
+curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:8080/api/games/$GAME_ID/resolve-round
 
 # Or from Bob's terminal:
-curl -X POST -H "Authorization: Bearer $BOB_TOKEN" http://localhost:5003/api/games/$GAME_ID/resolve-round
+curl -X POST -H "Authorization: Bearer $BOB_TOKEN" http://localhost:8080/api/games/$GAME_ID/resolve-round
 ```
 
 #### **4. Check Game State (Either Terminal)**
 ```bash
 # View game state and scores
-curl -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:5003/api/games/$GAME_ID
+curl -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:8080/api/games/$GAME_ID
 
 # Continue playing rounds until game ends...
 ```
@@ -732,11 +743,11 @@ curl -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:5003/api/games/$GA
 #### **5. Statistics and Leaderboards**
 ```bash
 # Check leaderboard
-curl -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:5004/api/leaderboard
+curl -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:8080/api/leaderboard
 
 # View player statistics
-curl -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:5004/api/leaderboard/player/alice
-curl -H "Authorization: Bearer $BOB_TOKEN" http://localhost:5004/api/leaderboard/player/bob
+curl -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:8080/api/leaderboard/player/alice
+curl -H "Authorization: Bearer $BOB_TOKEN" http://localhost:8080/api/leaderboard/player/bob
 ```
 
 ### **🚨 Important Game Flow Notes**
@@ -771,31 +782,32 @@ curl -H "Authorization: Bearer $BOB_TOKEN" http://localhost:5004/api/leaderboard
 
 ### **Health Check All Services**
 ```bash
-curl http://localhost:5001/health  # Auth Service
-curl http://localhost:5002/health  # Card Service  
-curl http://localhost:5003/health  # Game Service
-curl http://localhost:5004/health  # Leaderboard Service
+curl http://localhost:8080/health          # Gateway Health
+curl http://localhost:8080/api/auth/health # Auth Service
+curl http://localhost:8080/api/cards/health # Card Service  
+curl http://localhost:8080/api/games/health # Game Service
+curl http://localhost:8080/api/leaderboard/health # Leaderboard Service
 ```
 
 ### **Create Test User and Explore**
 ```bash
 # Create test user
-curl -X POST http://localhost:5001/api/auth/register \
+curl -X POST http://localhost:8080/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"username":"testuser","email":"test@example.com","password":"password123"}'
 
 # Login and get token
-curl -X POST http://localhost:5001/api/auth/login \
+curl -X POST http://localhost:8080/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"testuser","password":"password123"}'
 
 # View all cards (use token from login response)
 curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  http://localhost:5002/api/cards
+  http://localhost:8080/api/cards
 
 # Get card statistics
 curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  http://localhost:5002/api/cards/statistics
+  http://localhost:8080/api/cards/statistics
 ```
 
 ---
@@ -804,10 +816,11 @@ curl -H "Authorization: Bearer YOUR_TOKEN_HERE" \
 
 ### **Current Service Status**
 All services are operational and healthy:
-- ✅ **Auth Service**: Running on port 5001
-- ✅ **Card Service**: Running on port 5002  
-- ✅ **Game Service**: Running on port 5003
-- ✅ **Leaderboard Service**: Running on port 5004
+- ✅ **Nginx Gateway**: Running on port 8080
+- ✅ **Auth Service**: Accessible at /api/auth
+- ✅ **Card Service**: Accessible at /api/cards  
+- ✅ **Game Service**: Accessible at /api/games
+- ✅ **Leaderboard Service**: Accessible at /api/leaderboard
 - ✅ **Database**: PostgreSQL initialized with 39 cards
 
 ### **Database Schema**
@@ -815,9 +828,29 @@ The system uses the following main tables:
 - **users**: User accounts and authentication
 - **cards**: Card collection (39 total: Rock, Paper, Scissors × 13 power levels each)
 - **games**: Game state and player information
-- **game_history**: Completed games for leaderboard calculations
+- **game_history**: Encrypted, tamper-evident snapshots of completed games (requires `GAME_HISTORY_KEY`)
 
 ### **Deployment Instructions**
+
+**Recommended: Use the automated build script** (handles GAME_HISTORY_KEY automatically):
+
+```bash
+# Build and start all services (automatically generates GAME_HISTORY_KEY if needed)
+cd microservices
+./build-and-start.sh
+
+# Stop all services  
+docker compose down
+
+# View logs
+docker compose logs [service-name]
+
+# Check status
+docker compose ps
+```
+
+**Alternative: Manual build** (requires setting GAME_HISTORY_KEY manually):
+
 ```bash
 # Start all services
 docker compose up -d --build
@@ -832,9 +865,17 @@ docker compose logs [service-name]
 docker compose ps
 ```
 
+**Note**: The build script automatically generates and saves a `GAME_HISTORY_KEY` to `.env` if one doesn't exist. This key is required for game history encryption and tamper detection. The key persists across sessions while remaining secure (gitignored).
+
 ---
 
 ## **🛠️ Development Notes**
+
+### **Data Security**
+- Completed matches are archived into the `game_history` table using symmetric encryption plus an HMAC integrity hash.
+- The `GAME_HISTORY_KEY` environment variable (32-byte url-safe base64) is **automatically generated** by the `build-and-start.sh` script if not present.
+- The key is saved to `.env` (gitignored) and persists across sessions.
+- Any tampering with stored history is detected server-side; affected endpoints return HTTP 409 to highlight the integrity issue.
 
 ### **Authentication Flow**
 1. User registers/logs in via Auth Service

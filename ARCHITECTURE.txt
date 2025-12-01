@@ -1,0 +1,145 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                    BATTLE CARDS - ARCHITECTURE DIAGRAM                        ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+                           ┌────────────────────┐
+                           │   Client/Browser   │
+                           │   (API Consumer)   │
+                           └─────────┬──────────┘
+                                     │
+                                     │ HTTP/HTTPS
+                                     │ Authorization: Bearer <JWT>
+                                     ▼
+                           ┌────────────────────┐
+                           │   Nginx Gateway    │
+                           │   Port: 8080      │
+                           │   Routes:         │
+                           │   /api/auth/*     │
+                           │   /api/cards/*    │
+                           │   /api/games/*    │
+                           │   /api/leaderbd/* │
+                           └─────────┬──────────┘
+                                     │
+         ┌───────────────────────────┼───────────────────────────┐
+         │                           │                           │
+         ▼                           ▼                           ▼
+┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
+│  Auth Service    │      │  Card Service    │      │  Game Service    │
+│  Port: 5001      │      │  Port: 5002      │      │  Port: 5003      │
+│                  │      │                  │      │                  │
+│  ✅ CONNECTS     │      │  ✅ CONNECTS     │      │  ✅ CONNECTS     │
+│  TO DATABASE     │      │  TO DATABASE     │      │  TO DATABASE     │
+│                  │      │                  │      │                  │
+│  Tables:         │      │  Tables:         │      │  Tables:         │
+│  • users         │      │  • cards         │      │  • games         │
+│    (read/write)  │      │    (read only)   │      │    (read/write)  │
+│                  │      │                  │      │  • game_history  │
+│  Operations:     │      │  Operations:     │      │    (write only)  │
+│  • Register      │      │  • Get all cards │      │                  │
+│  • Login         │      │  • Get by type   │      │  Operations:     │
+│  • Profile CRUD  │      │  • Get by ID     │      │  • Create game   │
+│  • Validate JWT  │      │  • Random deck   │      │  • Update state  │
+│                  │      │  • Statistics    │      │  • Resolve round │
+│                  │      │                  │      │  • Archive hist. │
+└─────────┬────────┘      └─────────┬────────┘      └─────────┬────────┘
+          │                          │                          │
+          │                          │                          │
+          │                          ▼                          │
+          │               ┌──────────────────┐                 │
+          │               │ Leaderboard      │                 │
+          │               │ Service (5004)   │                 │
+          │               │                  │                 │
+          │               │  ✅ CONNECTS    │                 │
+          │               │  TO DATABASE    │                 │
+          │               │                  │                 │
+          │               │  Tables:         │                 │
+          │               │  • games         │                 │
+          │               │    (read only)   │                 │
+          │               │                  │                 │
+          │               │  Operations:     │                 │
+          │               │  • Leaderboard   │                 │
+          │               │  • Player stats  │                 │
+          │               │  • Recent games  │                 │
+          │               │  • Top players   │                 │
+          │               │  • Statistics    │                 │
+          │               └─────────┬────────┘                 │
+          │                         │                           │
+          └─────────────────────────┴───────────────────────────┘
+                                    │
+                                    │ PostgreSQL Connection
+                                    │ (DATABASE_URL env var)
+                                    ▼
+                           ┌────────────────────┐
+                           │   PostgreSQL DB    │
+                           │   Port: 5432       │
+                           │   Database:        │
+                           │   battlecards      │
+                           │                    │
+                           │   Tables:          │
+                           │   ┌──────────────┐ │
+                           │   │ users        │ │ ← Auth Service
+                           │   │ - id         │ │
+                           │   │ - username   │ │
+                           │   │ - password   │ │
+                           │   │ - email      │ │
+                           │   └──────────────┘ │
+                           │   ┌──────────────┐ │
+                           │   │ cards        │ │ ← Card Service
+                           │   │ - id         │ │
+                           │   │ - type       │ │
+                           │   │ - power      │ │
+                           │   └──────────────┘ │
+                           │   ┌──────────────┐ │
+                           │   │ games        │ │ ← Game Service
+                           │   │ - game_id    │ │   Leaderboard Service
+                           │   │ - players    │ │
+                           │   │ - scores     │ │
+                           │   │ - state      │ │
+                           │   └──────────────┘ │
+                           │   ┌──────────────┐ │
+                           │   │ game_history │ │ ← Game Service
+                           │   │ - game_id    │ │   (encrypted)
+                           │   │ - encrypted │ │
+                           │   │ - hash       │ │
+                           │   └──────────────┘ │
+                           └────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+
+DATABASE ACCESS SUMMARY:
+
+✅ Auth Service (5001)
+   • Reads/Writes: users table
+   • Purpose: User registration, login, profile management
+
+✅ Card Service (5002)
+   • Reads: cards table (read-only)
+   • Purpose: Card queries, deck generation, statistics
+
+✅ Game Service (5003)
+   • Reads/Writes: games table
+   • Writes: game_history table (encrypted snapshots)
+   • Purpose: Game state management, battle logic, history archiving
+
+✅ Leaderboard Service (5004)
+   • Reads: games table (read-only, aggregates data)
+   • Purpose: Rankings, statistics, player performance metrics
+
+❌ Nginx Gateway (8080)
+   • Does NOT connect to database
+   • Purpose: Request routing only
+
+═══════════════════════════════════════════════════════════════════════════════
+
+INTER-SERVICE COMMUNICATION:
+
+• Game Service → Card Service
+  - Calls /api/cards/random-deck to generate player decks
+  - Uses JWT token from original request
+
+• All Services → Auth Service (implicit)
+  - JWT tokens are validated by Flask-JWT-Extended
+  - Services can optionally call /api/auth/validate for explicit validation
+
+═══════════════════════════════════════════════════════════════════════════════
+
