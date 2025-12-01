@@ -271,6 +271,40 @@ To export test results:
 - ✅ `GET /api/leaderboard/statistics` - Global statistics (4 tests: success, no token, invalid token, consistency)
 - ✅ Edge cases (3 tests: zero limit, negative limit, special characters)
 
+## **JWT / OAuth2‑style Authentication Testing**
+
+All service test suites exercise the **JWT bearer token** flow:
+
+- **Token issuance**:
+  - Tests in `test_auth_service.py` call:
+    - `POST /api/auth/register`
+    - `POST /api/auth/login`
+  - They assert that responses include:
+    - A valid `access_token` (JWT)
+    - User data in the `user` object
+  - The same `access_token` is then used as a bearer token in downstream tests.
+
+- **Token usage**:
+  - Game, Card, and Leaderboard tests obtain a token once in `setUpClass` by registering a user via the Auth Service.
+  - For every protected request they send:
+
+    ```http
+    Authorization: Bearer <access_token>
+    ```
+
+  - Each suite includes tests that:
+    - Pass a **valid** token and expect `200/201` responses.
+    - Omit the token and expect `401 Unauthorized`.
+    - Supply an invalid token and expect `401 Unauthorized`.
+    - Hit endpoints as authenticated users but with invalid **authorization** (e.g. non‑player trying to read a game) and expect `403 Forbidden`.
+
+- **Token validation endpoint**:
+  - `test_auth_service.py` contains dedicated tests for:
+    - `POST /api/auth/validate` with a valid token (expecting `valid: true`).
+    - Invalid, missing, or malformed tokens (expecting `401`).
+
+These tests together verify that **authentication and authorization comply with an OAuth2‑style JWT bearer token model** across all microservices.
+
 ## **Total Test Coverage: 96 tests**
 
 Each test suite follows the same pattern as the auth service tests:
