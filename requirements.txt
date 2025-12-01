@@ -24,8 +24,5 @@ gunicorn==23.0.0
 # Environment Variables
 python-dotenv==1.0.1
 
-# Web Server (Production)
-gunicorn==21.2.0
-
 # Performance Testing
 locust==2.17.0
