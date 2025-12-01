@@ -47,6 +47,15 @@ Your application now blocks:
 | **Security Middleware** | Built-in | Automatic request processing |
 | **Validation Decorators** | Built-in | Easy route protection |
 
+### **Automatic Static Analysis & Dependency Scanning**
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| **Bandit Static Analysis** | `.bandit` config | Automated source code security scanning |
+| **pip-audit Dependency Scan** | `requirements.txt` | Known vulnerability detection in dependencies |
+| **Static Analysis Runner** | `scripts/static_analysis.py` | Comprehensive security analysis automation |
+| **Quick Security Check** | `scripts/quick_security_check.py` | Fast development workflow validation |
+| **Security CI/CD Pipeline** | `.github/workflows/security.yml` | Automated security analysis in CI/CD |
+
 ### **Microservice Protection Status**
 | Service | Status | Protected Against |
 |---------|---------|-------------------|
@@ -135,17 +144,81 @@ python tests/security_test_runner.py --save-report
 
 ---
 
+## 🔍 **Automatic Static and Dependency Analysis**
+
+### **Static Security Analysis with Bandit**
+Bandit automatically scans Python source code for common security issues:
+
+```bash
+# Run manual static analysis
+python scripts/static_analysis.py
+
+# Quick security check for development
+python scripts/quick_security_check.py
+
+# CI-friendly mode with reports
+python scripts/static_analysis.py --ci --save-reports
+```
+
+**What Bandit Detects:**
+- Hard-coded passwords and secrets
+- SQL injection vulnerabilities
+- Use of insecure functions (exec, eval)
+- Insecure cryptographic practices
+- Path traversal vulnerabilities
+- And 100+ other security issues
+
+### **Dependency Vulnerability Scanning with pip-audit**
+pip-audit checks installed packages against known vulnerability databases:
+
+```bash
+# Check for vulnerable dependencies
+pip-audit
+
+# Generate detailed report
+pip-audit --desc --format=json
+```
+
+**What pip-audit Detects:**
+- Known CVEs in installed packages
+- Outdated packages with security fixes
+- Malicious packages
+- License compliance issues
+
+### **Automated CI/CD Integration**
+Security analysis runs automatically on:
+- ✅ Every push to main/develop branches
+- ✅ All pull requests
+- ✅ Weekly scheduled scans
+- ✅ Manual workflow triggers
+
+View results in GitHub Actions → Security tab
+
+### **Pre-commit Hook Setup**
+Prevent insecure code from being committed:
+
+```bash
+# Copy pre-commit hook
+cp scripts/pre-commit-hook.sh .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+
+# Or for Windows PowerShell
+# Configure Git to use PowerShell hooks (one-time setup)
+git config core.hooksPath scripts/
+```
+
 ## 🔄 **Integration Guide**
 
 ### **When to Run Security Tests**
 
 | Scenario | Frequency | Command |
 |----------|-----------|---------|
-| **Before committing** | Every time | `python tests/quick_security_test.py` |
-| **Before deployment** | Every deployment | `python tests/security_test_runner.py` |
-| **After updates** | When dependencies change | Both commands |
-| **Regular monitoring** | Weekly/Monthly | `python scripts/check_security.py` |
-| **Security audits** | As needed | `python tests/security_test_runner.py --save-report` |
+| **Before committing** | Every time | `python scripts/quick_security_check.py` |
+| **Static Analysis** | Before commits/deployments | `python scripts/static_analysis.py` |
+| **Input Validation Tests** | Before deployment | `python tests/security_test_runner.py` |
+| **Configuration Check** | After updates | `python scripts/check_security.py` |
+| **Full Security Audit** | Weekly/Monthly | All commands above |
+| **CI/CD Pipeline** | Automatic | GitHub Actions workflows |
 
 ### **Development Workflow Integration**
 

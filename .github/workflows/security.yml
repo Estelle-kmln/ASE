@@ -1,0 +1,182 @@
+name: Security Analysis
+
+on:
+  # Run security analysis on all pushes and pull requests
+  push:
+    branches: [ main, develop, 'feature/*', 'automatic_static' ]
+  pull_request:
+    branches: [ main, develop ]
+  
+  # Allow manual triggering
+  workflow_dispatch:
+  
+  # Run weekly security scans
+  schedule:
+    - cron: '0 2 * * 0'  # Every Sunday at 2 AM UTC
+
+jobs:
+  static-analysis:
+    name: Static Security Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Bandit Static Security Analysis
+      id: bandit
+      run: |
+        echo "🔍 Running Bandit static security analysis..."
+        
+        # Run bandit and capture results
+        if bandit -r . -f json -ll --exclude tests,__pycache__,.git,venv,env,frontend/node_modules -o bandit_report.json; then
+          echo "status=passed" >> $GITHUB_OUTPUT
+          echo "✅ Bandit analysis passed - No security issues found"
+        else
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "⚠️ Bandit found potential security issues"
+          
+          # Show summary of issues
+          echo "📋 Bandit Issues Summary:"
+          bandit -r . -f txt -ll --exclude tests,__pycache__,.git,venv,env,frontend/node_modules || true
+        fi
+
+    - name: Run pip-audit Dependency Analysis
+      id: pip-audit
+      run: |
+        echo "🔍 Running pip-audit dependency vulnerability analysis..."
+        
+        # Run pip-audit and capture results
+        if pip-audit --format=json --desc --output=pip_audit_report.json; then
+          echo "status=passed" >> $GITHUB_OUTPUT
+          echo "✅ pip-audit analysis passed - No known vulnerabilities found"
+        else
+          echo "status=failed" >> $GITHUB_OUTPUT
+          echo "⚠️ pip-audit found known vulnerabilities"
+          
+          # Show summary of vulnerabilities
+          echo "📋 Dependency Vulnerabilities Summary:"
+          pip-audit --desc || true
+        fi
+
+    - name: Run Comprehensive Security Analysis
+      run: |
+        echo "🚀 Running comprehensive security analysis script..."
+        python scripts/static_analysis.py --ci --save-reports
+
+    - name: Upload Security Reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-analysis-reports
+        path: |
+          bandit_report.json
+          bandit_report.txt
+          pip_audit_report.json
+          pip_audit_report.txt
+          security_analysis_report_*.json
+        retention-days: 30
+
+    - name: Security Analysis Summary
+      if: always()
+      run: |
+        echo "## 🛡️ Security Analysis Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Bandit results
+        if [ "${{ steps.bandit.outputs.status }}" = "passed" ]; then
+          echo "✅ **Static Analysis (Bandit)**: PASSED - No security issues detected" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ **Static Analysis (Bandit)**: ATTENTION NEEDED - Potential security issues found" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # pip-audit results
+        if [ "${{ steps.pip-audit.outputs.status }}" = "passed" ]; then
+          echo "✅ **Dependency Analysis (pip-audit)**: PASSED - No known vulnerabilities" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ **Dependency Analysis (pip-audit)**: ATTENTION NEEDED - Known vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "📊 **Reports**: Check the 'security-analysis-reports' artifact for detailed findings" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "💡 **Next Steps**: Review any issues found and update dependencies as needed" >> $GITHUB_STEP_SUMMARY
+
+    - name: Fail if critical security issues found
+      if: steps.bandit.outputs.status == 'failed' || steps.pip-audit.outputs.status == 'failed'
+      run: |
+        echo "❌ Critical security issues detected!"
+        echo "Please review the security analysis reports and address the findings."
+        echo "This is required by the security requirements for automatic static and dependency analysis."
+        exit 1
+
+  docker-security:
+    name: Docker Security Analysis  
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'  # Skip Docker scan on weekly runs
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker Images for Security Scanning
+      run: |
+        cd microservices
+        echo "🏗️ Building Docker images for security analysis..."
+        
+        # Build each service image for scanning
+        docker build -t auth-service:security-scan ./auth-service
+        docker build -t card-service:security-scan ./card-service  
+        docker build -t game-service:security-scan ./game-service
+        docker build -t leaderboard-service:security-scan ./leaderboard-service
+
+    - name: Run Trivy Security Scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'auth-service:security-scan'
+        format: 'sarif'
+        output: 'auth-service-trivy.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'auth-service-trivy.sarif'
+
+    - name: Docker Image Vulnerability Summary
+      run: |
+        echo "🐳 Running Docker security analysis on all service images..."
+        
+        services=("auth-service" "card-service" "game-service" "leaderboard-service")
+        
+        for service in "${services[@]}"; do
+          echo "🔍 Scanning $service..."
+          
+          # Use Trivy to scan for vulnerabilities
+          if command -v trivy &> /dev/null; then
+            trivy image --severity HIGH,CRITICAL --no-progress "${service}:security-scan" || true
+          else
+            echo "ℹ️ Trivy not available for detailed scanning"
+          fi
+        done
+        
+        echo ""
+        echo "💡 Docker Security Recommendations:"
+        echo "   • Keep base images updated to latest secure versions"
+        echo "   • Regularly scan images for vulnerabilities"
+        echo "   • Use minimal base images (e.g., alpine) when possible"
+        echo "   • Implement image signing and verification in production"

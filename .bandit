@@ -1,0 +1,6 @@
+[bandit]
+# Bandit configuration file for automatic static security analysis
+exclude_dirs = tests,__pycache__,.git,venv,env,frontend/node_modules
+skips = 
+severity = low
+confidence = low
