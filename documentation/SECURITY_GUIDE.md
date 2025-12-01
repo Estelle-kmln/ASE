@@ -49,11 +49,106 @@ Your application now blocks:
 
 ### **Microservice Protection Status**
 | Service | Status | Protected Against |
-|---------|---------|-------------------|
-| **Auth Service** | ✅ **SECURED** | Username/password injection, email validation |
-| **Game Service** | ✅ **SECURED** | Game ID validation, player name sanitization |
-| **Card Service** | ✅ **SECURED** | Card type validation, ID bounds checking |
-| **Leaderboard Service** | ✅ **SECURED** | Query parameter sanitization |
+|---------|--------|-------------------|
+| **Auth Service** | ✅ **SECURED** | Username/password injection, email validation, JWT issuing |
+| **Game Service** | ✅ **SECURED** | Game ID validation, player name sanitization, JWT-based access control |
+| **Card Service** | ✅ **SECURED** | Card type validation, ID bounds checking, JWT-based access control |
+| **Leaderboard Service** | ✅ **SECURED** | Query parameter sanitization, JWT-based access control |
+
+---
+
+## 🔐 **Authentication & Authorization (OAuth2‑style with JWT Bearer Tokens)**
+
+### **Overview**
+- The platform uses **JWT bearer tokens** for authentication and authorization.
+- Tokens are issued by the **Auth Service** and consumed by all other microservices.
+- The flow is compatible with common **OAuth2-style** patterns:
+  - Tokens are returned from login/register endpoints as a bearer token with expiry metadata.
+  - Clients send the token in the `Authorization` header on every protected request.
+
+### **Token Issuance (Auth Service)**
+
+- Endpoints:
+  - `POST /api/auth/register`
+  - `POST /api/auth/login`
+- Successful responses include:
+
+```json
+{
+  "message": "Login successful",
+  "access_token": "<JWT>",
+  "token_type": "bearer",
+  "expires_in": 86400,
+  "user": {
+    "id": 1,
+    "username": "testuser"
+  }
+}
+```
+
+- **Fields:**
+  - `access_token`: The signed **JWT** created with `Flask‑JWT‑Extended`.
+  - `token_type`: Always `"bearer"` to match OAuth2 conventions.
+  - `expires_in`: Token lifetime in **seconds** (derived from `JWT_ACCESS_TOKEN_EXPIRES`, currently 24h).
+
+### **Using the Token (Clients)**
+
+- Every protected request must include:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+- Examples:
+
+```bash
+# Call a protected profile endpoint
+curl -H "Authorization: Bearer $TOKEN" \
+     http://localhost:8080/api/auth/profile
+
+# Call a protected game endpoint
+curl -H "Authorization: Bearer $TOKEN" \
+     http://localhost:8080/api/games
+```
+
+### **Enforcement in Microservices**
+
+- All protected routes use `@jwt_required()` from `Flask‑JWT‑Extended`:
+  - **Auth Service**
+    - `/api/auth/profile` (GET/PUT)
+    - `/api/auth/validate` (POST)
+  - **Game Service**
+    - All `/api/games/**` and history/turn info endpoints
+  - **Card Service**
+    - All `/api/cards/**` endpoints
+  - **Leaderboard Service**
+    - All `/api/leaderboard/**` endpoints
+
+- Each service:
+  - Validates the JWT signature and expiry using the shared `JWT_SECRET_KEY`.
+  - Extracts the current user with `get_jwt_identity()`.
+  - Enforces **authorization rules** (e.g. only game participants can view/play, users only see their own games).
+
+### **Configuration**
+
+- Environment/config variables:
+
+```bash
+JWT_SECRET_KEY=change-this-in-production
+JWT_ACCESS_TOKEN_EXPIRES=24h  # configured in code as timedelta(hours=24)
+```
+
+- All microservices share the **same** `JWT_SECRET_KEY` so they can verify tokens issued by the Auth Service.
+
+### **Failure Handling**
+
+- Common error responses are normalized across services:
+  - `401 Unauthorized` + `{"error": "Missing authorization header"}` when the header is missing.
+  - `401 Unauthorized` + `{"error": "Invalid token"}` for malformed/invalid JWTs.
+  - `401 Unauthorized` + `{"error": "Token has expired"}` for expired tokens.
+  - `403 Forbidden` for authorization failures (valid token, but user is not allowed to access the resource).
+
+These behaviors are covered by automated tests (see [Testing & Validation](#-testing--validation) and `MICROSERVICE_TESTING.md`).
 
 ---
 
