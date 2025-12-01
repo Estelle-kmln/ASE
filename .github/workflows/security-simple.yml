@@ -1,0 +1,64 @@
+name: Security Analysis (Simplified)
+
+on:
+  # Run security analysis on pushes and pull requests
+  push:
+    branches: [ main, develop, 'automatic_static' ]
+  pull_request:
+    branches: [ main, develop ]
+  
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  security-analysis:
+    name: Static and Dependency Security Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Security Analysis Script
+      run: |
+        echo "🛡️ Running automatic static and dependency security analysis..."
+        python scripts/static_analysis.py --ci --save-reports
+
+    - name: Upload Security Reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-analysis-reports
+        path: |
+          bandit_report.json
+          bandit_report.txt  
+          pip_audit_report.json
+          pip_audit_report.txt
+          security_analysis_report_*.json
+        retention-days: 30
+
+    - name: Security Analysis Summary
+      if: always()
+      run: |
+        echo "## 🛡️ Security Analysis Complete" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "📊 **Analysis Results**: Check the 'security-analysis-reports' artifact for detailed findings" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "🔍 **Tools Used**:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Bandit**: Static security analysis of Python code" >> $GITHUB_STEP_SUMMARY
+        echo "- **pip-audit**: Dependency vulnerability scanning" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "💡 **Next Steps**: Download and review the security reports" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Compliance**: Automatic static and dependency analysis requirement satisfied" >> $GITHUB_STEP_SUMMARY

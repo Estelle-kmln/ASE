@@ -56,9 +56,9 @@ class StaticAnalysisRunner:
                 text_cmd = cmd.copy()
                 text_cmd[5] = 'txt'  # Change format to txt (adjusted index due to sys.executable and -m)
                 with open('bandit_report.txt', 'w', encoding='utf-8') as f:
-                    subprocess.run(text_cmd, stdout=f, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='ignore')
+                    subprocess.run(text_cmd, stdout=f, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='ignore', timeout=300)
             
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=300)
             
             if result.returncode == 0:
                 self.log("   ✅ Bandit analysis completed - No security issues found")
@@ -123,7 +123,7 @@ class StaticAnalysisRunner:
             # Run pip-audit on installed packages
             cmd = [sys.executable, '-m', 'pip_audit', '--format=json', '--desc']
             
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore')
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=300)
             
             if result.returncode == 0:
                 # Parse JSON output
@@ -242,7 +242,7 @@ class StaticAnalysisRunner:
     def run_docker_security_scan(self):
         """Check Docker images for vulnerabilities using docker scout (if available)."""
         if not self.verbose:
-            return True  # Skip Docker scanning in CI mode for now
+            return True  # Skip Docker scanning in CI mode for speed
             
         self.log("🔍 Checking for Docker security scanning capabilities...")
         
