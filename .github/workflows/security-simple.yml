@@ -1,13 +1,13 @@
 name: Security Analysis (Simplified)
 
 on:
-  # Run security analysis on pushes and pull requests
+  # Run security analysis on pushes and pull requests to main branches only
   push:
-    branches: [ main, develop, 'automatic_static' ]
+    branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
   
-  # Allow manual triggering
+  # Allow manual triggering for testing
   workflow_dispatch:
 
 jobs:

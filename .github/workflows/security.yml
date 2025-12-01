@@ -1,4 +1,4 @@
-name: Security Analysis
+name: Comprehensive Security Analysis
 
 on:
   # Run security analysis on all pushes and pull requests
