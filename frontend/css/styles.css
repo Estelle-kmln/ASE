@@ -262,12 +262,18 @@ body {
     height: 100%;
     background-color: rgba(0, 0, 0, 0.7);
     z-index: 200;
-    align-items: center;
-    justify-content: center;
 }
 
 .modal.active {
     display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal[style*="display: block"] {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
 }
 
 .modal-content {
@@ -1005,6 +1011,46 @@ body {
 }
 
 /* Match Details Modal Styles */
+.match-details-modal {
+    max-width: 900px;
+    width: 70%;
+    text-align: center;
+    max-height: 85vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.match-details-modal h2 {
+    margin-bottom: 1.5rem;
+    color: var(--primary-color);
+    text-align: center;
+}
+
+.match-details-scroll {
+    overflow-y: auto;
+    max-height: calc(85vh - 100px);
+    padding-right: 0.5rem;
+}
+
+.match-details-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+.match-details-scroll::-webkit-scrollbar-track {
+    background: var(--bg-color);
+    border-radius: 4px;
+}
+
+.match-details-scroll::-webkit-scrollbar-thumb {
+    background: var(--secondary-color);
+    border-radius: 4px;
+}
+
+.match-details-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-color);
+}
+
 .close {
     color: #aaa;
     float: right;
@@ -1022,9 +1068,16 @@ body {
 .match-summary {
     background-color: var(--card-bg);
     padding: 1.5rem;
-    border-radius: 8px;
+    border-radius: 12px;
     margin-bottom: 1.5rem;
     box-shadow: var(--shadow);
+}
+
+.match-summary h3 {
+    text-align: center;
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+    font-size: 1.3rem;
 }
 
 .players-info {
@@ -1055,7 +1108,7 @@ body {
 .vs {
     font-size: 1.5rem;
     font-weight: bold;
-    color: var(--text-color);
+    color: var(--accent-color);
 }
 
 .match-result {
@@ -1064,27 +1117,25 @@ body {
     font-size: 1.5rem;
 }
 
-.rounds-history {
-    max-height: 500px;
-    overflow-y: auto;
-}
-
 .rounds-history h3 {
     margin-bottom: 1rem;
     color: var(--primary-color);
+    font-size: 1.2rem;
 }
 
 .round-detail {
-    background-color: var(--bg-color);
-    padding: 1rem;
-    border-radius: 8px;
+    background-color: var(--card-bg);
+    padding: 1.2rem;
+    border-radius: 12px;
     margin-bottom: 1rem;
     border-left: 4px solid var(--secondary-color);
+    box-shadow: var(--shadow);
 }
 
 .round-detail h4 {
     margin-bottom: 1rem;
     color: var(--primary-color);
+    font-size: 1.1rem;
 }
 
 .cards-played {
@@ -1095,7 +1146,7 @@ body {
     gap: 1rem;
 }
 
-.card-display {
+.card-display-modal {
     text-align: center;
     flex: 1;
 }
@@ -1105,12 +1156,38 @@ body {
     margin-bottom: 0.5rem;
     color: var(--text-color);
     opacity: 0.8;
+    font-weight: 600;
+}
+
+.played-card-modal {
+    width: 120px;
+    height: 160px;
+    border: 3px solid var(--primary-color);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-color);
+    margin: 0 auto;
+    box-shadow: var(--shadow);
+}
+
+.played-card-modal .card-emoji {
+    font-size: 3.5rem;
+}
+
+.played-card-modal .card-power {
+    font-size: 1.2rem;
+    margin-top: 0.5rem;
+    color: var(--secondary-color);
+    font-weight: bold;
 }
 
 .vs-small {
-    font-size: 1.2rem;
+    font-size: 1.5rem;
     font-weight: bold;
-    color: var(--text-color);
+    color: var(--accent-color);
 }
 
 .round-outcome {
@@ -1119,6 +1196,8 @@ body {
     align-items: center;
     margin-top: 1rem;
     font-weight: bold;
+    padding-top: 1rem;
+    border-top: 1px solid var(--bg-color);
 }
 
 .round-score {

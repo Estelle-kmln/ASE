@@ -58,10 +58,10 @@
     
     <!-- Match Details Modal -->
     <div id="match-details-modal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeMatchDetails()">&times;</span>
+        <div class="modal-content match-details-modal">
+            <button class="modal-close" onclick="closeMatchDetails()">✕</button>
             <h2>Match Details</h2>
-            <div id="match-details-content">
+            <div id="match-details-content" class="match-details-scroll">
                 <div class="loading"></div>
             </div>
         </div>

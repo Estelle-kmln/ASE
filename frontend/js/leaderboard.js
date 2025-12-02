@@ -201,6 +201,13 @@ function displayMatchDetails(match) {
     const content = document.getElementById('match-details-content');
     const currentUser = JSON.parse(localStorage.getItem('user')).username;
     
+    // Card emojis
+    const cardEmojis = {
+        'Rock': '🪨',
+        'Paper': '📄',
+        'Scissors': '✂️'
+    };
+    
     // Determine if current user is player1 or player2
     const isPlayer1 = match.player1_name === currentUser;
     const myName = isPlayer1 ? match.player1_name : match.player2_name;
@@ -253,19 +260,19 @@ function displayMatchDetails(match) {
                 <div class="round-detail">
                     <h4>Round ${round.round}${isTieBreaker}</h4>
                     <div class="cards-played">
-                        <div class="card-display">
+                        <div class="card-display-modal">
                             <div class="card-label">Your Card</div>
-                            <div class="card ${myCard.type.toLowerCase()}">
-                                <div class="card-type">${myCard.type}</div>
-                                <div class="card-power">Power: ${myCard.power}</div>
+                            <div class="played-card-modal">
+                                <span class="card-emoji">${cardEmojis[myCard.type]}</span>
+                                <div class="card-power">P: ${myCard.power}</div>
                             </div>
                         </div>
                         <div class="vs-small">VS</div>
-                        <div class="card-display">
+                        <div class="card-display-modal">
                             <div class="card-label">Opponent's Card</div>
-                            <div class="card ${opponentCard.type.toLowerCase()}">
-                                <div class="card-type">${opponentCard.type}</div>
-                                <div class="card-power">Power: ${opponentCard.power}</div>
+                            <div class="played-card-modal">
+                                <span class="card-emoji">${cardEmojis[opponentCard.type]}</span>
+                                <div class="card-power">P: ${opponentCard.power}</div>
                             </div>
                         </div>
                     </div>
