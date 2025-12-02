@@ -530,6 +530,36 @@ body {
     font-weight: bold;
 }
 
+.draw-cards-btn {
+    display: block;
+    margin: 2rem auto 0;
+    padding: 1rem 3rem;
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    animation: pulse 2s infinite;
+}
+
+.draw-cards-btn:hover {
+    background-color: #2980b9;
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+}
+
 .play-card-btn {
     display: block;
     margin: 2rem auto 0;

@@ -85,31 +85,68 @@ async function loadGameState() {
 
 function updateGameDisplay() {
     // Update player names
-    document.getElementById('player1-name').textContent = gameState.player1_name || 'Player 1';
-    document.getElementById('player2-name').textContent = gameState.player2_name || 'Player 2';
+    document.getElementById('player1-name').textContent = gameState.player1.name || 'Player 1';
+    document.getElementById('player2-name').textContent = gameState.player2.name || 'Player 2';
     
     // Update scores
-    document.getElementById('player1-score').textContent = gameState.player1_score || 0;
-    document.getElementById('player2-score').textContent = gameState.player2_score || 0;
+    document.getElementById('player1-score').textContent = gameState.player1.score || 0;
+    document.getElementById('player2-score').textContent = gameState.player2.score || 0;
     
     // Update turn number
-    document.getElementById('turn-number').textContent = gameState.current_turn || 1;
+    document.getElementById('turn-number').textContent = gameState.turn || 1;
     
-    // Update hand
-    if (gameState.hand) {
-        hand = gameState.hand;
+    // Check if we need to draw cards
+    const isPlayer1 = currentUser.username === gameState.player1.name;
+    const myHand = isPlayer1 ? gameState.player1.hand_size : gameState.player2.hand_size;
+    
+    if (myHand === 0) {
+        // Need to draw cards
+        document.getElementById('draw-cards-btn').style.display = 'block';
+        document.getElementById('play-card-btn').style.display = 'none';
+        document.getElementById('turn-indicator').textContent = 'Draw cards to start!';
+        document.getElementById('turn-indicator').style.color = '#3498db';
+        hand = [];
         renderHand();
+    } else {
+        // Have cards - can play
+        document.getElementById('draw-cards-btn').style.display = 'none';
+        document.getElementById('play-card-btn').style.display = 'block';
+        updateTurnIndicator();
     }
-    
-    // Update turn indicator
-    updateTurnIndicator();
     
     // Update played cards if available
     updatePlayedCards();
     
     // Check if game is over
-    if (gameState.status === 'completed') {
+    if (!gameState.is_active) {
         showGameOver();
+    }
+}
+
+async function drawCards() {
+    const token = localStorage.getItem('token');
+    
+    try {
+        const response = await fetch(`${GAME_API_URL}/${gameId}/draw-hand`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            hand = data.hand || [];
+            renderHand();
+            await loadGameState();
+        } else {
+            alert('Failed to draw cards: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error drawing cards:', error);
+        alert('Network error. Please try again.');
     }
 }
 
@@ -200,10 +237,26 @@ async function playSelectedCard() {
 
 function updateTurnIndicator() {
     const indicator = document.getElementById('turn-indicator');
+    const isPlayer1 = currentUser.username === gameState.player1.name;
     
-    if (gameState.waiting_for_player === currentUser.id) {
+    // Check if both players have drawn cards
+    const myHandSize = isPlayer1 ? gameState.player1.hand_size : gameState.player2.hand_size;
+    const opponentHandSize = isPlayer1 ? gameState.player2.hand_size : gameState.player1.hand_size;
+    
+    if (opponentHandSize === 0) {
+        indicator.textContent = 'Waiting for opponent to draw cards...';
+        indicator.style.color = '#7f8c8d';
+        document.getElementById('play-card-btn').disabled = true;
+        return;
+    }
+    
+    // Both players have cards - check whose turn it is
+    const currentPlayer = gameState.turn % 2 === 1 ? gameState.player1.name : gameState.player2.name;
+    
+    if (currentUser.username === currentPlayer) {
         indicator.textContent = 'Your turn to play!';
         indicator.style.color = '#f39c12';
+        document.getElementById('play-card-btn').disabled = false;
     } else {
         indicator.textContent = 'Waiting for opponent...';
         indicator.style.color = '#7f8c8d';

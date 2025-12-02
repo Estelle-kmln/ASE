@@ -107,6 +107,7 @@ async function loadUserGames() {
         // Separate pending and active games - use case-insensitive comparison
         const currentUsername = currentUser.username.toLowerCase();
         const pendingGames = games.filter(game => 
+            game.is_active &&  // Only show active game invitations
             game.player2_name && 
             game.player2_name.toLowerCase() === currentUsername && 
             !game.player2_id

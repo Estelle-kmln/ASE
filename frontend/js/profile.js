@@ -36,28 +36,50 @@ document.addEventListener('DOMContentLoaded', () => {
 async function loadProfile() {
     const token = localStorage.getItem('token');
     
+    if (!token) {
+        console.error('No token found');
+        localStorage.clear();
+        window.location.href = 'login.html';
+        return;
+    }
+    
     try {
         const response = await fetch(`${AUTH_API_URL}/profile`, {
             headers: {
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
             }
         });
         
         const data = await response.json();
         
         if (response.ok) {
-            document.getElementById('username').value = data.username;
-            document.getElementById('email').value = data.email;
+            console.log('Profile data:', data);
+            // Backend returns { user: { id, username, created_at } }
+            const userData = data.user || data;
+            document.getElementById('username').value = userData.username || '';
+            
+            // Password is always shown as dots for security
+            document.getElementById('password').value = '••••••••';
             
             // Update localStorage with latest data
-            currentUser = data;
-            localStorage.setItem('user', JSON.stringify(data));
+            currentUser = userData;
+            localStorage.setItem('user', JSON.stringify(userData));
+        } else if (response.status === 401) {
+            // Token expired or invalid
+            console.error('Unauthorized - token may be expired');
+            showAlert('Session expired. Please login again.', 'error');
+            setTimeout(() => {
+                localStorage.clear();
+                window.location.href = 'login.html';
+            }, 2000);
         } else {
-            showAlert('Failed to load profile', 'error');
+            console.error('Failed to load profile:', data);
+            showAlert('Failed to load profile: ' + (data.error || 'Unknown error'), 'error');
         }
     } catch (error) {
         console.error('Error loading profile:', error);
-        showAlert('Network error. Please try again.', 'error');
+        showAlert('Network error. Please check your connection and try again.', 'error');
     }
 }
 
@@ -65,26 +87,22 @@ function toggleEdit() {
     isEditMode = !isEditMode;
     
     const usernameInput = document.getElementById('username');
-    const emailInput = document.getElementById('email');
     const passwordInput = document.getElementById('password');
-    const confirmPasswordInput = document.getElementById('confirm-password');
     const editBtn = document.getElementById('edit-btn');
     const saveBtn = document.getElementById('save-btn');
     
     if (isEditMode) {
         usernameInput.disabled = false;
-        emailInput.disabled = false;
         passwordInput.disabled = false;
-        confirmPasswordInput.disabled = false;
+        passwordInput.value = ''; // Clear to allow new password entry
+        passwordInput.placeholder = 'Enter new password (leave blank to keep current)';
         editBtn.textContent = '❌ Cancel';
         saveBtn.style.display = 'block';
     } else {
         usernameInput.disabled = true;
-        emailInput.disabled = true;
         passwordInput.disabled = true;
-        confirmPasswordInput.disabled = true;
-        passwordInput.value = '';
-        confirmPasswordInput.value = '';
+        passwordInput.value = '••••••••';
+        passwordInput.placeholder = '••••••••';
         editBtn.textContent = '✏️ Edit';
         saveBtn.style.display = 'none';
         clearAlert();
