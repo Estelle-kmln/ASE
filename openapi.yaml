@@ -1,0 +1,1158 @@
+openapi: 3.0.3
+info:
+  title: Battle Cards Game API
+  description: |
+    A Rock Paper Scissors battle card game implemented using microservices architecture.
+    All services are accessed through the Nginx API Gateway at http://localhost:8080.
+    
+    **Authentication**: Most endpoints require JWT Bearer tokens. Register or login to receive a token.
+  version: 1.0.0
+  contact:
+    name: Advanced Software Engineering Project
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080/api
+    description: Local development server (via Nginx Gateway)
+
+tags:
+  - name: Auth
+    description: User authentication and profile management
+  - name: Cards
+    description: Card collection and deck management
+  - name: Games
+    description: Game logic and battle mechanics
+  - name: Leaderboard
+    description: Rankings and player statistics
+  - name: Health
+    description: Service health checks
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from /api/auth/register or /api/auth/login
+  
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+      required:
+        - error
+    
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: User ID
+        username:
+          type: string
+          description: Username
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - username
+    
+    AuthResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        access_token:
+          type: string
+          description: JWT bearer token
+        token_type:
+          type: string
+          enum: [bearer]
+          description: Token type (OAuth2-style)
+        expires_in:
+          type: integer
+          description: Token expiration time in seconds
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+        - message
+        - access_token
+        - token_type
+        - expires_in
+        - user
+    
+    Card:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [Rock, Paper, Scissors]
+        power:
+          type: integer
+          minimum: 1
+          maximum: 13
+      required:
+        - id
+        - type
+        - power
+    
+    Deck:
+      type: object
+      properties:
+        deck:
+          type: array
+          items:
+            $ref: '#/components/schemas/Card'
+        size:
+          type: integer
+      required:
+        - deck
+        - size
+    
+    Game:
+      type: object
+      properties:
+        game_id:
+          type: string
+          format: uuid
+        turn:
+          type: integer
+        is_active:
+          type: boolean
+        player1:
+          type: object
+          properties:
+            name:
+              type: string
+            deck_size:
+              type: integer
+            hand_size:
+              type: integer
+            score:
+              type: integer
+        player2:
+          type: object
+          properties:
+            name:
+              type: string
+            deck_size:
+              type: integer
+            hand_size:
+              type: integer
+            score:
+              type: integer
+        winner:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - game_id
+        - turn
+        - is_active
+        - player1
+        - player2
+    
+    LeaderboardEntry:
+      type: object
+      properties:
+        rank:
+          type: integer
+        player:
+          type: string
+        wins:
+          type: integer
+        games:
+          type: integer
+        losses:
+          type: integer
+        win_percentage:
+          type: number
+          format: float
+      required:
+        - rank
+        - player
+        - wins
+        - games
+        - losses
+        - win_percentage
+
+security:
+  - bearerAuth: []
+
+paths:
+  # Health Checks
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Gateway health check
+      description: Check if the API gateway is running
+      security: []
+      responses:
+        '200':
+          description: Gateway is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  gateway:
+                    type: string
+
+  # Auth Service
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Register new user
+      description: Create a new user account and receive JWT token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 50
+                  description: Username (3-50 characters)
+                password:
+                  type: string
+                  minLength: 4
+                  maxLength: 128
+                  description: Password (4-128 characters)
+                email:
+                  type: string
+                  format: email
+                  description: Email address (optional)
+              required:
+                - username
+                - password
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Username already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: User login
+      description: Authenticate user and receive JWT token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+              required:
+                - username
+                - password
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/profile:
+    get:
+      tags:
+        - Auth
+      summary: Get user profile
+      description: Retrieve current user's profile information
+      responses:
+        '200':
+          description: Profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Auth
+      summary: Update user profile
+      description: Update user profile (currently supports password update)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password:
+                  type: string
+                  minLength: 4
+                  maxLength: 128
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/validate:
+    post:
+      tags:
+        - Auth
+      summary: Validate JWT token
+      description: Validate a JWT token (internal service use)
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  username:
+                    type: string
+        '401':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Card Service
+  /cards:
+    get:
+      tags:
+        - Cards
+      summary: Get all cards
+      description: Retrieve all available cards in the database
+      responses:
+        '200':
+          description: List of all cards
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cards:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Card'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /cards/by-type/{type}:
+    get:
+      tags:
+        - Cards
+      summary: Get cards by type
+      description: Filter cards by type (rock, paper, or scissors)
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [rock, paper, scissors]
+          description: Card type
+      responses:
+        '200':
+          description: List of cards of specified type
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cards:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Card'
+                  type:
+                    type: string
+        '400':
+          description: Invalid card type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /cards/{card_id}:
+    get:
+      tags:
+        - Cards
+      summary: Get card by ID
+      description: Retrieve details of a specific card
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Card ID
+      responses:
+        '200':
+          description: Card details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  card:
+                    $ref: '#/components/schemas/Card'
+        '404':
+          description: Card not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /cards/random-deck:
+    post:
+      tags:
+        - Cards
+      summary: Create random deck
+      description: Generate a random deck of cards for gameplay
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                size:
+                  type: integer
+                  minimum: 1
+                  maximum: 50
+                  default: 22
+                  description: Number of cards in deck
+      responses:
+        '200':
+          description: Random deck generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deck'
+        '400':
+          description: Invalid deck size
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /cards/statistics:
+    get:
+      tags:
+        - Cards
+      summary: Get card statistics
+      description: Retrieve database statistics and card distribution
+      responses:
+        '200':
+          description: Card statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_cards:
+                    type: integer
+                  type_distribution:
+                    type: object
+                  power_distribution:
+                    type: object
+                  available_types:
+                    type: array
+                    items:
+                      type: string
+                  power_range:
+                    type: object
+                    properties:
+                      min:
+                        type: integer
+                      max:
+                        type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /cards/types:
+    get:
+      tags:
+        - Cards
+      summary: Get available card types
+      description: Get list of all available card types and powers
+      responses:
+        '200':
+          description: Available types and powers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  types:
+                    type: array
+                    items:
+                      type: string
+                  powers:
+                    type: array
+                    items:
+                      type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Game Service
+  /games:
+    post:
+      tags:
+        - Games
+      summary: Create new game
+      description: Initialize a new game between two players
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                player2_name:
+                  type: string
+                  minLength: 3
+                  maxLength: 50
+              required:
+                - player2_name
+      responses:
+        '201':
+          description: Game created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  game_id:
+                    type: string
+                    format: uuid
+                  player1_name:
+                    type: string
+                  player2_name:
+                    type: string
+                  status:
+                    type: string
+                  turn:
+                    type: integer
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}:
+    get:
+      tags:
+        - Games
+      summary: Get game state
+      description: Retrieve current game state and player information
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Game state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Game'
+        '403':
+          description: Unauthorized to view this game
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/hand:
+    get:
+      tags:
+        - Games
+      summary: Get player's hand
+      description: View current player's cards in hand
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Player's hand
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hand:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Card'
+                  player:
+                    type: string
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/draw-hand:
+    post:
+      tags:
+        - Games
+      summary: Draw cards to hand
+      description: Draw cards from deck to hand (handles final cards for endgame)
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Hand drawn successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hand:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Card'
+                  deck_size:
+                    type: integer
+                  is_final_hand:
+                    type: boolean
+                  cards_drawn:
+                    type: integer
+        '400':
+          description: Invalid game state or no cards left
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/play-card:
+    post:
+      tags:
+        - Games
+      summary: Play a card
+      description: Play a card from hand (automatically resolves round when both players have played)
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                card_index:
+                  type: integer
+                  minimum: 0
+                  maximum: 20
+              required:
+                - card_index
+      responses:
+        '200':
+          description: Card played successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  played_card:
+                    $ref: '#/components/schemas/Card'
+                  remaining_hand:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Card'
+                  both_played:
+                    type: boolean
+                  round_resolved:
+                    type: boolean
+                  round_result:
+                    type: object
+        '400':
+          description: Invalid card index or game state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/resolve-round:
+    post:
+      tags:
+        - Games
+      summary: Resolve round
+      description: Manually resolve round (usually auto-resolved when both players play cards)
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Round resolved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  round_winner:
+                    type: integer
+                    nullable: true
+                  round_tied:
+                    type: boolean
+                  player1_card:
+                    $ref: '#/components/schemas/Card'
+                  player2_card:
+                    $ref: '#/components/schemas/Card'
+                  player1_score:
+                    type: integer
+                  player2_score:
+                    type: integer
+                  game_over:
+                    type: boolean
+                  winner:
+                    type: string
+                    nullable: true
+        '400':
+          description: Both players must play cards before resolving
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/end:
+    post:
+      tags:
+        - Games
+      summary: End game
+      description: End a game and archive history
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Game ended successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/user/{username}:
+    get:
+      tags:
+        - Games
+      summary: Get user's games
+      description: Get all games for a specific user
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: include_history
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include encrypted game history snapshots
+      responses:
+        '200':
+          description: List of user's games
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  games:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Game'
+        '403':
+          description: Unauthorized (can only view own games)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Leaderboard Service
+  /leaderboard:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get global leaderboard
+      description: Retrieve the global leaderboard with player rankings
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+          description: Maximum number of entries to return
+      responses:
+        '200':
+          description: Leaderboard
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  leaderboard:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaderboardEntry'
+                  total_players:
+                    type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /leaderboard/player/{player_name}:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get player statistics
+      description: Get detailed statistics for a specific player
+      parameters:
+        - name: player_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Player statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  player:
+                    type: string
+                  wins:
+                    type: integer
+                  losses:
+                    type: integer
+                  total_games:
+                    type: integer
+                  win_percentage:
+                    type: number
+                    format: float
+                  recent_games:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /leaderboard/recent-games:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get recent games
+      description: Get recent completed games
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+          description: Maximum number of games to return
+      responses:
+        '200':
+          description: Recent games
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recent_games:
+                    type: array
+                    items:
+                      type: object
+                  total_games:
+                    type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /leaderboard/top-players:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get top players
+      description: Get top players by various metrics
+      responses:
+        '200':
+          description: Top players
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  top_by_wins:
+                    type: array
+                    items:
+                      type: object
+                  top_by_win_percentage:
+                    type: array
+                    items:
+                      type: object
+                  most_active:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /leaderboard/statistics:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get global statistics
+      description: Get global game statistics
+      responses:
+        '200':
+          description: Global statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_completed_games:
+                    type: integer
+                  unique_players:
+                    type: integer
+                  games_with_winner:
+                    type: integer
+                  tied_games:
+                    type: integer
+                  average_game_turns:
+                    type: number
+                    format: float
+                  shortest_game_turns:
+                    type: integer
+                  longest_game_turns:
+                    type: integer
+                  games_last_week:
+                    type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+

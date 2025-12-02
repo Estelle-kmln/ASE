@@ -1,10 +1,15 @@
 # Battle Cards Microservices .gitignore
 
+# logs
+*.csv 
+
+
 # Environment files
 .env
 .env.local
 .env.production
 .env.development
+microservices/.env
 
 # Python
 __pycache__/
