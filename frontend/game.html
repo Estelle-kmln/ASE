@@ -65,9 +65,40 @@
             <button class="draw-cards-btn" id="draw-cards-btn" onclick="drawCards()" style="display: none;">
                 🎴 Draw Cards
             </button>
-            <button class="play-card-btn" id="play-card-btn" onclick="playSelectedCard()" disabled>
-                Play Card
-            </button>
+            <div class="game-actions">
+                <button class="view-details-btn" id="view-details-btn" onclick="viewCardDetails()" disabled>
+                    🔍 View Details
+                </button>
+                <button class="play-card-btn" id="play-card-btn" onclick="playSelectedCard()" disabled>
+                    ▶️ Play Card
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Card Details Modal -->
+    <div class="modal" id="card-details-modal">
+        <div class="modal-content card-details-modal">
+            <button class="modal-close" onclick="closeCardDetails()">✕</button>
+            <h2>Card Details</h2>
+            <div class="card-detail-display">
+                <div class="card-detail-emoji" id="detail-card-emoji">🪨</div>
+                <div class="card-detail-info">
+                    <div class="detail-row">
+                        <span class="detail-label">Type:</span>
+                        <span class="detail-value" id="detail-card-type">Rock</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Power:</span>
+                        <span class="detail-value" id="detail-card-power">5</span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-strategy-info">
+                <h3>Strategy</h3>
+                <p id="detail-card-strategy">Rock beats Scissors</p>
+            </div>
+            <button class="btn btn-primary" onclick="closeCardDetails()">Close</button>
         </div>
     </div>
     

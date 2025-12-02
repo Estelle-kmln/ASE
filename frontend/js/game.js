@@ -110,12 +110,14 @@ function updateGameDisplay() {
     
     const drawButton = document.getElementById('draw-cards-btn');
     const playButton = document.getElementById('play-card-btn');
+    const viewDetailsButton = document.getElementById('view-details-btn');
+    const gameActions = document.querySelector('.game-actions');
     const indicator = document.getElementById('turn-indicator');
     
     if (!myState.has_drawn) {
         // Player needs to draw cards
         drawButton.style.display = 'block';
-        playButton.style.display = 'none';
+        if (gameActions) gameActions.style.display = 'none';
         indicator.textContent = 'Draw your 3 cards!';
         indicator.style.color = '#3498db';
         hand = [];
@@ -123,14 +125,15 @@ function updateGameDisplay() {
     } else if (myState.has_drawn && !myState.has_played) {
         // Player has drawn, now needs to play
         drawButton.style.display = 'none';
-        playButton.style.display = 'block';
+        if (gameActions) gameActions.style.display = 'flex';
         playButton.disabled = hand.length === 0 || selectedCardIndex === null;
+        viewDetailsButton.disabled = hand.length === 0 || selectedCardIndex === null;
         indicator.textContent = 'Select a card to play!';
         indicator.style.color = '#f39c12';
     } else if (myState.has_played && !opponentState.has_played) {
         // Player has played, waiting for opponent
         drawButton.style.display = 'none';
-        playButton.style.display = 'none';
+        if (gameActions) gameActions.style.display = 'none';
         indicator.textContent = 'Waiting for opponent to play...';
         indicator.style.color = '#7f8c8d';
         hand = [];
@@ -139,7 +142,7 @@ function updateGameDisplay() {
         // Both have played - round is being resolved
         // This state should be very brief - immediately refresh
         drawButton.style.display = 'none';
-        playButton.style.display = 'none';
+        if (gameActions) gameActions.style.display = 'none';
         indicator.textContent = 'Round resolving...';
         indicator.style.color = '#27ae60';
         hand = [];
@@ -221,8 +224,41 @@ function selectCard(index) {
     cards[index].classList.add('selected');
     selectedCardIndex = index;
     
-    // Enable play button
+    // Enable play button and view details button
     document.getElementById('play-card-btn').disabled = false;
+    document.getElementById('view-details-btn').disabled = false;
+}
+
+function viewCardDetails() {
+    if (selectedCardIndex === null || hand.length === 0) {
+        alert('Please select a card first');
+        return;
+    }
+    
+    const selectedCard = hand[selectedCardIndex];
+    
+    // Update modal content
+    document.getElementById('detail-card-emoji').textContent = cardEmojis[selectedCard.type];
+    document.getElementById('detail-card-type').textContent = selectedCard.type;
+    document.getElementById('detail-card-power').textContent = selectedCard.power;
+    
+    // Add strategy information with power mechanics
+    const baseStrategyInfo = {
+        'Rock': 'Rock beats Scissors but loses to Paper',
+        'Paper': 'Paper beats Rock but loses to Scissors',
+        'Scissors': 'Scissors beats Paper but loses to Rock'
+    };
+    
+    const powerInfo = `\n\nPower Mechanics:\n• Higher power wins ties (e.g., Power ${selectedCard.power} beats Power ${selectedCard.power - 1})${selectedCard.power === 13 ? '\n• Power 13 is the strongest!' : ''}${selectedCard.power === 1 ? '\n• Power 1 is the weakest and beats nothing in a tie' : ''}\n• Same type + same power = tie (no winner)`;
+    
+    document.getElementById('detail-card-strategy').textContent = baseStrategyInfo[selectedCard.type] + powerInfo;
+    
+    // Show modal
+    document.getElementById('card-details-modal').classList.add('active');
+}
+
+function closeCardDetails() {
+    document.getElementById('card-details-modal').classList.remove('active');
 }
 
 async function playSelectedCard() {

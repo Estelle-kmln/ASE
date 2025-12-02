@@ -560,10 +560,41 @@ body {
     }
 }
 
-.play-card-btn {
-    display: block;
+/* Game Actions Container */
+.game-actions {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
     margin: 2rem auto 0;
-    padding: 1rem 3rem;
+    flex-wrap: wrap;
+}
+
+.view-details-btn {
+    padding: 1rem 2.5rem;
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.view-details-btn:hover {
+    background-color: #2980b9;
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+}
+
+.view-details-btn:disabled {
+    background-color: #95a5a6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.play-card-btn {
+    padding: 1rem 2.5rem;
     background-color: var(--success-color);
     color: white;
     border: none;
@@ -584,6 +615,91 @@ body {
     background-color: #95a5a6;
     cursor: not-allowed;
     transform: none;
+}
+
+/* Card Details Modal */
+.card-details-modal {
+    text-align: center;
+    max-width: 500px;
+}
+
+.card-details-modal h2 {
+    color: var(--primary-color);
+    margin-bottom: 2rem;
+}
+
+.card-detail-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+    margin: 2rem 0;
+    padding: 2rem;
+    background-color: rgba(52, 152, 219, 0.1);
+    border-radius: 10px;
+}
+
+.card-detail-emoji {
+    font-size: 5rem;
+}
+
+.card-detail-info {
+    text-align: left;
+}
+
+.detail-row {
+    margin: 1rem 0;
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.detail-label {
+    font-weight: bold;
+    color: var(--secondary-color);
+    font-size: 1.2rem;
+    min-width: 80px;
+}
+
+.detail-value {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+    font-weight: bold;
+}
+
+.card-strategy-info {
+    background-color: rgba(243, 156, 18, 0.1);
+    padding: 1.5rem;
+    border-radius: 10px;
+    margin: 1.5rem 0;
+}
+
+.card-strategy-info h3 {
+    color: var(--warning-color);
+    margin-bottom: 1rem;
+}
+
+.card-strategy-info p {
+    color: var(--text-color);
+    font-size: 1rem;
+    line-height: 1.6;
+}
+
+.modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.modal-close:hover {
+    color: var(--accent-color);
+    transform: rotate(90deg);
 }
 
 /* Game Over Modal */
