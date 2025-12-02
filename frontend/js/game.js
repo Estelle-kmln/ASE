@@ -358,30 +358,67 @@ function showRoundResult(result) {
 }
 
 function updatePlayedCards() {
-    const player1Card = document.getElementById('player1-card');
-    const player2Card = document.getElementById('player2-card');
+    const myCard = document.getElementById('player1-card');
+    const opponentCard = document.getElementById('player2-card');
     
-    if (gameState.last_round) {
-        const round = gameState.last_round;
-        
-        // Show player 1's card
-        if (round.player1_card) {
-            player1Card.innerHTML = `
-                <span>${cardEmojis[round.player1_card.type]}</span>
-                <div class="card-power">P: ${round.player1_card.power}</div>
+    console.log('Updating played cards. Game state:', gameState);
+    
+    // Determine which player is current user
+    const isPlayer1 = currentUser.username === gameState.player1.name;
+    const myState = isPlayer1 ? gameState.player1 : gameState.player2;
+    const opponentState = isPlayer1 ? gameState.player2 : gameState.player1;
+    
+    console.log('I am player1:', isPlayer1);
+    console.log('My state:', myState);
+    console.log('Opponent state:', opponentState);
+    console.log('My played card:', myState.played_card);
+    console.log('Opponent played card:', opponentState.played_card);
+    console.log('Last round:', gameState.last_round);
+    
+    // Determine what to show for MY card
+    if (myState.played_card) {
+        // I've played this turn - show my current card
+        myCard.innerHTML = `
+            <span>${cardEmojis[myState.played_card.type]}</span>
+            <div class="card-power">P: ${myState.played_card.power}</div>
+        `;
+    } else if (gameState.last_round) {
+        // I haven't played yet this turn - show last round's card
+        const myLastCard = isPlayer1 ? gameState.last_round.player1_card : gameState.last_round.player2_card;
+        if (myLastCard) {
+            myCard.innerHTML = `
+                <span>${cardEmojis[myLastCard.type]}</span>
+                <div class="card-power">P: ${myLastCard.power}</div>
             `;
-        }
-        
-        // Show player 2's card
-        if (round.player2_card) {
-            player2Card.innerHTML = `
-                <span>${cardEmojis[round.player2_card.type]}</span>
-                <div class="card-power">P: ${round.player2_card.power}</div>
-            `;
+        } else {
+            myCard.innerHTML = '<span>?</span>';
         }
     } else {
-        player1Card.innerHTML = '<span>?</span>';
-        player2Card.innerHTML = '<span>?</span>';
+        // First round, no card played yet
+        myCard.innerHTML = '<span>?</span>';
+    }
+    
+    // Determine what to show for OPPONENT's card
+    if (myState.played_card && opponentState.played_card) {
+        // Both have played - show opponent's current card
+        opponentCard.innerHTML = `
+            <span>${cardEmojis[opponentState.played_card.type]}</span>
+            <div class="card-power">P: ${opponentState.played_card.power}</div>
+        `;
+    } else if (!myState.played_card && gameState.last_round) {
+        // I haven't played yet - show last round's opponent card
+        const opponentLastCard = isPlayer1 ? gameState.last_round.player2_card : gameState.last_round.player1_card;
+        if (opponentLastCard) {
+            opponentCard.innerHTML = `
+                <span>${cardEmojis[opponentLastCard.type]}</span>
+                <div class="card-power">P: ${opponentLastCard.power}</div>
+            `;
+        } else {
+            opponentCard.innerHTML = '<span>?</span>';
+        }
+    } else {
+        // I've played but opponent hasn't, or first round
+        opponentCard.innerHTML = '<span>?</span>';
     }
 }
 

@@ -365,8 +365,16 @@ def get_game(game_id):
             player1_hand = json.loads(game["player1_hand_cards"] or "[]")
             player2_deck = json.loads(game["player2_deck_cards"] or "[]")
             player2_hand = json.loads(game["player2_hand_cards"] or "[]")
+            player1_played = json.loads(game["player1_played_card"] or "null")
+            player2_played = json.loads(game["player2_played_card"] or "null")
+            round_history = json.loads(game["round_history"] or "[]")
         except:
             player1_deck = player1_hand = player2_deck = player2_hand = []
+            player1_played = player2_played = None
+            round_history = []
+
+        # Get last completed round from history
+        last_round = round_history[-1] if round_history else None
 
         return (
             jsonify(
@@ -381,6 +389,7 @@ def get_game(game_id):
                         "score": game["player1_score"],
                         "has_drawn": game.get("player1_has_drawn", False),
                         "has_played": game.get("player1_has_played", False),
+                        "played_card": player1_played,
                     },
                     "player2": {
                         "name": game["player2_name"],
@@ -389,7 +398,9 @@ def get_game(game_id):
                         "score": game["player2_score"],
                         "has_drawn": game.get("player2_has_drawn", False),
                         "has_played": game.get("player2_has_played", False),
+                        "played_card": player2_played,
                     },
+                    "last_round": last_round,
                     "winner": game["winner"],
                     "created_at": (
                         game["created_at"].isoformat()
