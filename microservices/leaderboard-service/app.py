@@ -148,6 +148,70 @@ def get_leaderboard():
     except Exception as e:
         return jsonify({'error': f'Failed to get leaderboard: {str(e)}'}), 500
 
+@app.route('/api/leaderboard/my-matches', methods=['GET'])
+@jwt_required()
+def get_my_matches():
+    """Get match history for the authenticated user."""
+    try:
+        # Get username from JWT token
+        from flask_jwt_extended import get_jwt_identity
+        username = get_jwt_identity()
+        
+        if not username:
+            return jsonify({'error': 'Unable to identify user'}), 401
+        
+        # Validate and sanitize username
+        try:
+            username = InputSanitizer.validate_username(username)
+        except ValueError as e:
+            return jsonify({'error': f'Invalid username: {str(e)}'}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get all matches for this player
+        cursor.execute("""
+            SELECT 
+                game_id,
+                player1_name,
+                player2_name,
+                player1_score,
+                player2_score,
+                winner,
+                created_at
+            FROM games 
+            WHERE is_active = false 
+            AND (player1_name = %s OR player2_name = %s)
+            ORDER BY created_at DESC
+        """, (username, username))
+        
+        games = cursor.fetchall()
+        conn.close()
+        
+        matches = []
+        for game in games:
+            opponent = game['player2_name'] if game['player1_name'] == username else game['player1_name']
+            my_score = game['player1_score'] if game['player1_name'] == username else game['player2_score']
+            opponent_score = game['player2_score'] if game['player1_name'] == username else game['player1_score']
+            result = 'win' if game['winner'] == username else 'loss'
+            
+            matches.append({
+                'game_id': game['game_id'],
+                'opponent': opponent,
+                'my_score': my_score,
+                'opponent_score': opponent_score,
+                'result': result,
+                'date': game['created_at'].isoformat() if game['created_at'] else None
+            })
+        
+        return jsonify({
+            'matches': matches,
+            'total': len(matches)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get matches: {str(e)}'}), 500
+
 @app.route('/api/leaderboard/player/<player_name>', methods=['GET'])
 @jwt_required()
 def get_player_stats(player_name):
