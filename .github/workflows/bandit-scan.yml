@@ -49,14 +49,14 @@ jobs:
             --confidence-level medium
 
       - name: Upload Bandit root results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: bandit-root-results.sarif
           category: bandit-root
 
       - name: Upload Bandit microservices results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: bandit-microservices-results.sarif
