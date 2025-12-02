@@ -35,11 +35,16 @@ let pollInterval = null;
 document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
     displayUserInfo();
+    loadUserGames(); // Load user's games on page load
 });
 
 function displayUserInfo() {
+    console.log('Current user:', currentUser);
     if (currentUser && currentUser.username) {
         document.getElementById('user-info').textContent = `Logged in as: ${currentUser.username}`;
+    } else {
+        console.error('User data is invalid:', currentUser);
+        document.getElementById('user-info').textContent = `Logged in as: Unknown`;
     }
 }
 
@@ -73,6 +78,120 @@ function logout() {
     window.location.href = 'login.html';
 }
 
+async function loadUserGames() {
+    const token = localStorage.getItem('token');
+    if (!currentUser || !currentUser.username) {
+        console.log('No current user found:', currentUser);
+        return;
+    }
+    
+    console.log('Loading games for user:', currentUser.username);
+    
+    try {
+        const response = await fetch(`${GAME_API_URL}/user/${currentUser.username}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (!response.ok) {
+            console.error('Failed to load games:', response.status);
+            return;
+        }
+        
+        const data = await response.json();
+        const games = data.games || [];
+        
+        console.log('Loaded games:', games);
+        
+        // Separate pending and active games - use case-insensitive comparison
+        const currentUsername = currentUser.username.toLowerCase();
+        const pendingGames = games.filter(game => 
+            game.player2_name && 
+            game.player2_name.toLowerCase() === currentUsername && 
+            !game.player2_id
+        );
+        const activeGames = games.filter(game => 
+            game.is_active && (game.player1_id || game.player2_id)
+        );
+        
+        console.log('Pending games:', pendingGames);
+        console.log('Active games:', activeGames);
+        
+        displayPendingGames(pendingGames);
+        displayActiveGames(activeGames);
+        
+        // Show the section if there are any games
+        if (pendingGames.length > 0 || activeGames.length > 0) {
+            document.getElementById('my-games-section').style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Error loading games:', error);
+    }
+}
+
+function displayPendingGames(games) {
+    const container = document.getElementById('pending-games-container');
+    const list = document.getElementById('pending-games-list');
+    
+    if (games.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+    
+    container.style.display = 'block';
+    list.innerHTML = games.map(game => `
+        <div style="background: rgba(255, 215, 0, 0.1); border: 2px solid #ffd700; border-radius: 8px; padding: 1rem; margin-bottom: 0.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="color: white;">
+                    <strong>${game.player1_name}</strong> invited you to play
+                    <br>
+                    <small style="color: #ccc;">Game ID: ${game.game_id.substring(0, 8)}...</small>
+                </div>
+                <button class="btn" style="margin: 0; padding: 0.5rem 1rem;" onclick="joinPendingGame('${game.game_id}')">
+                    Join Game
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function displayActiveGames(games) {
+    const container = document.getElementById('active-games-container');
+    const list = document.getElementById('active-games-list');
+    
+    if (games.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+    
+    container.style.display = 'block';
+    list.innerHTML = games.map(game => {
+        const opponent = game.player1_name === currentUser.username ? game.player2_name : game.player1_name;
+        return `
+        <div style="background: rgba(76, 175, 80, 0.1); border: 2px solid #4CAF50; border-radius: 8px; padding: 1rem; margin-bottom: 0.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="color: white;">
+                    <strong>vs ${opponent}</strong>
+                    <br>
+                    <small style="color: #ccc;">Turn ${game.turn || 1}</small>
+                </div>
+                <button class="btn" style="margin: 0; padding: 0.5rem 1rem; background: #4CAF50;" onclick="continueGame('${game.game_id}')">
+                    Continue
+                </button>
+            </div>
+        </div>
+    `}).join('');
+}
+
+async function joinPendingGame(gameId) {
+    window.location.href = `game.html?game_id=${gameId}`;
+}
+
+function continueGame(gameId) {
+    window.location.href = `game.html?game_id=${gameId}`;
+}
+
 async function launchGame() {
     const token = localStorage.getItem('token');
     
@@ -99,8 +218,8 @@ async function launchGame() {
         
         if (response.ok) {
             currentGameId = data.game_id;
-            // Redirect directly to deck selection
-            window.location.href = `deck-selection.html?game_id=${data.game_id}`;
+            // Redirect directly to game page (decks are auto-created by backend)
+            window.location.href = `game.html?game_id=${data.game_id}`;
         } else {
             alert('Failed to create game: ' + (data.error || 'Unknown error'));
         }

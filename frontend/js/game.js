@@ -59,7 +59,7 @@ async function loadGameState() {
     const token = localStorage.getItem('token');
     
     try {
-        const response = await fetch(`${GAME_API_URL}/${gameId}/state`, {
+        const response = await fetch(`${GAME_API_URL}/${gameId}`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -244,7 +244,7 @@ function startPolling() {
         const token = localStorage.getItem('token');
         
         try {
-            const response = await fetch(`${GAME_API_URL}/${gameId}/state`, {
+            const response = await fetch(`${GAME_API_URL}/${gameId}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }

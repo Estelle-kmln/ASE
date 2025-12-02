@@ -104,12 +104,16 @@ async function register(username, password) {
         const data = await response.json();
         
         if (response.ok) {
-            showAlert('Registration successful! Please login.', 'success');
+            // Store token and user info (registration now returns access token)
+            localStorage.setItem('token', data.access_token);
+            localStorage.setItem('user', JSON.stringify(data.user));
             
-            // Switch to login mode after successful registration
+            showAlert('Registration successful!', 'success');
+            
+            // Redirect to homepage
             setTimeout(() => {
-                toggleAuthMode();
-            }, 1500);
+                window.location.href = 'index.html';
+            }, 1000);
         } else {
             showAlert(data.error || 'Registration failed. Please try again.', 'error');
         }
