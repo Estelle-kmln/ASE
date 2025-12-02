@@ -95,23 +95,52 @@ function updateGameDisplay() {
     // Update turn number
     document.getElementById('turn-number').textContent = gameState.turn || 1;
     
-    // Check if we need to draw cards
+    // Determine which player is current user
     const isPlayer1 = currentUser.username === gameState.player1.name;
-    const myHand = isPlayer1 ? gameState.player1.hand_size : gameState.player2.hand_size;
+    const myState = isPlayer1 ? gameState.player1 : gameState.player2;
+    const opponentState = isPlayer1 ? gameState.player2 : gameState.player1;
     
-    if (myHand === 0) {
-        // Need to draw cards
-        document.getElementById('draw-cards-btn').style.display = 'block';
-        document.getElementById('play-card-btn').style.display = 'none';
-        document.getElementById('turn-indicator').textContent = 'Draw cards to start!';
-        document.getElementById('turn-indicator').style.color = '#3498db';
+    // STRICT GAME LOGIC:
+    // 1. If I haven't drawn -> show draw button
+    // 2. If I've drawn but not played -> show hand and play button
+    // 3. If I've played -> show "waiting for opponent" message
+    // 4. When both have played -> round auto-resolves and flags reset
+    
+    const drawButton = document.getElementById('draw-cards-btn');
+    const playButton = document.getElementById('play-card-btn');
+    const indicator = document.getElementById('turn-indicator');
+    
+    if (!myState.has_drawn) {
+        // Player needs to draw cards
+        drawButton.style.display = 'block';
+        playButton.style.display = 'none';
+        indicator.textContent = 'Draw your 3 cards!';
+        indicator.style.color = '#3498db';
         hand = [];
         renderHand();
-    } else {
-        // Have cards - can play
-        document.getElementById('draw-cards-btn').style.display = 'none';
-        document.getElementById('play-card-btn').style.display = 'block';
-        updateTurnIndicator();
+    } else if (myState.has_drawn && !myState.has_played) {
+        // Player has drawn, now needs to play
+        drawButton.style.display = 'none';
+        playButton.style.display = 'block';
+        playButton.disabled = hand.length === 0 || selectedCardIndex === null;
+        indicator.textContent = 'Select a card to play!';
+        indicator.style.color = '#f39c12';
+    } else if (myState.has_played && !opponentState.has_played) {
+        // Player has played, waiting for opponent
+        drawButton.style.display = 'none';
+        playButton.style.display = 'none';
+        indicator.textContent = 'Waiting for opponent to play...';
+        indicator.style.color = '#7f8c8d';
+        hand = [];
+        renderHand();
+    } else if (myState.has_played && opponentState.has_played) {
+        // Both have played - round is being resolved
+        drawButton.style.display = 'none';
+        playButton.style.display = 'none';
+        indicator.textContent = 'Round resolving...';
+        indicator.style.color = '#27ae60';
+        hand = [];
+        renderHand();
     }
     
     // Update played cards if available
@@ -186,7 +215,6 @@ async function playSelectedCard() {
     }
     
     const token = localStorage.getItem('token');
-    const selectedCard = hand[selectedCardIndex];
     
     try {
         const response = await fetch(`${GAME_API_URL}/${gameId}/play-card`, {
@@ -196,7 +224,6 @@ async function playSelectedCard() {
                 'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ 
-                card: selectedCard,
                 card_index: selectedCardIndex
             })
         });
@@ -204,28 +231,24 @@ async function playSelectedCard() {
         const data = await response.json();
         
         if (response.ok) {
-            // Remove played card from hand
-            hand.splice(selectedCardIndex, 1);
+            // Card has been played, hand is now empty (2 cards discarded)
+            hand = [];
             selectedCardIndex = null;
-            
-            // Disable play button
-            document.getElementById('play-card-btn').disabled = true;
             
             // Update display
             renderHand();
             
-            // Show played card
-            const player1Card = document.getElementById('player1-card');
-            player1Card.innerHTML = `
-                <span>${cardEmojis[selectedCard.type]}</span>
-                <div class="card-power">P: ${selectedCard.power}</div>
-            `;
-            
-            // Update turn indicator
-            document.getElementById('turn-indicator').textContent = 'Waiting for opponent...';
+            // Show played card indicator
+            document.getElementById('turn-indicator').textContent = 'Card played! Waiting for opponent...';
+            document.getElementById('turn-indicator').style.color = '#7f8c8d';
             
             // Refresh game state
             await loadGameState();
+            
+            // If both played, show round result
+            if (data.round_resolved && data.round_result) {
+                showRoundResult(data.round_result);
+            }
         } else {
             alert('Failed to play card: ' + (data.error || 'Unknown error'));
         }
@@ -235,33 +258,25 @@ async function playSelectedCard() {
     }
 }
 
-function updateTurnIndicator() {
-    const indicator = document.getElementById('turn-indicator');
-    const isPlayer1 = currentUser.username === gameState.player1.name;
+function showRoundResult(result) {
+    let message = '';
     
-    // Check if both players have drawn cards
-    const myHandSize = isPlayer1 ? gameState.player1.hand_size : gameState.player2.hand_size;
-    const opponentHandSize = isPlayer1 ? gameState.player2.hand_size : gameState.player1.hand_size;
-    
-    if (opponentHandSize === 0) {
-        indicator.textContent = 'Waiting for opponent to draw cards...';
-        indicator.style.color = '#7f8c8d';
-        document.getElementById('play-card-btn').disabled = true;
-        return;
-    }
-    
-    // Both players have cards - check whose turn it is
-    const currentPlayer = gameState.turn % 2 === 1 ? gameState.player1.name : gameState.player2.name;
-    
-    if (currentUser.username === currentPlayer) {
-        indicator.textContent = 'Your turn to play!';
-        indicator.style.color = '#f39c12';
-        document.getElementById('play-card-btn').disabled = false;
+    if (result.round_tied) {
+        message = 'Round tied! No points awarded.';
     } else {
-        indicator.textContent = 'Waiting for opponent...';
-        indicator.style.color = '#7f8c8d';
-        document.getElementById('play-card-btn').disabled = true;
+        const winnerName = result.round_winner === 1 ? gameState.player1.name : gameState.player2.name;
+        message = `${winnerName} wins the round!`;
     }
+    
+    // Show a temporary notification
+    const indicator = document.getElementById('turn-indicator');
+    indicator.textContent = message;
+    indicator.style.color = '#27ae60';
+    
+    // Reset after 3 seconds
+    setTimeout(() => {
+        loadGameState();
+    }, 3000);
 }
 
 function updatePlayedCards() {

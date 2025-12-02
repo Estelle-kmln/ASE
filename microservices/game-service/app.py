@@ -110,14 +110,12 @@ def get_cards_from_service(token):
         return None
 
 
-def check_auto_resolve_conditions(game):
-    """Check if round should be automatically resolved."""
-    try:
-        player1_played = json.loads(game["player1_played_card"] or "null")
-        player2_played = json.loads(game["player2_played_card"] or "null")
-        return player1_played is not None and player2_played is not None
-    except:
-        return False
+def check_both_played(game):
+    """Check if both players have played their cards this turn."""
+    return (
+        game.get("player1_has_played", False) and 
+        game.get("player2_has_played", False)
+    )
 
 
 def get_game_end_status(p1_deck, p2_deck, p1_score, p2_score):
@@ -367,12 +365,16 @@ def get_game(game_id):
                         "deck_size": len(player1_deck),
                         "hand_size": len(player1_hand),
                         "score": game["player1_score"],
+                        "has_drawn": game.get("player1_has_drawn", False),
+                        "has_played": game.get("player1_has_played", False),
                     },
                     "player2": {
                         "name": game["player2_name"],
                         "deck_size": len(player2_deck),
                         "hand_size": len(player2_hand),
                         "score": game["player2_score"],
+                        "has_drawn": game.get("player2_has_drawn", False),
+                        "has_played": game.get("player2_has_played", False),
                     },
                     "winner": game["winner"],
                     "created_at": (
@@ -500,7 +502,7 @@ def get_player_hand(game_id):
 @app.route("/api/games/<game_id>/draw-hand", methods=["POST"])
 @jwt_required()
 def draw_hand(game_id):
-    """Draw a new hand for the current player."""
+    """Draw a new hand for the current player - STRICT: Only once per turn."""
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
         game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
@@ -531,6 +533,12 @@ def draw_hand(game_id):
             conn.close()
             return jsonify({"error": "Unauthorized to play this game"}), 403
 
+        # STRICT RULE: Check if player has already drawn this turn
+        has_drawn_field = "player1_has_drawn" if is_player1 else "player2_has_drawn"
+        if game.get(has_drawn_field, False):
+            conn.close()
+            return jsonify({"error": "You have already drawn cards this turn. Wait for both players to play."}), 400
+
         # Parse deck
         deck_field = (
             "player1_deck_cards" if is_player1 else "player2_deck_cards"
@@ -549,7 +557,7 @@ def draw_hand(game_id):
             conn.close()
             return jsonify({"error": "No cards left in deck"}), 400
 
-        # For normal gameplay, require 3 cards. For endgame, allow fewer.
+        # For normal gameplay, draw 3 cards. For endgame, allow fewer (tie-breaker scenario).
         if len(deck) < 3:
             # Final hand scenario - take all remaining cards
             hand = deck.copy()
@@ -559,18 +567,18 @@ def draw_hand(game_id):
             hand = random.sample(deck, 3)
             remaining_deck = [card for card in deck if card not in hand]
 
-        # Update database
+        # Update database with hand and set has_drawn flag
         cursor = conn.cursor()
         if is_player1:
             cursor.execute("""
                 UPDATE games 
-                SET player1_deck_cards = %s, player1_hand_cards = %s 
+                SET player1_deck_cards = %s, player1_hand_cards = %s, player1_has_drawn = TRUE
                 WHERE game_id = %s
             """, (json.dumps(remaining_deck), json.dumps(hand), game_id))
         else:
             cursor.execute("""
                 UPDATE games 
-                SET player2_deck_cards = %s, player2_hand_cards = %s 
+                SET player2_deck_cards = %s, player2_hand_cards = %s, player2_has_drawn = TRUE
                 WHERE game_id = %s
             """, (json.dumps(remaining_deck), json.dumps(hand), game_id))
         
@@ -597,7 +605,7 @@ def draw_hand(game_id):
 @jwt_required()
 @require_sanitized_input({'card_index': 'int'})
 def play_card(game_id):
-    """Play a card from hand."""
+    """Play a card from hand - STRICT: Must draw first, can only play once per turn, other 2 cards are discarded."""
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
         game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
@@ -638,6 +646,18 @@ def play_card(game_id):
             conn.close()
             return jsonify({"error": "Unauthorized to play this game"}), 403
 
+        # STRICT RULE 1: Check if player has drawn cards this turn
+        has_drawn_field = "player1_has_drawn" if is_player1 else "player2_has_drawn"
+        if not game.get(has_drawn_field, False):
+            conn.close()
+            return jsonify({"error": "You must draw cards before playing"}), 400
+
+        # STRICT RULE 2: Check if player has already played this turn
+        has_played_field = "player1_has_played" if is_player1 else "player2_has_played"
+        if game.get(has_played_field, False):
+            conn.close()
+            return jsonify({"error": "You have already played a card this turn. Wait for the round to resolve."}), 400
+
         # Parse hand
         hand_field = (
             "player1_hand_cards" if is_player1 else "player2_hand_cards"
@@ -657,24 +677,24 @@ def play_card(game_id):
 
         # Play the card
         played_card = hand[card_index]
-        remaining_hand = [
-            card for i, card in enumerate(hand) if i != card_index
-        ]
+        
+        # STRICT RULE 3: Discard the other 2 cards (they don't go back to deck)
+        # Empty the hand after playing - the 2 unplayed cards are removed from game
 
-        # Update database
+        # Update database - clear hand and set played card + has_played flag
         cursor = conn.cursor()
         if is_player1:
             cursor.execute("""
                 UPDATE games 
-                SET player1_hand_cards = %s, player1_played_card = %s 
+                SET player1_hand_cards = %s, player1_played_card = %s, player1_has_played = TRUE
                 WHERE game_id = %s
-            """, (json.dumps(remaining_hand), json.dumps(played_card), game_id))
+            """, (json.dumps([]), json.dumps(played_card), game_id))
         else:
             cursor.execute("""
                 UPDATE games 
-                SET player2_hand_cards = %s, player2_played_card = %s 
+                SET player2_hand_cards = %s, player2_played_card = %s, player2_has_played = TRUE
                 WHERE game_id = %s
-            """, (json.dumps(remaining_hand), json.dumps(played_card), game_id))
+            """, (json.dumps([]), json.dumps(played_card), game_id))
         
         conn.commit()
 
@@ -685,7 +705,9 @@ def play_card(game_id):
 
         # Check if we should auto-resolve the round
         auto_resolve_result = None
-        if check_auto_resolve_conditions(updated_game):
+        both_played = check_both_played(updated_game)
+        
+        if both_played:
             # Both players have played - automatically resolve the round
             auto_resolve_result = auto_resolve_round(updated_game, conn)
 
@@ -693,8 +715,9 @@ def play_card(game_id):
 
         response = {
             "played_card": played_card,
-            "remaining_hand": remaining_hand,
-            "both_played": check_auto_resolve_conditions(updated_game),
+            "remaining_hand": [],  # Hand is always empty after playing
+            "both_played": both_played,
+            "discarded_cards": 2 if len(hand) == 3 else (len(hand) - 1)  # Show how many cards were discarded
         }
 
         if auto_resolve_result:
@@ -705,6 +728,14 @@ def play_card(game_id):
 
     except Exception as e:
         return jsonify({"error": f"Failed to play card: {str(e)}"}), 500
+
+
+def check_both_played(game):
+    """Check if both players have played their cards this turn."""
+    return (
+        game.get("player1_has_played", False) and 
+        game.get("player2_has_played", False)
+    )
 
 
 def auto_resolve_round(game, conn):
@@ -780,7 +811,7 @@ def auto_resolve_round(game, conn):
             elif winner == "player2":
                 winner_name = game["player2_name"]
 
-        # Update database
+        # Update database - reset played cards, hands, and turn flags for next round
         cursor = conn.cursor()
         cursor.execute(
             """
@@ -788,6 +819,8 @@ def auto_resolve_round(game, conn):
             SET player1_score = %s, player2_score = %s, 
                 player1_played_card = NULL, player2_played_card = NULL,
                 player1_hand_cards = '[]', player2_hand_cards = '[]',
+                player1_has_drawn = FALSE, player2_has_drawn = FALSE,
+                player1_has_played = FALSE, player2_has_played = FALSE,
                 is_active = %s, winner = %s, turn = turn + 1,
                 updated_at = CURRENT_TIMESTAMP
             WHERE game_id = %s
