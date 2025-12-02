@@ -11,6 +11,18 @@
     
     <header class="header">
         <h1>Battlecards!</h1>
+        <button class="menu-button" id="menu-btn">☰ Menu</button>
+        
+        <div class="dropdown-menu" id="dropdown-menu">
+            <div class="dropdown-item user-info" id="user-info"></div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item" onclick="navigateTo('profile.html')">Profile</div>
+            <div class="dropdown-item" onclick="navigateTo('leaderboard.html')">Leaderboard</div>
+            <div class="dropdown-item" onclick="navigateTo('statistics.html')">Game Statistics</div>
+            <div class="dropdown-item" onclick="navigateTo('rules.html')">Game Rules</div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item" onclick="logout()">Logout</div>
+        </div>
     </header>
     
     <div class="container">
@@ -51,6 +63,7 @@
     
     <script>
         // Check authentication before page loads
+        let currentUser = null;
         (function() {
             const token = localStorage.getItem('token');
             const user = localStorage.getItem('user');
@@ -58,7 +71,48 @@
             if (!token || !user) {
                 window.location.href = 'login.html';
             }
+            
+            try {
+                currentUser = JSON.parse(user);
+            } catch (e) {
+                console.error('Error parsing user data:', e);
+            }
         })();
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            setupMenu();
+        });
+        
+        function setupMenu() {
+            const userInfoElement = document.getElementById('user-info');
+            if (userInfoElement && currentUser) {
+                userInfoElement.textContent = currentUser.username;
+            }
+            
+            const menuBtn = document.getElementById('menu-btn');
+            const dropdownMenu = document.getElementById('dropdown-menu');
+            
+            if (menuBtn && dropdownMenu) {
+                menuBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    dropdownMenu.classList.toggle('active');
+                });
+                
+                document.addEventListener('click', () => {
+                    dropdownMenu.classList.remove('active');
+                });
+            }
+        }
+        
+        function navigateTo(page) {
+            window.location.href = page;
+        }
+        
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = 'login.html';
+        }
         
         function goHome() {
             window.location.href = 'index.html';

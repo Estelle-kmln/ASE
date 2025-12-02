@@ -43,7 +43,32 @@ const cardEmojis = {
 document.addEventListener('DOMContentLoaded', () => {
     getGameIdFromUrl();
     loadGameState();
+    setupMenu();
 });
+
+function setupMenu() {
+    // Set user info in dropdown
+    const userInfoElement = document.getElementById('user-info');
+    if (userInfoElement && currentUser) {
+        userInfoElement.textContent = currentUser.username;
+    }
+    
+    // Menu toggle
+    const menuBtn = document.getElementById('menu-btn');
+    const dropdownMenu = document.getElementById('dropdown-menu');
+    
+    if (menuBtn && dropdownMenu) {
+        menuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdownMenu.classList.toggle('active');
+        });
+        
+        // Close menu when clicking outside
+        document.addEventListener('click', () => {
+            dropdownMenu.classList.remove('active');
+        });
+    }
+}
 
 function getGameIdFromUrl() {
     const urlParams = new URLSearchParams(window.location.search);
@@ -427,6 +452,15 @@ function quitGame() {
         }
         window.location.href = 'index.html';
     }
+}
+
+function quitAndNavigate(page) {
+    // Deactivate the game by stopping polling
+    if (pollInterval) {
+        clearInterval(pollInterval);
+    }
+    // Navigate to the requested page
+    window.location.href = page;
 }
 
 // Clean up polling on page unload

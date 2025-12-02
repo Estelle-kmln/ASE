@@ -33,8 +33,49 @@ let allMatches = [];
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    setupMenu();
     loadMatches();
 });
+
+function setupMenu() {
+    const user = localStorage.getItem('user');
+    let currentUser = null;
+    
+    try {
+        currentUser = JSON.parse(user);
+    } catch (e) {
+        console.error('Error parsing user data:', e);
+    }
+    
+    const userInfoElement = document.getElementById('user-info');
+    if (userInfoElement && currentUser) {
+        userInfoElement.textContent = currentUser.username;
+    }
+    
+    const menuBtn = document.getElementById('menu-btn');
+    const dropdownMenu = document.getElementById('dropdown-menu');
+    
+    if (menuBtn && dropdownMenu) {
+        menuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdownMenu.classList.toggle('active');
+        });
+        
+        document.addEventListener('click', () => {
+            dropdownMenu.classList.remove('active');
+        });
+    }
+}
+
+function navigateTo(page) {
+    window.location.href = page;
+}
+
+function logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = 'login.html';
+}
 
 async function loadMatches() {
     const token = localStorage.getItem('token');

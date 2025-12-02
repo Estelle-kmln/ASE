@@ -30,8 +30,40 @@ let currentUser = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    setupMenu();
     loadProfile();
 });
+
+function setupMenu() {
+    const userInfoElement = document.getElementById('user-info');
+    if (userInfoElement && currentUser) {
+        userInfoElement.textContent = currentUser.username;
+    }
+    
+    const menuBtn = document.getElementById('menu-btn');
+    const dropdownMenu = document.getElementById('dropdown-menu');
+    
+    if (menuBtn && dropdownMenu) {
+        menuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdownMenu.classList.toggle('active');
+        });
+        
+        document.addEventListener('click', () => {
+            dropdownMenu.classList.remove('active');
+        });
+    }
+}
+
+function navigateTo(page) {
+    window.location.href = page;
+}
+
+function logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = 'login.html';
+}
 
 async function loadProfile() {
     const token = localStorage.getItem('token');
