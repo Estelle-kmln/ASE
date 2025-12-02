@@ -1,5 +1,5 @@
 // Configuration
-const GAME_API_URL = 'http://localhost:8080/api/game';
+const GAME_API_URL = 'http://localhost:8080/api/games';
 
 // State
 let gameId = null;

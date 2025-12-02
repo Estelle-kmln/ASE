@@ -1,5 +1,5 @@
 // Configuration
-const GAME_API_URL = 'http://localhost:8080/api/game';
+const GAME_API_URL = 'http://localhost:8080/api/games';
 
 // State
 let currentUser = null;
@@ -76,24 +76,31 @@ function logout() {
 async function launchGame() {
     const token = localStorage.getItem('token');
     
+    // Prompt for opponent's username
+    const player2Name = prompt('Enter opponent username:');
+    if (!player2Name || player2Name.trim() === '') {
+        alert('Opponent username is required');
+        return;
+    }
+    
     try {
-        const response = await fetch(`${GAME_API_URL}/create`, {
+        const response = await fetch(`${GAME_API_URL}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
-            }
+            },
+            body: JSON.stringify({
+                player2_name: player2Name.trim()
+            })
         });
         
         const data = await response.json();
         
         if (response.ok) {
             currentGameId = data.game_id;
-            document.getElementById('game-code').textContent = data.game_id;
-            openModal('launch-modal');
-            
-            // Start polling for opponent
-            startPollingForOpponent(data.game_id);
+            // Redirect directly to deck selection
+            window.location.href = `deck-selection.html?game_id=${data.game_id}`;
         } else {
             alert('Failed to create game: ' + (data.error || 'Unknown error'));
         }
