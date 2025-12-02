@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS game_history (
     player1_score INTEGER NOT NULL,
     player2_score INTEGER NOT NULL,
     winner VARCHAR(255),
+    round_history TEXT DEFAULT '[]',
     archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     encrypted_payload BYTEA NOT NULL,
     integrity_hash VARCHAR(128) NOT NULL

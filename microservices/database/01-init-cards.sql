@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS games (
     winner VARCHAR(255),
     player1_score INTEGER DEFAULT 0,
     player2_score INTEGER DEFAULT 0,
+    round_history TEXT DEFAULT '[]',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

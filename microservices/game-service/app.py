@@ -933,8 +933,10 @@ def auto_resolve_round(game, conn):
 
         if game_over:
             # Refresh game object to get the updated round_history
-            cursor.execute("SELECT * FROM games WHERE game_id = %s", (game["game_id"],))
-            updated_game = cursor.fetchone()
+            dict_cursor = conn.cursor(cursor_factory=RealDictCursor)
+            dict_cursor.execute("SELECT * FROM games WHERE game_id = %s", (game["game_id"],))
+            updated_game = dict_cursor.fetchone()
+            dict_cursor.close()
             
             try:
                 archive_game_history(
@@ -1117,8 +1119,10 @@ def resolve_round(game_id):
 
         if game_over:
             # Refresh game object to get the updated round_history
-            cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-            updated_game = cursor.fetchone()
+            dict_cursor = conn.cursor(cursor_factory=RealDictCursor)
+            dict_cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            updated_game = dict_cursor.fetchone()
+            dict_cursor.close()
             
             archive_game_history(
                 conn,
@@ -1332,8 +1336,10 @@ def tie_breaker_round(game_id):
 
         if not tie_breaker_tied:
             # Refresh game object to get the updated round_history
-            cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-            updated_game = cursor.fetchone()
+            dict_cursor = conn.cursor(cursor_factory=RealDictCursor)
+            dict_cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            updated_game = dict_cursor.fetchone()
+            dict_cursor.close()
             
             archive_game_history(
                 conn,
@@ -1414,8 +1420,10 @@ def end_game(game_id):
         )
 
         # Refresh game object to get the updated data
-        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-        updated_game = cursor.fetchone()
+        dict_cursor = conn.cursor(cursor_factory=RealDictCursor)
+        dict_cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+        updated_game = dict_cursor.fetchone()
+        dict_cursor.close()
 
         archive_game_history(
             conn,
