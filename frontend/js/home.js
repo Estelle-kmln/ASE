@@ -8,11 +8,16 @@ let pollInterval = null;
 
 // Check authentication immediately (before DOM loads)
 (function() {
+    console.log('Auth check starting...');
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
     
+    console.log('Token:', token ? 'exists' : 'missing');
+    console.log('User:', user ? 'exists' : 'missing');
+    
     if (!token || !user) {
         // Clear any stale data
+        console.log('No token or user, redirecting to login...');
         localStorage.clear();
         window.location.href = 'login.html';
         return;
@@ -20,15 +25,18 @@ let pollInterval = null;
     
     try {
         currentUser = JSON.parse(user);
+        console.log('Parsed user:', currentUser);
         if (!currentUser || !currentUser.username) {
             throw new Error('Invalid user data');
         }
     } catch (e) {
         // Invalid data in localStorage
+        console.error('Error parsing user data:', e);
         localStorage.clear();
         window.location.href = 'login.html';
         return;
     }
+    console.log('Auth check passed');
 })();
 
 // Initialize
@@ -36,6 +44,9 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
     displayUserInfo();
     loadUserGames(); // Load user's games on page load
+    
+    // Refresh games list every 5 seconds to auto-remove finished games
+    setInterval(loadUserGames, 5000);
 });
 
 function displayUserInfo() {
@@ -104,10 +115,20 @@ async function loadUserGames() {
         
         console.log('Loaded games:', games);
         
+        // Clean up ignored invitations for games that are no longer active
+        let ignoredGames = JSON.parse(localStorage.getItem('ignoredInvitations') || '[]');
+        const activeGameIds = games.filter(g => g.is_active).map(g => g.game_id);
+        const cleanedIgnoredGames = ignoredGames.filter(id => activeGameIds.includes(id));
+        localStorage.setItem('ignoredInvitations', JSON.stringify(cleanedIgnoredGames));
+        
         // Separate pending and active games - use case-insensitive comparison
         const currentUsername = currentUser.username.toLowerCase();
+        // Use the cleaned ignored games list
+        ignoredGames = cleanedIgnoredGames;
+        
         const pendingGames = games.filter(game => 
             game.is_active &&  // Only show active game invitations
+            !ignoredGames.includes(game.game_id) &&  // Filter out ignored invitations
             game.player2_name && 
             game.player2_name.toLowerCase() === currentUsername && 
             !game.player2_id
@@ -149,9 +170,14 @@ function displayPendingGames(games) {
                     <br>
                     <small style="color: #ccc;">Game ID: ${game.game_id.substring(0, 8)}...</small>
                 </div>
-                <button class="btn" style="margin: 0; padding: 0.5rem 1rem;" onclick="joinPendingGame('${game.game_id}')">
-                    Join Game
-                </button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn" style="margin: 0; padding: 0.5rem 1rem;" onclick="joinPendingGame('${game.game_id}')">
+                        Join Game
+                    </button>
+                    <button class="btn" style="margin: 0; padding: 0.5rem 1rem; background: #e74c3c;" onclick="ignoreInvitation('${game.game_id}')">
+                        Ignore
+                    </button>
+                </div>
             </div>
         </div>
     `).join('');
@@ -191,6 +217,18 @@ async function joinPendingGame(gameId) {
 
 function continueGame(gameId) {
     window.location.href = `game.html?game_id=${gameId}`;
+}
+
+async function ignoreInvitation(gameId) {
+    // Store ignored invitations in localStorage
+    const ignoredGames = JSON.parse(localStorage.getItem('ignoredInvitations') || '[]');
+    if (!ignoredGames.includes(gameId)) {
+        ignoredGames.push(gameId);
+        localStorage.setItem('ignoredInvitations', JSON.stringify(ignoredGames));
+    }
+    
+    // Refresh the games list
+    await loadUserGames();
 }
 
 async function launchGame() {

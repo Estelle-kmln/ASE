@@ -156,7 +156,16 @@ function updateGameDisplay() {
     
     // Check if game is over
     if (!gameState.is_active) {
-        showGameOver();
+        // If game ended without a winner, it was quit by a player
+        if (!gameState.winner) {
+            // Game was quit - redirect to home
+            clearInterval(pollInterval);
+            alert('Game was ended by a player.');
+            window.location.href = 'index.html';
+        } else {
+            // Game finished naturally - show game over modal
+            showGameOver();
+        }
     }
 }
 
