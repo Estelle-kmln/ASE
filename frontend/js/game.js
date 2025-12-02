@@ -16,24 +16,34 @@ const cardEmojis = {
     'Scissors': '✂️'
 };
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    checkAuth();
-    getGameIdFromUrl();
-    loadGameState();
-});
-
-function checkAuth() {
+// Check authentication immediately (before DOM loads)
+(function() {
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
     
     if (!token || !user) {
+        localStorage.clear();
         window.location.href = 'login.html';
         return;
     }
     
-    currentUser = JSON.parse(user);
-}
+    try {
+        currentUser = JSON.parse(user);
+        if (!currentUser || !currentUser.username) {
+            throw new Error('Invalid user data');
+        }
+    } catch (e) {
+        localStorage.clear();
+        window.location.href = 'login.html';
+        return;
+    }
+})();
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    getGameIdFromUrl();
+    loadGameState();
+});
 
 function getGameIdFromUrl() {
     const urlParams = new URLSearchParams(window.location.search);

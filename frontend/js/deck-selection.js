@@ -12,18 +12,33 @@ let cardCounts = {
 let gameId = null;
 let pollInterval = null;
 
+// Check authentication immediately (before DOM loads)
+(function() {
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+    
+    if (!token || !user) {
+        localStorage.clear();
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    try {
+        const userData = JSON.parse(user);
+        if (!userData || !userData.username) {
+            throw new Error('Invalid user data');
+        }
+    } catch (e) {
+        localStorage.clear();
+        window.location.href = 'login.html';
+        return;
+    }
+})();
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    checkAuth();
     getGameIdFromUrl();
 });
-
-function checkAuth() {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        window.location.href = 'login.html';
-    }
-}
 
 function getGameIdFromUrl() {
     const urlParams = new URLSearchParams(window.location.search);

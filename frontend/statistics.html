@@ -29,13 +29,18 @@
     </div>
     
     <script>
+        // Check authentication before page loads
+        (function() {
+            const token = localStorage.getItem('token');
+            const user = localStorage.getItem('user');
+            
+            if (!token || !user) {
+                window.location.href = 'login.html';
+            }
+        })();
+        
         function goHome() {
             window.location.href = 'index.html';
-        }
-        
-        // Check authentication
-        if (!localStorage.getItem('token')) {
-            window.location.href = 'login.html';
         }
     </script>
 </body>

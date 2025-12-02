@@ -5,23 +5,33 @@ const AUTH_API_URL = 'http://localhost:8080/api/auth';
 let isEditMode = false;
 let currentUser = null;
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    checkAuth();
-    loadProfile();
-});
-
-function checkAuth() {
+// Check authentication immediately (before DOM loads)
+(function() {
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
     
     if (!token || !user) {
+        localStorage.clear();
         window.location.href = 'login.html';
         return;
     }
     
-    currentUser = JSON.parse(user);
-}
+    try {
+        currentUser = JSON.parse(user);
+        if (!currentUser || !currentUser.username) {
+            throw new Error('Invalid user data');
+        }
+    } catch (e) {
+        localStorage.clear();
+        window.location.href = 'login.html';
+        return;
+    }
+})();
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    loadProfile();
+});
 
 async function loadProfile() {
     const token = localStorage.getItem('token');

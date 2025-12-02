@@ -7,18 +7,33 @@ let currentPage = 1;
 let totalPages = 1;
 let allMatches = [];
 
+// Check authentication immediately (before DOM loads)
+(function() {
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+    
+    if (!token || !user) {
+        localStorage.clear();
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    try {
+        const userData = JSON.parse(user);
+        if (!userData || !userData.username) {
+            throw new Error('Invalid user data');
+        }
+    } catch (e) {
+        localStorage.clear();
+        window.location.href = 'login.html';
+        return;
+    }
+})();
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    checkAuth();
     loadMatches();
 });
-
-function checkAuth() {
-    const token = localStorage.getItem('token');
-    if (!token) {
-        window.location.href = 'login.html';
-    }
-}
 
 async function loadMatches() {
     const token = localStorage.getItem('token');

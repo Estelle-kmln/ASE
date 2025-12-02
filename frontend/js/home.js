@@ -6,23 +6,41 @@ let currentUser = null;
 let currentGameId = null;
 let pollInterval = null;
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    checkAuth();
-    initializeEventListeners();
-});
-
-function checkAuth() {
+// Check authentication immediately (before DOM loads)
+(function() {
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
     
     if (!token || !user) {
+        // Clear any stale data
+        localStorage.clear();
         window.location.href = 'login.html';
         return;
     }
     
-    currentUser = JSON.parse(user);
-    document.getElementById('user-info').textContent = `Logged in as: ${currentUser.username}`;
+    try {
+        currentUser = JSON.parse(user);
+        if (!currentUser || !currentUser.username) {
+            throw new Error('Invalid user data');
+        }
+    } catch (e) {
+        // Invalid data in localStorage
+        localStorage.clear();
+        window.location.href = 'login.html';
+        return;
+    }
+})();
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    initializeEventListeners();
+    displayUserInfo();
+});
+
+function displayUserInfo() {
+    if (currentUser && currentUser.username) {
+        document.getElementById('user-info').textContent = `Logged in as: ${currentUser.username}`;
+    }
 }
 
 function initializeEventListeners() {
