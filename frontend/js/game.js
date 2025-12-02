@@ -84,6 +84,8 @@ async function loadGameState() {
 }
 
 function updateGameDisplay() {
+    console.log('Game state:', gameState);
+    
     // Update player names
     document.getElementById('player1-name').textContent = gameState.player1.name || 'Player 1';
     document.getElementById('player2-name').textContent = gameState.player2.name || 'Player 2';
@@ -135,12 +137,18 @@ function updateGameDisplay() {
         renderHand();
     } else if (myState.has_played && opponentState.has_played) {
         // Both have played - round is being resolved
+        // This state should be very brief - immediately refresh
         drawButton.style.display = 'none';
         playButton.style.display = 'none';
         indicator.textContent = 'Round resolving...';
         indicator.style.color = '#27ae60';
         hand = [];
         renderHand();
+        
+        // Force immediate refresh to get resolved state
+        setTimeout(() => {
+            loadGameState();
+        }, 500);
     }
     
     // Update played cards if available
@@ -338,9 +346,15 @@ function showGameOver() {
     const result = document.getElementById('game-result');
     const finalScore = document.getElementById('final-score');
     
-    const isWinner = gameState.winner_id === currentUser.id;
+    // Check if current user is the winner (backend returns winner as username)
+    const isWinner = gameState.winner === currentUser.username;
+    const isTie = !gameState.winner;
     
-    if (isWinner) {
+    if (isTie) {
+        icon.textContent = '🤝';
+        result.textContent = 'Tie Game!';
+        result.classList.add('tie');
+    } else if (isWinner) {
         icon.textContent = '👑';
         icon.classList.add('win');
         result.textContent = 'Victory!';
@@ -352,7 +366,7 @@ function showGameOver() {
         result.classList.add('lose');
     }
     
-    finalScore.textContent = `Final Score: ${gameState.player1_score} - ${gameState.player2_score}`;
+    finalScore.textContent = `Final Score: ${gameState.player1.score} - ${gameState.player2.score}`;
     
     modal.classList.add('active');
 }

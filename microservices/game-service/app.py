@@ -696,8 +696,8 @@ def play_card(game_id):
                 WHERE game_id = %s
             """, (json.dumps([]), json.dumps(played_card), game_id))
         
-        conn.commit()
-
+        # Don't commit yet - let auto_resolve handle it if both players have played
+        
         # Refresh game state to check if both players have played
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
@@ -710,6 +710,9 @@ def play_card(game_id):
         if both_played:
             # Both players have played - automatically resolve the round
             auto_resolve_result = auto_resolve_round(updated_game, conn)
+        else:
+            # Only one player has played - commit the play
+            conn.commit()
 
         conn.close()
 
@@ -749,10 +752,12 @@ def auto_resolve_round(game, conn):
             player2_card_data = json.loads(
                 game["player2_played_card"] or "null"
             )
-        except:
+        except Exception as e:
+            print(f"Error parsing played cards: {e}")
             return None
 
         if not player1_card_data or not player2_card_data:
+            print("Missing played card data")
             return None
 
         # Create card objects
@@ -796,7 +801,8 @@ def auto_resolve_round(game, conn):
         try:
             p1_deck = json.loads(game["player1_deck_cards"] or "[]")
             p2_deck = json.loads(game["player2_deck_cards"] or "[]")
-        except:
+        except Exception as e:
+            print(f"Error parsing decks: {e}")
             p1_deck = p2_deck = []
 
         game_over, winner, is_tie, tie_breaker_possible = get_game_end_status(
@@ -835,15 +841,19 @@ def auto_resolve_round(game, conn):
         )
 
         if game_over:
-            archive_game_history(
-                conn,
-                game,
-                new_p1_score,
-                new_p2_score,
-                winner_name,
-                p1_deck,
-                p2_deck,
-            )
+            try:
+                archive_game_history(
+                    conn,
+                    game,
+                    new_p1_score,
+                    new_p2_score,
+                    winner_name,
+                    p1_deck,
+                    p2_deck,
+                )
+            except Exception as e:
+                print(f"Error archiving game history: {e}")
+                # Continue even if archiving fails
 
         conn.commit()
 
@@ -860,6 +870,9 @@ def auto_resolve_round(game, conn):
             "tie_breaker_possible": tie_breaker_possible,
         }
     except Exception as e:
+        print(f"Error in auto_resolve_round: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
