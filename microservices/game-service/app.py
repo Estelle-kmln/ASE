@@ -159,6 +159,12 @@ def build_history_snapshot(
     game, player1_score, player2_score, winner_name, p1_deck, p2_deck
 ):
     """Prepare the payload that gets encrypted for long-term storage."""
+    # Parse round history from the game
+    try:
+        round_history = json.loads(game.get("round_history") or "[]")
+    except Exception:
+        round_history = []
+    
     return {
         "game_id": game["game_id"],
         "turns_played": game["turn"],
@@ -174,6 +180,7 @@ def build_history_snapshot(
         },
         "winner": winner_name,
         "was_tie": player1_score == player2_score,
+        "round_history": round_history,
         "created_at": (
             game["created_at"].isoformat() if game.get("created_at") else None
         ),
@@ -191,13 +198,19 @@ def archive_game_history(
     )
     encrypted_payload, integrity_hash = security.encrypt_snapshot(snapshot)
 
+    # Get round history
+    try:
+        round_history = json.loads(game.get("round_history") or "[]")
+    except Exception:
+        round_history = []
+    
     cursor = conn.cursor()
     cursor.execute(
         """
         INSERT INTO game_history (
             game_id, player1_name, player2_name, player1_score, player2_score,
-            winner, encrypted_payload, integrity_hash
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            winner, encrypted_payload, integrity_hash, round_history
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (game_id) DO NOTHING
     """,
         (
@@ -209,6 +222,7 @@ def archive_game_history(
             winner_name,
             Binary(encrypted_payload),
             integrity_hash,
+            json.dumps(round_history),
         ),
     )
     cursor.close()
@@ -456,6 +470,64 @@ def get_game_history(game_id):
 
     except Exception as e:
         return jsonify({"error": f"Failed to get game history: {str(e)}"}), 500
+
+
+@app.route("/api/games/<game_id>/details", methods=["GET"])
+@jwt_required()
+def get_game_details(game_id):
+    """Get detailed match information including round-by-round card plays."""
+    try:
+        current_user = get_jwt_identity()
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get from game_history for completed games
+        cursor.execute(
+            """
+            SELECT 
+                game_id,
+                player1_name,
+                player2_name,
+                player1_score,
+                player2_score,
+                winner,
+                archived_at,
+                round_history
+            FROM game_history
+            WHERE game_id = %s
+        """,
+            (game_id,),
+        )
+        match = cursor.fetchone()
+        conn.close()
+
+        if not match:
+            return jsonify({"error": "Match not found"}), 404
+
+        # Check authorization
+        if current_user not in [match["player1_name"], match["player2_name"]]:
+            return jsonify({"error": "Unauthorized"}), 403
+
+        # Parse round history
+        try:
+            round_history = json.loads(match.get("round_history") or "[]")
+        except Exception:
+            round_history = []
+
+        return jsonify({
+            "game_id": match["game_id"],
+            "player1_name": match["player1_name"],
+            "player2_name": match["player2_name"],
+            "player1_score": match["player1_score"],
+            "player2_score": match["player2_score"],
+            "winner": match["winner"],
+            "archived_at": match["archived_at"].isoformat() if match["archived_at"] else None,
+            "round_history": round_history
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to get match details: {str(e)}"}), 500
 
 
 @app.route("/api/games/<game_id>/hand", methods=["GET"])
@@ -817,6 +889,23 @@ def auto_resolve_round(game, conn):
             elif winner == "player2":
                 winner_name = game["player2_name"]
 
+        # Store this round in history
+        try:
+            existing_history = json.loads(game.get("round_history") or "[]")
+        except Exception:
+            existing_history = []
+        
+        round_data = {
+            "round": game["turn"],
+            "player1_card": player1_card_data,
+            "player2_card": player2_card_data,
+            "round_winner": round_winner,
+            "round_tied": round_tied,
+            "player1_score_after": new_p1_score,
+            "player2_score_after": new_p2_score
+        }
+        existing_history.append(round_data)
+
         # Update database - reset played cards, hands, and turn flags for next round
         cursor = conn.cursor()
         cursor.execute(
@@ -828,6 +917,7 @@ def auto_resolve_round(game, conn):
                 player1_has_drawn = FALSE, player2_has_drawn = FALSE,
                 player1_has_played = FALSE, player2_has_played = FALSE,
                 is_active = %s, winner = %s, turn = turn + 1,
+                round_history = %s,
                 updated_at = CURRENT_TIMESTAMP
             WHERE game_id = %s
         """,
@@ -836,15 +926,20 @@ def auto_resolve_round(game, conn):
                 new_p2_score,
                 not game_over,
                 winner_name,
+                json.dumps(existing_history),
                 game["game_id"],
             ),
         )
 
         if game_over:
+            # Refresh game object to get the updated round_history
+            cursor.execute("SELECT * FROM games WHERE game_id = %s", (game["game_id"],))
+            updated_game = cursor.fetchone()
+            
             try:
                 archive_game_history(
                     conn,
-                    game,
+                    updated_game,  # Use updated game object with round_history
                     new_p1_score,
                     new_p2_score,
                     winner_name,
@@ -853,6 +948,8 @@ def auto_resolve_round(game, conn):
                 )
             except Exception as e:
                 print(f"Error archiving game history: {e}")
+                import traceback
+                traceback.print_exc()
                 # Continue even if archiving fails
 
         conn.commit()
@@ -985,6 +1082,23 @@ def resolve_round(game_id):
             elif winner == "player2":
                 winner_name = game["player2_name"]
 
+        # Store this round in history
+        try:
+            existing_history = json.loads(game.get("round_history") or "[]")
+        except Exception:
+            existing_history = []
+        
+        round_data = {
+            "round": game["turn"],
+            "player1_card": player1_card_data,
+            "player2_card": player2_card_data,
+            "round_winner": round_winner,
+            "round_tied": round_tied,
+            "player1_score_after": new_p1_score,
+            "player2_score_after": new_p2_score
+        }
+        existing_history.append(round_data)
+
         # Update database
         cursor = conn.cursor()
         cursor.execute(
@@ -994,16 +1108,21 @@ def resolve_round(game_id):
                 player1_played_card = NULL, player2_played_card = NULL,
                 player1_hand_cards = '[]', player2_hand_cards = '[]',
                 is_active = %s, winner = %s, turn = turn + 1,
+                round_history = %s,
                 updated_at = CURRENT_TIMESTAMP
             WHERE game_id = %s
         """,
-            (new_p1_score, new_p2_score, not game_over, winner_name, game_id),
+            (new_p1_score, new_p2_score, not game_over, winner_name, json.dumps(existing_history), game_id),
         )
 
         if game_over:
+            # Refresh game object to get the updated round_history
+            cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            updated_game = cursor.fetchone()
+            
             archive_game_history(
                 conn,
-                game,
+                updated_game,  # Use updated game object with round_history
                 new_p1_score,
                 new_p2_score,
                 winner_name,
@@ -1171,31 +1290,54 @@ def tie_breaker_round(game_id):
 
         # Update game state
         cursor = conn.cursor()
+        
+        # Store tie-breaker in history
+        try:
+            existing_history = json.loads(game.get("round_history") or "[]")
+        except Exception:
+            existing_history = []
+        
+        tiebreaker_data = {
+            "round": game["turn"],
+            "is_tiebreaker": True,
+            "player1_card": p1_card,
+            "player2_card": p2_card,
+            "round_winner": 1 if tie_breaker_winner == game["player1_name"] else (2 if tie_breaker_winner == game["player2_name"] else None),
+            "round_tied": tie_breaker_tied,
+            "player1_score_after": game["player1_score"],
+            "player2_score_after": game["player2_score"]
+        }
+        existing_history.append(tiebreaker_data)
+        
         if tie_breaker_tied:
             # Still tied after tie-breaker - game remains in tie state
             cursor.execute(
                 """
                 UPDATE games 
-                SET updated_at = CURRENT_TIMESTAMP
+                SET round_history = %s, updated_at = CURRENT_TIMESTAMP
                 WHERE game_id = %s
             """,
-                (game_id,),
+                (json.dumps(existing_history), game_id,),
             )
         else:
             # Tie-breaker resolved - set winner
             cursor.execute(
                 """
                 UPDATE games 
-                SET winner = %s, updated_at = CURRENT_TIMESTAMP
+                SET winner = %s, round_history = %s, updated_at = CURRENT_TIMESTAMP
                 WHERE game_id = %s
             """,
-                (tie_breaker_winner, game_id),
+                (tie_breaker_winner, json.dumps(existing_history), game_id),
             )
 
         if not tie_breaker_tied:
+            # Refresh game object to get the updated round_history
+            cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            updated_game = cursor.fetchone()
+            
             archive_game_history(
                 conn,
-                game,
+                updated_game,  # Use updated game object with round_history
                 game["player1_score"],
                 game["player2_score"],
                 tie_breaker_winner,
@@ -1271,9 +1413,13 @@ def end_game(game_id):
             (game_id,),
         )
 
+        # Refresh game object to get the updated data
+        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+        updated_game = cursor.fetchone()
+
         archive_game_history(
             conn,
-            game,
+            updated_game,  # Use updated game object
             game["player1_score"],
             game["player2_score"],
             game["winner"],

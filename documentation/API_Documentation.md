@@ -656,10 +656,10 @@ Since this is a **two-player game**, you need **two separate terminals** - one f
 #### **1. User Registration (Run once)**
 ```bash
 # Register Player 1 (Alice)
-curl -X POST http://localhost:8080/api/auth/register -H "Content-Type: application/json" -d '{"username":"alice","email":"alice@example.com","password":"password123"}'
+curl -X POST http://localhost:8080/api/auth/register -H "Content-Type: application/json" -d '{"username":"alice","password":"password123"}'
 
 # Register Player 2 (Bob)  
-curl -X POST http://localhost:8080/api/auth/register -H "Content-Type: application/json" -d '{"username":"bob","email":"bob@example.com","password":"password123"}'
+curl -X POST http://localhost:8080/api/auth/register -H "Content-Type: application/json" -d '{"username":"bob","password":"password123"}'
 ```
 
 #### **2. Setup Two Terminals**
@@ -723,14 +723,6 @@ curl -H "Authorization: Bearer $BOB_TOKEN" http://localhost:8080/api/games/$GAME
 curl -X POST -H "Authorization: Bearer $BOB_TOKEN" -H "Content-Type: application/json" -d '{"card_index":1}' http://localhost:8080/api/games/$GAME_ID/play-card
 ```
 
-##### **🎯 Resolve Round (Either Terminal)**
-```bash
-# After BOTH players have played their cards, resolve the round
-curl -X POST -H "Authorization: Bearer $ALICE_TOKEN" http://localhost:8080/api/games/$GAME_ID/resolve-round
-
-# Or from Bob's terminal:
-curl -X POST -H "Authorization: Bearer $BOB_TOKEN" http://localhost:8080/api/games/$GAME_ID/resolve-round
-```
 
 #### **4. Check Game State (Either Terminal)**
 ```bash
