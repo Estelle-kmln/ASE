@@ -198,16 +198,14 @@ def login():
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
         # Get user from database
-        cursor.execute(
-            "SELECT id, username, password FROM users WHERE username = %s",
-            (username,),
-        )
-        user = cursor.fetchone()
-        conn.close()
+        with unit_of_work() as cur:
+            cur.execute(
+                "SELECT id, username, password FROM users WHERE username = %s",
+                (username,),
+            )
+            user = cur.fetchone()
+        
 
         if not user or not verify_password(password, user["password"]):
             return jsonify({"error": "Invalid username or password"}), 401
