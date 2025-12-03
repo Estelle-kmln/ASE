@@ -115,32 +115,39 @@ def register():
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # Check if username already exists
-        cursor.execute(
-            "SELECT COUNT(*) FROM users WHERE username = %s", (username,)
-        )
-        if cursor.fetchone()[0] > 0:
-            conn.close()
-            return jsonify({"error": "Username already exists"}), 409
-
-        # Hash password and create user
         hashed_password = hash_password(password)
-        if email:
-            cursor.execute(
-                "INSERT INTO users (username, password, email) VALUES (%s, %s, %s) RETURNING id",
-                (username, hashed_password, email),
+
+        with unit_of_work() as cur:
+
+            # Check if username exists
+            cur.execute(
+                "SELECT COUNT(*) AS count FROM users WHERE username = %s",
+                (username,),
             )
-        else:
-            cursor.execute(
-                "INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id",
-                (username, hashed_password),
-            )
-        user_id = cursor.fetchone()[0]
-        conn.commit()
-        conn.close()
+            if cur.fetchone()["count"] > 0:
+                return jsonify({"error": "Username already exists"}), 409
+
+            # Insert user
+            if email:
+                cur.execute(
+                    """
+                    INSERT INTO users (username, password, email)
+                    VALUES (%s, %s, %s)
+                    RETURNING id
+                    """,
+                    (username, hashed_password, email),
+                )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO users (username, password)
+                    VALUES (%s, %s)
+                    RETURNING id
+                    """,
+                    (username, hashed_password),
+                )
+
+            user_id = cur.fetchone()["id"]
 
         # Create access token (JWT bearer token)
         access_token = create_access_token(identity=username)
@@ -167,6 +174,7 @@ def register():
 
     except Exception as e:
         return jsonify({"error": f"Registration failed: {str(e)}"}), 500
+
 
 
 @app.route("/api/auth/login", methods=["POST"])
