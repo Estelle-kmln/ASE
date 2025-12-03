@@ -244,15 +244,12 @@ def get_profile():
     try:
         current_user = get_jwt_identity()
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        cursor.execute(
-            "SELECT id, username, created_at FROM users WHERE username = %s",
-            (current_user,),
-        )
-        user = cursor.fetchone()
-        conn.close()
+        with unit_of_work() as cur:
+            cur.execute(
+                "SELECT id, username, created_at FROM users WHERE username = %s",
+                (current_user,),
+            )
+            user = cur.fetchone()
 
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -289,35 +286,28 @@ def update_profile():
         if not data:
             return jsonify({"error": "No data provided"}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with unit_of_work() as cur:
 
-        # Check if user exists
-        cursor.execute(
-            "SELECT COUNT(*) FROM users WHERE username = %s", (current_user,)
-        )
-        if cursor.fetchone()[0] == 0:
-            conn.close()
-            return jsonify({"error": "User not found"}), 404
-
-        # Update password if provided
-        if "password" in data and data["password"]:
-            try:
-                new_password = InputSanitizer.validate_password(
-                    data["password"]
-                )
-            except ValueError as e:
-                conn.close()
-                return jsonify({"error": str(e)}), 400
-
-            hashed_password = hash_password(new_password)
-            cursor.execute(
-                "UPDATE users SET password = %s WHERE username = %s",
-                (hashed_password, current_user),
+            # Check if user exists
+            cur.execute(
+                "SELECT COUNT(*) AS count FROM users WHERE username = %s",
+                (current_user,)
             )
+            if cur.fetchone()["count"] == 0:
+                return jsonify({"error": "User not found"}), 404
 
-        conn.commit()
-        conn.close()
+            # Update password if provided
+            if "password" in data and data["password"]:
+                try:
+                    new_password = InputSanitizer.validate_password(data["password"])
+                except ValueError as e:
+                    return jsonify({"error": str(e)}), 400
+
+                hashed = hash_password(new_password)
+                cur.execute(
+                    "UPDATE users SET password = %s WHERE username = %s",
+                    (hashed, current_user)
+                )
 
         return jsonify({"message": "Profile updated successfully"}), 200
 
