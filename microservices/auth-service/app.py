@@ -14,9 +14,9 @@ from flask_jwt_extended import (
     get_jwt_identity,
 )
 from flask_cors import CORS
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
+from common.db_manager import unit_of_work, db_health, get_connection, release_connection
+
 
 # Add utils directory to path for input sanitizer
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "utils"))
@@ -69,11 +69,6 @@ DATABASE_URL = os.getenv(
 )
 
 
-def get_db_connection():
-    """Create and return a PostgreSQL database connection."""
-    return psycopg2.connect(DATABASE_URL)
-
-
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
@@ -88,8 +83,7 @@ def verify_password(password: str, hashed: str) -> bool:
 
 @app.route("/health", methods=["GET"])
 def health_check():
-    """Health check endpoint."""
-    return jsonify({"status": "healthy", "service": "auth-service"}), 200
+    return jsonify(db_health()), 200
 
 
 @app.route("/api/auth/register", methods=["POST"])
