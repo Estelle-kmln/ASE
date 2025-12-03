@@ -14,8 +14,8 @@ from flask_jwt_extended import (
     get_jwt_identity,
 )
 from flask_cors import CORS
-from dotenv import load_dotenv
 from common.db_manager import unit_of_work, db_health, get_connection, release_connection
+from dotenv import load_dotenv
 
 
 # Add utils directory to path for input sanitizer
@@ -322,14 +322,12 @@ def validate_token():
     try:
         current_user = get_jwt_identity()
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT COUNT(*) FROM users WHERE username = %s", (current_user,)
-        )
-        user_exists = cursor.fetchone()[0] > 0
-        conn.close()
+        with unit_of_work() as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS count FROM users WHERE username = %s",
+                (current_user,)
+            )
+            user_exists = cur.fetchone()["count"] > 0
 
         if not user_exists:
             return jsonify({"error": "Invalid token"}), 401
