@@ -8,8 +8,8 @@ import random
 from flask import Flask, request, jsonify
 from flask_jwt_extended import JWTManager, jwt_required
 from flask_cors import CORS
-import psycopg2
 from psycopg2.extras import RealDictCursor
+from common.db_manager import unit_of_work, db_health, get_connection, release_connection
 from dotenv import load_dotenv
 import requests
 
@@ -50,9 +50,6 @@ def expired_token_callback(jwt_header, jwt_payload):
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://gameuser:gamepassword@localhost:5432/battlecards')
 AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://localhost:5001')
 
-def get_db_connection():
-    """Create and return a PostgreSQL database connection."""
-    return psycopg2.connect(DATABASE_URL)
 
 def validate_token(token):
     """Validate token with auth service."""
@@ -63,24 +60,22 @@ def validate_token(token):
     except:
         return False
 
-
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint."""
-    return jsonify({'status': 'healthy', 'service': 'card-service'}), 200
+    return jsonify({
+        'service': 'card-service',
+        'database': db_health()
+    }), 200
 
 @app.route('/api/cards', methods=['GET'])
 @jwt_required()
 def get_all_cards():
     """Get all available cards."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        cursor.execute("SELECT * FROM cards ORDER BY type, power")
-        cards = cursor.fetchall()
-        conn.close()
-        
+        with unit_of_work() as cursor:
+            cursor.execute("SELECT * FROM cards ORDER BY type, power")
+            cards = cursor.fetchall()
+
         # Convert to list of dicts
         card_list = []
         for card in cards:
@@ -106,13 +101,13 @@ def get_cards_by_type(card_type):
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
         
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        cursor.execute("SELECT * FROM cards WHERE LOWER(type) = LOWER(%s) ORDER BY power", (card_type,))
-        cards = cursor.fetchall()
-        conn.close()
-        
+        with unit_of_work() as cursor:
+            cursor.execute(
+                "SELECT * FROM cards WHERE LOWER(type) = LOWER(%s) ORDER BY power",
+                (card_type,)
+            )
+            cards = cursor.fetchall()
+
         card_list = []
         for card in cards:
             card_list.append({
@@ -135,12 +130,9 @@ def get_card_by_id(card_id):
         if not isinstance(card_id, int) or card_id < 0:
             return jsonify({'error': 'Invalid card ID format'}), 400
         
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        cursor.execute("SELECT * FROM cards WHERE id = %s", (card_id,))
-        card = cursor.fetchone()
-        conn.close()
+        with unit_of_work() as cursor:
+            cursor.execute("SELECT * FROM cards WHERE id = %s", (card_id,))
+            card = cursor.fetchone()
         
         if not card:
             return jsonify({'error': 'Card not found'}), 404
@@ -171,13 +163,10 @@ def create_random_deck():
             # Return error message that matches test expectations
             return jsonify({'error': 'Deck size must be between 1 and 50'}), 400
         
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
         # Get all available cards
-        cursor.execute("SELECT * FROM cards ORDER BY type, power")
-        all_cards = cursor.fetchall()
-        conn.close()
+        with unit_of_work() as cursor:
+            cursor.execute("SELECT * FROM cards ORDER BY type, power")
+            all_cards = cursor.fetchall()
         
         if len(all_cards) < deck_size:
             return jsonify({'error': f'Not enough cards in database. Available: {len(all_cards)}, Requested: {deck_size}'}), 400
@@ -206,13 +195,11 @@ def create_random_deck():
 def get_card_statistics():
     """Get card database statistics."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
         # Get all cards for analysis
-        cursor.execute("SELECT type, power FROM cards")
-        cards = cursor.fetchall()
-        conn.close()
+        with unit_of_work() as cursor:
+            cursor.execute("SELECT type, power FROM cards")
+            cards = cursor.fetchall()
+
         
         if not cards:
             return jsonify({'error': 'No cards found'}), 404
@@ -259,17 +246,13 @@ def get_card_statistics():
 def get_card_types():
     """Get all available card types."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT DISTINCT type FROM cards ORDER BY type")
-        types_result = cursor.fetchall()
-        
-        cursor.execute("SELECT DISTINCT power FROM cards ORDER BY power")
-        powers_result = cursor.fetchall()
-        
-        conn.close()
-        
+        with unit_of_work() as cursor:
+            cursor.execute("SELECT DISTINCT type FROM cards ORDER BY type")
+            types_result = cursor.fetchall()
+
+            cursor.execute("SELECT DISTINCT power FROM cards ORDER BY power")
+            powers_result = cursor.fetchall()
+  
         types = [row[0] for row in types_result]
         powers = [row[0] for row in powers_result]
         
