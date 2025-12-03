@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS games (
     game_id VARCHAR(255) PRIMARY KEY,
     turn INTEGER NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT true,
+    game_status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (game_status IN ('pending', 'active', 'completed', 'abandoned', 'ignored')),
     player1_name VARCHAR(255) NOT NULL,
     player1_deck_cards TEXT,
     player1_hand_cards TEXT,
@@ -43,9 +44,13 @@ CREATE INDEX IF NOT EXISTS idx_cards_type ON cards(type);
 CREATE INDEX IF NOT EXISTS idx_cards_power ON cards(power);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_games_is_active ON games(is_active);
+CREATE INDEX IF NOT EXISTS idx_games_game_status ON games(game_status);
 CREATE INDEX IF NOT EXISTS idx_games_player1_name ON games(player1_name);
 CREATE INDEX IF NOT EXISTS idx_games_player2_name ON games(player2_name);
 CREATE INDEX IF NOT EXISTS idx_games_winner ON games(winner);
+
+-- Add comment to game_status column
+COMMENT ON COLUMN games.game_status IS 'Status of the game: pending (invitation), active (in progress), completed (finished), abandoned (quit), ignored (declined invitation)';
 
 -- Insert all possible RPS cards (type + power combinations)
 -- Rock cards (power 1-13)

@@ -217,15 +217,22 @@ async function ignoreInvitation(gameId) {
     const token = localStorage.getItem('token');
     
     try {
-        // Call the end game endpoint to mark the game as inactive
-        await fetch(`${GAME_API_URL}/${gameId}/end`, {
+        // Call the new ignore invitation endpoint
+        const response = await fetch(`${GAME_API_URL}/${gameId}/ignore`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            console.error('Error ignoring invitation:', error);
+            alert(error.error || 'Failed to ignore invitation');
+            return;
+        }
     } catch (error) {
-        console.error('Error ending game:', error);
+        console.error('Error ignoring invitation:', error);
     }
     
     // Refresh the games list to remove the ignored invitation

@@ -78,7 +78,7 @@ def get_leaderboard():
                 -- Player 1 wins
                 SELECT player1_name as player, COUNT(*) as wins
                 FROM games 
-                WHERE is_active = false AND winner = player1_name
+                WHERE game_status IN ('completed', 'abandoned') AND winner = player1_name
                 GROUP BY player1_name
                 
                 UNION ALL
@@ -86,31 +86,31 @@ def get_leaderboard():
                 -- Player 2 wins
                 SELECT player2_name as player, COUNT(*) as wins
                 FROM games 
-                WHERE is_active = false AND winner = player2_name
+                WHERE game_status IN ('completed', 'abandoned') AND winner = player2_name
                 GROUP BY player2_name
             ),
             total_games AS (
                 -- Total games for each player
                 SELECT player1_name as player, COUNT(*) as total_games
                 FROM games
-                WHERE is_active = false
+                WHERE game_status IN ('completed', 'abandoned')
                 GROUP BY player1_name
                 
                 UNION ALL
                 
                 SELECT player2_name as player, COUNT(*) as total_games
                 FROM games
-                WHERE is_active = false
+                WHERE game_status IN ('completed', 'abandoned')
                 GROUP BY player2_name
             ),
             aggregated_stats AS (
                 SELECT 
-                    p.player,
+                    COALESCE(p.player, t.player) as player,
                     SUM(p.wins) as total_wins,
                     SUM(t.total_games) as total_games
                 FROM player_stats p
                 FULL OUTER JOIN total_games t ON p.player = t.player
-                GROUP BY p.player
+                GROUP BY COALESCE(p.player, t.player)
             )
             SELECT 
                 player,
@@ -180,7 +180,7 @@ def get_my_matches():
                 winner,
                 created_at
             FROM games 
-            WHERE is_active = false 
+            WHERE game_status IN ('completed', 'abandoned')
             AND (player1_name = %s OR player2_name = %s)
             ORDER BY created_at DESC
         """, (username, username))
@@ -230,7 +230,7 @@ def get_player_stats(player_name):
             WITH player_wins AS (
                 SELECT COUNT(*) as wins
                 FROM games 
-                WHERE is_active = false 
+                WHERE game_status IN ('completed', 'abandoned')
                 AND (
                     (winner = player1_name AND player1_name = %s) OR 
                     (winner = player2_name AND player2_name = %s)
@@ -239,7 +239,7 @@ def get_player_stats(player_name):
             player_games AS (
                 SELECT COUNT(*) as total_games
                 FROM games 
-                WHERE is_active = false 
+                WHERE game_status IN ('completed', 'abandoned')
                 AND (player1_name = %s OR player2_name = %s)
             )
             SELECT 
@@ -277,7 +277,7 @@ def get_player_stats(player_name):
                 winner,
                 created_at
             FROM games 
-            WHERE is_active = false 
+            WHERE game_status IN ('completed', 'abandoned')
             AND (player1_name = %s OR player2_name = %s)
             ORDER BY created_at DESC
             LIMIT 10
@@ -341,7 +341,7 @@ def get_recent_games():
                 created_at,
                 updated_at
             FROM games 
-            WHERE is_active = false
+            WHERE game_status IN ('completed', 'abandoned')
             ORDER BY updated_at DESC
             LIMIT %s
         """, (limit,))
@@ -384,14 +384,14 @@ def get_top_players():
             WITH player_stats AS (
                 SELECT player1_name as player, COUNT(*) as wins
                 FROM games 
-                WHERE is_active = false AND winner = player1_name
+                WHERE game_status IN ('completed', 'abandoned') AND winner = player1_name
                 GROUP BY player1_name
                 
                 UNION ALL
                 
                 SELECT player2_name as player, COUNT(*) as wins
                 FROM games 
-                WHERE is_active = false AND winner = player2_name
+                WHERE game_status IN ('completed', 'abandoned') AND winner = player2_name
                 GROUP BY player2_name
             )
             SELECT 
@@ -412,7 +412,7 @@ def get_top_players():
                 -- Player 1 wins
                 SELECT player1_name as player, COUNT(*) as wins
                 FROM games 
-                WHERE is_active = false AND winner = player1_name
+                WHERE game_status IN ('completed', 'abandoned') AND winner = player1_name
                 GROUP BY player1_name
                 
                 UNION ALL
@@ -420,31 +420,31 @@ def get_top_players():
                 -- Player 2 wins
                 SELECT player2_name as player, COUNT(*) as wins
                 FROM games 
-                WHERE is_active = false AND winner = player2_name
+                WHERE game_status IN ('completed', 'abandoned') AND winner = player2_name
                 GROUP BY player2_name
             ),
             total_games AS (
                 -- Total games for each player
                 SELECT player1_name as player, COUNT(*) as total_games
                 FROM games
-                WHERE is_active = false
+                WHERE game_status IN ('completed', 'abandoned')
                 GROUP BY player1_name
                 
                 UNION ALL
                 
                 SELECT player2_name as player, COUNT(*) as total_games
                 FROM games
-                WHERE is_active = false
+                WHERE game_status IN ('completed', 'abandoned')
                 GROUP BY player2_name
             ),
             aggregated_stats AS (
                 SELECT 
-                    p.player,
+                    COALESCE(p.player, t.player) as player,
                     SUM(p.wins) as total_wins,
                     SUM(t.total_games) as total_games
                 FROM player_stats p
                 FULL OUTER JOIN total_games t ON p.player = t.player
-                GROUP BY p.player
+                GROUP BY COALESCE(p.player, t.player)
             )
             SELECT 
                 player,
@@ -464,14 +464,14 @@ def get_top_players():
             WITH total_games AS (
                 SELECT player1_name as player, COUNT(*) as total_games
                 FROM games
-                WHERE is_active = false
+                WHERE game_status IN ('completed', 'abandoned')
                 GROUP BY player1_name
                 
                 UNION ALL
                 
                 SELECT player2_name as player, COUNT(*) as total_games
                 FROM games
-                WHERE is_active = false
+                WHERE game_status IN ('completed', 'abandoned')
                 GROUP BY player2_name
             )
             SELECT 
@@ -527,7 +527,7 @@ def get_global_statistics():
                 COUNT(*) as total_games,
                 COUNT(DISTINCT player1_name) + COUNT(DISTINCT player2_name) as unique_players
             FROM games 
-            WHERE is_active = false
+            WHERE game_status IN ('completed', 'abandoned')
         """)
         
         basic_stats = cursor.fetchone()
@@ -538,7 +538,7 @@ def get_global_statistics():
                 COUNT(CASE WHEN winner IS NOT NULL THEN 1 END) as games_with_winner,
                 COUNT(CASE WHEN winner IS NULL THEN 1 END) as tied_games
             FROM games 
-            WHERE is_active = false
+            WHERE game_status IN ('completed', 'abandoned')
         """)
         
         outcome_stats = cursor.fetchone()
@@ -550,7 +550,7 @@ def get_global_statistics():
                 MIN(turn) as shortest_game,
                 MAX(turn) as longest_game
             FROM games 
-            WHERE is_active = false
+            WHERE game_status IN ('completed', 'abandoned')
         """)
         
         duration_stats = cursor.fetchone()
@@ -559,7 +559,7 @@ def get_global_statistics():
         cursor.execute("""
             SELECT COUNT(*) as games_last_week
             FROM games 
-            WHERE is_active = false 
+            WHERE game_status IN ('completed', 'abandoned')
             AND created_at >= %s
         """, (datetime.now() - timedelta(days=7),))
         

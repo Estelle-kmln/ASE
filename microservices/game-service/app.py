@@ -246,6 +246,20 @@ def decrypt_history_row(row):
     return security.decrypt_snapshot(encrypted_payload)
 
 
+def mark_game_as_active(conn, game_id):
+    """Mark a game as active when player2 first interacts with it."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE games 
+        SET game_status = 'active'
+        WHERE game_id = %s AND game_status = 'pending'
+    """,
+        (game_id,),
+    )
+    cursor.close()
+
+
 @app.route("/health", methods=["GET"])
 def health_check():
     """Health check endpoint."""
@@ -294,16 +308,17 @@ def create_game():
         cursor.execute(
             """
             INSERT INTO games (
-                game_id, turn, is_active,
+                game_id, turn, is_active, game_status,
                 player1_name, player1_deck_cards, player1_hand_cards, 
                 player1_score, player2_name, player2_deck_cards, 
                 player2_hand_cards, player2_score
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
             (
                 game_id,
                 1,
                 True,
+                'pending',  # New games start as pending invitations
                 player1_name,
                 json.dumps(player1_deck),
                 json.dumps([]),
@@ -616,6 +631,11 @@ def draw_hand(game_id):
             conn.close()
             return jsonify({"error": "Unauthorized to play this game"}), 403
 
+        # Mark game as active when player2 first interacts
+        if not is_player1 and game.get("game_status") == "pending":
+            mark_game_as_active(conn, game_id)
+            conn.commit()
+
         # STRICT RULE: Check if player has already drawn this turn
         has_drawn_field = "player1_has_drawn" if is_player1 else "player2_has_drawn"
         if game.get(has_drawn_field, False):
@@ -728,6 +748,11 @@ def play_card(game_id):
         if not is_player1 and current_user != game["player2_name"]:
             conn.close()
             return jsonify({"error": "Unauthorized to play this game"}), 403
+
+        # Mark game as active when player2 first interacts
+        if not is_player1 and game.get("game_status") == "pending":
+            mark_game_as_active(conn, game_id)
+            conn.commit()
 
         # STRICT RULE 1: Check if player has drawn cards this turn
         has_drawn_field = "player1_has_drawn" if is_player1 else "player2_has_drawn"
@@ -919,6 +944,16 @@ def auto_resolve_round(game, conn):
 
         # Update database - reset played cards, hands, and turn flags for next round
         cursor = conn.cursor()
+        
+        # Determine game_status based on whether game is over
+        if game_over:
+            new_game_status = 'completed'
+        else:
+            # If game was pending and player2 just played, it should already be active
+            # Keep current status or set to active if somehow still pending
+            current_status = game.get('game_status', 'active')
+            new_game_status = 'active' if current_status == 'pending' else current_status
+        
         cursor.execute(
             """
             UPDATE games 
@@ -927,7 +962,7 @@ def auto_resolve_round(game, conn):
                 player1_hand_cards = '[]', player2_hand_cards = '[]',
                 player1_has_drawn = FALSE, player2_has_drawn = FALSE,
                 player1_has_played = FALSE, player2_has_played = FALSE,
-                is_active = %s, winner = %s, turn = turn + 1,
+                is_active = %s, game_status = %s, winner = %s, turn = turn + 1,
                 round_history = %s,
                 updated_at = CURRENT_TIMESTAMP
             WHERE game_id = %s
@@ -936,6 +971,7 @@ def auto_resolve_round(game, conn):
                 new_p1_score,
                 new_p2_score,
                 not game_over,
+                new_game_status,
                 winner_name,
                 json.dumps(existing_history),
                 game["game_id"],
@@ -1114,18 +1150,22 @@ def resolve_round(game_id):
 
         # Update database
         cursor = conn.cursor()
+        
+        # Determine game_status based on whether game is over
+        new_game_status = 'completed' if game_over else game.get('game_status', 'active')
+        
         cursor.execute(
             """
             UPDATE games 
             SET player1_score = %s, player2_score = %s, 
                 player1_played_card = NULL, player2_played_card = NULL,
                 player1_hand_cards = '[]', player2_hand_cards = '[]',
-                is_active = %s, winner = %s, turn = turn + 1,
+                is_active = %s, game_status = %s, winner = %s, turn = turn + 1,
                 round_history = %s,
                 updated_at = CURRENT_TIMESTAMP
             WHERE game_id = %s
         """,
-            (new_p1_score, new_p2_score, not game_over, winner_name, json.dumps(existing_history), game_id),
+            (new_p1_score, new_p2_score, not game_over, new_game_status, winner_name, json.dumps(existing_history), game_id),
         )
 
         if game_over:
@@ -1388,6 +1428,56 @@ def tie_breaker_round(game_id):
         )
 
 
+@app.route("/api/games/<game_id>/ignore", methods=["POST"])
+@jwt_required()
+def ignore_invitation(game_id):
+    """Ignore/decline a game invitation."""
+    try:
+        # Basic input sanitization
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+            
+        current_user = get_jwt_identity()
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+        game = cursor.fetchone()
+
+        if not game:
+            conn.close()
+            return jsonify({"error": "Game not found"}), 404
+
+        # Check if user is player2 (the invited player)
+        if current_user != game["player2_name"]:
+            conn.close()
+            return jsonify({"error": "Only the invited player can ignore this invitation"}), 403
+
+        # Only allow ignoring pending invitations
+        if game.get("game_status") != "pending":
+            conn.close()
+            return jsonify({"error": "Can only ignore pending invitations"}), 400
+
+        # Mark the invitation as ignored
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE games 
+            SET game_status = 'ignored', is_active = false, updated_at = CURRENT_TIMESTAMP 
+            WHERE game_id = %s
+        """,
+            (game_id,),
+        )
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({"message": "Invitation ignored successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to ignore invitation: {str(e)}"}), 500
+
+
 @app.route("/api/games/<game_id>/end", methods=["POST"])
 @jwt_required()
 def end_game(game_id):
@@ -1419,15 +1509,28 @@ def end_game(game_id):
         except (json.JSONDecodeError, TypeError):
             p1_deck = p2_deck = []
 
+        # Determine the appropriate status
+        # If game has a winner or significant turns, it's completed
+        # Otherwise it was abandoned
+        current_status = game.get("game_status", "active")
+        if game["winner"]:
+            new_status = "completed"
+        elif current_status == "pending":
+            new_status = "ignored"  # Ending a pending game means it was ignored
+        elif game["turn"] <= 1:
+            new_status = "abandoned"  # Ended very early
+        else:
+            new_status = "abandoned"  # Ended without a winner
+
         # End the game
         cursor = conn.cursor()
         cursor.execute(
             """
             UPDATE games 
-            SET is_active = false, updated_at = CURRENT_TIMESTAMP 
+            SET is_active = false, game_status = %s, updated_at = CURRENT_TIMESTAMP 
             WHERE game_id = %s
         """,
-            (game_id,),
+            (new_status, game_id),
         )
 
         # Refresh game object to get the updated data
@@ -1436,15 +1539,17 @@ def end_game(game_id):
         updated_game = dict_cursor.fetchone()
         dict_cursor.close()
 
-        archive_game_history(
-            conn,
-            updated_game,  # Use updated game object
-            game["player1_score"],
-            game["player2_score"],
-            game["winner"],
-            p1_deck,
-            p2_deck,
-        )
+        # Only archive games that were actually played (not pending or ignored)
+        if new_status in ["completed", "abandoned"]:
+            archive_game_history(
+                conn,
+                updated_game,  # Use updated game object
+                game["player1_score"],
+                game["player2_score"],
+                game["winner"],
+                p1_deck,
+                p2_deck,
+            )
 
         conn.commit()
         conn.close()
