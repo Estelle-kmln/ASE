@@ -134,9 +134,12 @@ async function loadUserGames() {
         displayPendingGames(pendingGames);
         displayActiveGames(activeGames);
         
-        // Show the section if there are any games
+        // Show the section if there are any games, otherwise hide it
+        const myGamesSection = document.getElementById('my-games-section');
         if (pendingGames.length > 0 || activeGames.length > 0) {
-            document.getElementById('my-games-section').style.display = 'block';
+            myGamesSection.style.display = 'block';
+        } else {
+            myGamesSection.style.display = 'none';
         }
     } catch (error) {
         console.error('Error loading games:', error);
