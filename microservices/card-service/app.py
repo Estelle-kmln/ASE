@@ -12,8 +12,6 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 import requests
-from db.db_manager import unit_of_work, get_connection, db_health
-from db.db_manager import db_health
 
 # Add utils directory to path for input sanitizer
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'utils'))
@@ -52,6 +50,9 @@ def expired_token_callback(jwt_header, jwt_payload):
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://gameuser:gamepassword@localhost:5432/battlecards')
 AUTH_SERVICE_URL = os.getenv('AUTH_SERVICE_URL', 'http://localhost:5001')
 
+def get_db_connection():
+    """Create and return a PostgreSQL database connection."""
+    return psycopg2.connect(DATABASE_URL)
 
 def validate_token(token):
     """Validate token with auth service."""
@@ -65,15 +66,8 @@ def validate_token(token):
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({
-        'service': 'card-service',
-        'database': db_health()
-    }), 200
-
-
-@app.route('/health')
-def health():
-    return jsonify(db_health()), 200
+    """Health check endpoint."""
+    return jsonify({'status': 'healthy', 'service': 'card-service'}), 200
 
 @app.route('/api/cards', methods=['GET'])
 @jwt_required()
