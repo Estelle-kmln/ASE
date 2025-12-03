@@ -482,8 +482,23 @@ function returnToHome() {
     window.location.href = 'index.html';
 }
 
-function quitGame() {
+async function quitGame() {
     if (confirm('Are you sure you want to quit the game?')) {
+        const token = localStorage.getItem('token');
+        
+        try {
+            // Call the end game endpoint to mark the game as inactive
+            await fetch(`${GAME_API_URL}/${gameId}/end`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+        } catch (error) {
+            console.error('Error ending game:', error);
+            // Continue with navigation even if the API call fails
+        }
+        
         if (pollInterval) {
             clearInterval(pollInterval);
         }
@@ -491,7 +506,22 @@ function quitGame() {
     }
 }
 
-function quitAndNavigate(page) {
+async function quitAndNavigate(page) {
+    const token = localStorage.getItem('token');
+    
+    try {
+        // Call the end game endpoint to mark the game as inactive
+        await fetch(`${GAME_API_URL}/${gameId}/end`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+    } catch (error) {
+        console.error('Error ending game:', error);
+        // Continue with navigation even if the API call fails
+    }
+    
     // Deactivate the game by stopping polling
     if (pollInterval) {
         clearInterval(pollInterval);

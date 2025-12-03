@@ -115,20 +115,11 @@ async function loadUserGames() {
         
         console.log('Loaded games:', games);
         
-        // Clean up ignored invitations for games that are no longer active
-        let ignoredGames = JSON.parse(localStorage.getItem('ignoredInvitations') || '[]');
-        const activeGameIds = games.filter(g => g.is_active).map(g => g.game_id);
-        const cleanedIgnoredGames = ignoredGames.filter(id => activeGameIds.includes(id));
-        localStorage.setItem('ignoredInvitations', JSON.stringify(cleanedIgnoredGames));
-        
         // Separate pending and active games - use case-insensitive comparison
         const currentUsername = currentUser.username.toLowerCase();
-        // Use the cleaned ignored games list
-        ignoredGames = cleanedIgnoredGames;
         
         const pendingGames = games.filter(game => 
             game.is_active &&  // Only show active game invitations
-            !ignoredGames.includes(game.game_id) &&  // Filter out ignored invitations
             game.player2_name && 
             game.player2_name.toLowerCase() === currentUsername && 
             !game.player2_id
@@ -220,14 +211,21 @@ function continueGame(gameId) {
 }
 
 async function ignoreInvitation(gameId) {
-    // Store ignored invitations in localStorage
-    const ignoredGames = JSON.parse(localStorage.getItem('ignoredInvitations') || '[]');
-    if (!ignoredGames.includes(gameId)) {
-        ignoredGames.push(gameId);
-        localStorage.setItem('ignoredInvitations', JSON.stringify(ignoredGames));
+    const token = localStorage.getItem('token');
+    
+    try {
+        // Call the end game endpoint to mark the game as inactive
+        await fetch(`${GAME_API_URL}/${gameId}/end`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+    } catch (error) {
+        console.error('Error ending game:', error);
     }
     
-    // Refresh the games list
+    // Refresh the games list to remove the ignored invitation
     await loadUserGames();
 }
 
