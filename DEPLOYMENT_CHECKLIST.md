@@ -8,7 +8,7 @@
 - [x] deck-selection.html
 - [x] game.html
 - [x] profile.html
-- [x] leaderboard.html
+- [x] game-history.html
 - [x] statistics.html
 - [x] rules.html
 - [x] welcome.html
@@ -18,7 +18,7 @@
 - [x] js/deck-selection.js
 - [x] js/game.js
 - [x] js/profile.js
-- [x] js/leaderboard.js
+- [x] js/game-history.js
 
 ### ✅ Configuration Files
 - [x] docker-compose.yml (updated with frontend volume)

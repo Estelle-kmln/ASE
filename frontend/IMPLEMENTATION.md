@@ -107,7 +107,7 @@
 - Auto-update localStorage on save
 
 ### 7. Leaderboard Page ✓
-**Files:** `leaderboard.html`, `js/leaderboard.js`
+**Files:** `game-history.html`, `js/game-history.js`
 
 - **Back button** to return home
 - **Paginated table** with columns:
@@ -179,13 +179,13 @@ frontend/
 │   ├── deck-selection.js       # Deck building
 │   ├── game.js                 # Game play logic
 │   ├── profile.js              # Profile management
-│   └── leaderboard.js          # Match history
+│   └── game-history.js          # Match history
 ├── index.html                  # Homepage (game launcher)
 ├── login.html                  # Login/Register page
 ├── deck-selection.html         # Deck selection page
 ├── game.html                   # Game play page
 ├── profile.html                # User profile page
-├── leaderboard.html            # Game history page
+├── game-history.html            # Game history page
 ├── statistics.html             # Statistics placeholder
 ├── rules.html                  # Game rules page
 ├── welcome.html                # Welcome landing page

@@ -71,13 +71,13 @@ frontend/
 │   ├── deck-selection.js   # Deck building logic
 │   ├── game.js             # Main game logic and card playing
 │   ├── profile.js          # Profile viewing and editing
-│   └── leaderboard.js      # Game history with pagination
+│   └── game-history.js      # Game history with pagination
 ├── index.html              # Homepage
 ├── login.html              # Login/Register page
 ├── deck-selection.html     # Deck selection page
 ├── game.html               # Game page
 ├── profile.html            # Profile page
-├── leaderboard.html        # Leaderboard page
+├── game-history.html        # Leaderboard page
 ├── statistics.html         # Statistics placeholder
 └── rules.html              # Game rules page
 ```
