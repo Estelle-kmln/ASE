@@ -262,18 +262,7 @@ class GameServiceUser(HttpUser):
     
     def get_auth_token_for_player2(self):
         """Get auth token for player 2 (the opponent)"""
-        # Try to login as player2 first
-        with self.client.post(
-            "/api/auth/login",
-            json={"username": self.player2_name, "password": "testpass123"},
-            catch_response=True,
-            name="/api/auth/login [for player2]"
-        ) as response:
-            if response.status_code == 200:
-                response.success()
-                return response.json().get("access_token")
-        
-        # If login fails, register
+        # Register player2 first
         with self.client.post(
             "/api/auth/register",
             json={"username": self.player2_name, "password": "testpass123"},
@@ -281,6 +270,17 @@ class GameServiceUser(HttpUser):
             name="/api/auth/register [for player2]"
         ) as response:
             if response.status_code == 201:
+                response.success()
+                return response.json().get("access_token")
+        
+        # If registration fails (user exists), try login
+        with self.client.post(
+            "/api/auth/login",
+            json={"username": self.player2_name, "password": "testpass123"},
+            catch_response=True,
+            name="/api/auth/login [for player2]"
+        ) as response:
+            if response.status_code == 200:
                 response.success()
                 return response.json().get("access_token")
         
@@ -644,18 +644,7 @@ class CombinedUser(HttpUser):
     
     def _get_player2_token(self, player2_name):
         """Get auth token for player 2"""
-        # Try to login first
-        with self.client.post(
-            "/api/auth/login",
-            json={"username": player2_name, "password": "testpass123"},
-            catch_response=True,
-            name="/api/auth/login [player2 combined]"
-        ) as response:
-            if response.status_code == 200:
-                response.success()
-                return response.json().get("access_token")
-        
-        # If login fails, register
+        # Register player2 first
         with self.client.post(
             "/api/auth/register",
             json={"username": player2_name, "password": "testpass123"},
@@ -663,6 +652,17 @@ class CombinedUser(HttpUser):
             name="/api/auth/register [player2 combined]"
         ) as response:
             if response.status_code == 201:
+                response.success()
+                return response.json().get("access_token")
+        
+        # If registration fails (user exists), try login
+        with self.client.post(
+            "/api/auth/login",
+            json={"username": player2_name, "password": "testpass123"},
+            catch_response=True,
+            name="/api/auth/login [player2 combined]"
+        ) as response:
+            if response.status_code == 200:
                 response.success()
                 return response.json().get("access_token")
         
