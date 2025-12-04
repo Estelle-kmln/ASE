@@ -344,3 +344,14 @@ After:
 - consistent error codes
 - production-ready API layer
 - integration-friendly endpoints
+
+# 🧪 Verification & tests to run
+
+* Start services (docker-compose or individually).
+
+* Health endpoints:
+
+curl http://localhost:5001/health (auth)
+curl http://localhost:5002/health (card)
+curl http://localhost:5003/health (game)
+curl http://localhost:5004/health (leaderboard)
