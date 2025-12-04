@@ -605,7 +605,7 @@ paths:
       tags:
         - Games
       summary: Create new game
-      description: Initialize a new game between two players
+      description: Initialize a new game between two players. Players must then select their decks before the game can start.
       requestBody:
         required: true
         content:
@@ -636,6 +636,7 @@ paths:
                     type: string
                   status:
                     type: string
+                    enum: [deck_selection]
                   turn:
                     type: integer
         '400':
@@ -711,6 +712,125 @@ paths:
                       $ref: '#/components/schemas/Card'
                   player:
                     type: string
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/select-deck:
+    post:
+      tags:
+        - Games
+      summary: Select deck for game
+      description: Select your deck during the deck selection phase. Deck must contain exactly 22 cards. Powers will be randomly assigned from the card database.
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deck:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum: [Rock, Paper, Scissors]
+                    required:
+                      - type
+                  minItems: 22
+                  maxItems: 22
+                  description: Array of 22 cards with types. Powers will be assigned randomly.
+              required:
+                - deck
+      responses:
+        '200':
+          description: Deck selected successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  deck:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Card'
+                  both_selected:
+                    type: boolean
+                    description: Whether both players have selected their decks
+                  status:
+                    type: string
+                    enum: [deck_selection, active]
+        '400':
+          description: Invalid deck or game not in deck selection phase
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/status:
+    get:
+      tags:
+        - Games
+      summary: Get game status
+      description: Get the current status of the game, including whether both players have selected their decks
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Game status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [deck_selection, in_progress, completed]
+                    description: Current game status
+                  player1_deck_selected:
+                    type: boolean
+                  player2_deck_selected:
+                    type: boolean
+                  game_id:
+                    type: string
+                    format: uuid
         '403':
           description: Unauthorized
           content:

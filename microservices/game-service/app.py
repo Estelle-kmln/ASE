@@ -270,7 +270,7 @@ def health_check():
 @jwt_required()
 @require_sanitized_input({'player2_name': 'username'})
 def create_game():
-    """Create a new game."""
+    """Create a new game with deck selection phase."""
     try:
         current_user = get_jwt_identity()
         data = request.get_json()
@@ -289,17 +289,7 @@ def create_game():
         if player1_name == player2_name:
             return jsonify({'error': 'Cannot create game with yourself'}), 400
 
-        # Get JWT token from request
-        token = request.headers.get("Authorization", "").replace("Bearer ", "")
-
-        # Get random decks from card service
-        player1_deck = get_cards_from_service(token)
-        player2_deck = get_cards_from_service(token)
-
-        if not player1_deck or not player2_deck:
-            return jsonify({"error": "Failed to create decks"}), 500
-
-        # Create game
+        # Create game with empty decks - players will select their decks
         game_id = str(uuid.uuid4())
 
         conn = get_db_connection()
@@ -310,23 +300,26 @@ def create_game():
             INSERT INTO games (
                 game_id, turn, is_active, game_status,
                 player1_name, player1_deck_cards, player1_hand_cards, 
-                player1_score, player2_name, player2_deck_cards, 
-                player2_hand_cards, player2_score
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                player1_score, player1_deck_selected,
+                player2_name, player2_deck_cards, 
+                player2_hand_cards, player2_score, player2_deck_selected
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
             (
                 game_id,
                 1,
                 True,
-                'pending',  # New games start as pending invitations
+                'deck_selection',  # New status for deck selection phase
                 player1_name,
-                json.dumps(player1_deck),
+                json.dumps([]),  # Empty deck initially
                 json.dumps([]),
                 0,
+                False,  # Player 1 hasn't selected deck yet
                 player2_name,
-                json.dumps(player2_deck),
+                json.dumps([]),  # Empty deck initially
                 json.dumps([]),
                 0,
+                False,  # Player 2 hasn't selected deck yet
             ),
         )
 
@@ -339,7 +332,7 @@ def create_game():
                     "game_id": game_id,
                     "player1_name": player1_name,
                     "player2_name": player2_name,
-                    "status": "created",
+                    "status": "deck_selection",
                     "turn": 1,
                 }
             ),
@@ -666,9 +659,11 @@ def draw_hand(game_id):
             hand = deck.copy()
             remaining_deck = []
         else:
-            # Normal hand - draw 3 cards randomly
-            hand = random.sample(deck, 3)
-            remaining_deck = [card for card in deck if card not in hand]
+            # Normal hand - draw 3 cards randomly by selecting indices
+            # Use indices to avoid issues with duplicate cards in deck
+            drawn_indices = random.sample(range(len(deck)), 3)
+            hand = [deck[i] for i in drawn_indices]
+            remaining_deck = [deck[i] for i in range(len(deck)) if i not in drawn_indices]
 
         # Update database with hand and set has_drawn flag
         cursor = conn.cursor()
@@ -1753,6 +1748,216 @@ def get_turn_info(game_id):
 
     except Exception as e:
         return jsonify({"error": f"Failed to get turn info: {str(e)}"}), 500
+
+
+@app.route("/api/games/<game_id>/select-deck", methods=["POST"])
+@jwt_required()
+def select_deck(game_id):
+    """Select deck for a game during deck selection phase."""
+    try:
+        # Basic input sanitization
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+        
+        current_user = get_jwt_identity()
+        data = request.get_json()
+
+        if not data or not data.get("deck"):
+            return jsonify({"error": "Deck is required"}), 400
+
+        deck = data["deck"]
+        
+        # Validate deck is a list
+        if not isinstance(deck, list):
+            return jsonify({"error": "Deck must be an array"}), 400
+        
+        # Validate deck size (should be 22 cards as per frontend DECK_SIZE)
+        if len(deck) != 22:
+            return jsonify({"error": f"Deck must contain exactly 22 cards, got {len(deck)}"}), 400
+        
+        # Validate each card has a type
+        valid_types = ["Rock", "Paper", "Scissors"]
+        for card in deck:
+            if not isinstance(card, dict) or "type" not in card:
+                return jsonify({"error": "Each card must have a type"}), 400
+            if card["type"] not in valid_types:
+                return jsonify({"error": f"Invalid card type: {card['type']}"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+        game = cursor.fetchone()
+
+        if not game:
+            conn.close()
+            return jsonify({"error": "Game not found"}), 404
+
+        # Check if user is a player
+        if current_user not in [game["player1_name"], game["player2_name"]]:
+            conn.close()
+            return jsonify({"error": "Unauthorized"}), 403
+
+        # Check if game is in deck selection phase
+        if game["game_status"] != "deck_selection":
+            conn.close()
+            return jsonify({"error": "Game is not in deck selection phase"}), 400
+
+        # Get JWT token to call card service
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+        
+        # Get all available cards from card service to assign powers
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = requests.get(f"{CARD_SERVICE_URL}/api/cards", headers=headers)
+            if response.status_code == 200:
+                all_cards = response.json()["cards"]
+            else:
+                conn.close()
+                return jsonify({"error": "Failed to fetch cards from card service"}), 500
+        except Exception as e:
+            conn.close()
+            return jsonify({"error": f"Failed to connect to card service: {str(e)}"}), 500
+
+        # Group cards by type
+        cards_by_type = {"Rock": [], "Paper": [], "Scissors": []}
+        for card in all_cards:
+            if card["type"] in cards_by_type:
+                cards_by_type[card["type"]].append(card)
+
+        # Assign random powers to each card in the deck
+        final_deck = []
+        for card_request in deck:
+            card_type = card_request["type"]
+            available_cards = cards_by_type.get(card_type, [])
+            
+            if not available_cards:
+                conn.close()
+                return jsonify({"error": f"No cards available for type: {card_type}"}), 500
+            
+            # Select a random card of this type
+            selected_card = random.choice(available_cards)
+            final_deck.append({
+                "id": selected_card["id"],
+                "type": selected_card["type"],
+                "power": selected_card["power"]
+            })
+
+        # Update the player's deck and mark as selected
+        is_player1 = current_user == game["player1_name"]
+        
+        if is_player1:
+            # Check if already selected
+            if game.get("player1_deck_selected"):
+                conn.close()
+                return jsonify({"error": "You have already selected your deck"}), 400
+            
+            cursor.execute(
+                """
+                UPDATE games 
+                SET player1_deck_cards = %s, player1_deck_selected = TRUE,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE game_id = %s
+                """,
+                (json.dumps(final_deck), game_id)
+            )
+        else:
+            # Check if already selected
+            if game.get("player2_deck_selected"):
+                conn.close()
+                return jsonify({"error": "You have already selected your deck"}), 400
+            
+            cursor.execute(
+                """
+                UPDATE games 
+                SET player2_deck_cards = %s, player2_deck_selected = TRUE,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE game_id = %s
+                """,
+                (json.dumps(final_deck), game_id)
+            )
+
+        # Check if both players have selected their decks
+        cursor.execute(
+            "SELECT player1_deck_selected, player2_deck_selected FROM games WHERE game_id = %s",
+            (game_id,)
+        )
+        deck_status = cursor.fetchone()
+
+        both_selected = deck_status["player1_deck_selected"] and deck_status["player2_deck_selected"]
+
+        # If both selected, transition to active game
+        if both_selected:
+            cursor.execute(
+                """
+                UPDATE games 
+                SET game_status = 'active',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE game_id = %s
+                """,
+                (game_id,)
+            )
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({
+            "message": "Deck selected successfully",
+            "deck": final_deck,
+            "both_selected": both_selected,
+            "status": "active" if both_selected else "deck_selection"
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to select deck: {str(e)}"}), 500
+
+
+@app.route("/api/games/<game_id>/status", methods=["GET"])
+@jwt_required()
+def get_game_status(game_id):
+    """Get game status to check if both players have selected decks."""
+    try:
+        # Basic input sanitization
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+        
+        current_user = get_jwt_identity()
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            """
+            SELECT game_status, player1_deck_selected, player2_deck_selected,
+                   player1_name, player2_name
+            FROM games WHERE game_id = %s
+            """,
+            (game_id,)
+        )
+        game = cursor.fetchone()
+        conn.close()
+
+        if not game:
+            return jsonify({"error": "Game not found"}), 404
+
+        # Check if user is a player
+        if current_user not in [game["player1_name"], game["player2_name"]]:
+            return jsonify({"error": "Unauthorized"}), 403
+
+        status = game["game_status"]
+        
+        # If both players selected their decks, status should be 'active' or 'in_progress'
+        if game["player1_deck_selected"] and game["player2_deck_selected"]:
+            if status == "deck_selection":
+                status = "in_progress"  # Frontend expects this value
+
+        return jsonify({
+            "status": status if status != "active" else "in_progress",
+            "player1_deck_selected": game["player1_deck_selected"],
+            "player2_deck_selected": game["player2_deck_selected"],
+            "game_id": game_id
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to get game status: {str(e)}"}), 500
 
 
 if __name__ == "__main__":

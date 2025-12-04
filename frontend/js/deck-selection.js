@@ -1,6 +1,6 @@
 // Configuration
 const GAME_API_URL = 'http://localhost:8080/api/games';
-const DECK_SIZE = 10;
+const DECK_SIZE = 22;
 
 // State
 let deckMode = 'manual';

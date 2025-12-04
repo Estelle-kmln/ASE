@@ -206,11 +206,65 @@ function displayActiveGames(games) {
 }
 
 async function joinPendingGame(gameId) {
-    window.location.href = `game.html?game_id=${gameId}`;
+    // Check game status first to determine where to redirect
+    const token = localStorage.getItem('token');
+    
+    try {
+        const response = await fetch(`${GAME_API_URL}/${gameId}/status`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            
+            // If game is in deck_selection status, go to deck selection page
+            if (data.status === 'deck_selection') {
+                window.location.href = `deck-selection.html?game_id=${gameId}`;
+            } else {
+                // Otherwise go to game page
+                window.location.href = `game.html?game_id=${gameId}`;
+            }
+        } else {
+            // If status check fails, just go to game page
+            window.location.href = `game.html?game_id=${gameId}`;
+        }
+    } catch (error) {
+        console.error('Error checking game status:', error);
+        window.location.href = `game.html?game_id=${gameId}`;
+    }
 }
 
-function continueGame(gameId) {
-    window.location.href = `game.html?game_id=${gameId}`;
+async function continueGame(gameId) {
+    // Check game status first to determine where to redirect
+    const token = localStorage.getItem('token');
+    
+    try {
+        const response = await fetch(`${GAME_API_URL}/${gameId}/status`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            
+            // If game is in deck_selection status, go to deck selection page
+            if (data.status === 'deck_selection') {
+                window.location.href = `deck-selection.html?game_id=${gameId}`;
+            } else {
+                // Otherwise go to game page
+                window.location.href = `game.html?game_id=${gameId}`;
+            }
+        } else {
+            // If status check fails, just go to game page
+            window.location.href = `game.html?game_id=${gameId}`;
+        }
+    } catch (error) {
+        console.error('Error checking game status:', error);
+        window.location.href = `game.html?game_id=${gameId}`;
+    }
 }
 
 async function ignoreInvitation(gameId) {
@@ -265,8 +319,8 @@ async function launchGame() {
         
         if (response.ok) {
             currentGameId = data.game_id;
-            // Redirect directly to game page (decks are auto-created by backend)
-            window.location.href = `game.html?game_id=${data.game_id}`;
+            // Redirect to deck selection page (new flow requires deck selection)
+            window.location.href = `deck-selection.html?game_id=${data.game_id}`;
         } else {
             alert('Failed to create game: ' + (data.error || 'Unknown error'));
         }
