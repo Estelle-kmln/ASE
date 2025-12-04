@@ -281,5 +281,6 @@ def get_card_types():
         return jsonify({'error': f'Failed to get card types: {str(e)}'}), 500
 
 if __name__ == '__main__':
-    # For development only
-    app.run(host='0.0.0.0', port=5002, debug=True)
+    # For development only - debug mode controlled by environment variable
+    debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 't')
+    app.run(host='0.0.0.0', port=5002, debug=debug_mode)
