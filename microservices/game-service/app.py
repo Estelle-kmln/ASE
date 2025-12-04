@@ -779,8 +779,13 @@ def auto_resolve_round(game):
             )
 
         if game_over:
+            # Fetch updated game snapshot for accurate history
+            with unit_of_work() as cur2:
+                cur2.execute("SELECT * FROM games WHERE game_id = %s", (game["game_id"],))
+                fresh_game = cur2.fetchone()
+
             archive_game_history(
-                game,
+                fresh_game,
                 new_p1_score,
                 new_p2_score,
                 winner_name,
@@ -922,8 +927,12 @@ def resolve_round(game_id):
             )
 
         if game_over:
+            with unit_of_work() as cur2:
+                cur2.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+                fresh_game = cur2.fetchone()
+
             archive_game_history(
-                game,
+                fresh_game,
                 new_p1_score,
                 new_p2_score,
                 winner_name,
@@ -967,11 +976,10 @@ def check_tie_breaker_status(game_id):
             cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
             game = cur.fetchone()
 
-        if not game:
-            return jsonify({"error": "Game not found"}), 404
+            if not game:
+                return jsonify({"error": "Game not found"}), 404
 
-        with unit_of_work() as cur:
-            if is_game_archived(cur, game["game_id"]):
+            if is_game_archived(game["game_id"]):
                 return jsonify({"error": HISTORY_LOCK_MESSAGE}), 409
 
         # Check if user is a player
@@ -1081,20 +1089,19 @@ def tie_breaker_round(game_id):
                 tie_breaker_tied = True
 
         # Update game state
-        if tie_breaker_tied:
-            cur.execute(
-                "UPDATE games SET updated_at = CURRENT_TIMESTAMP WHERE game_id = %s",
-                (game_id,),
-            )
-        else:
-            cur.execute(
-                "UPDATE games SET winner = %s, updated_at = CURRENT_TIMESTAMP WHERE game_id = %s",
-                (tie_breaker_winner, game_id),
-            )
+        with unit_of_work() as cur:
+            if tie_breaker_tied:
+                cur.execute("UPDATE games SET updated_at = CURRENT_TIMESTAMP WHERE game_id = %s", (game_id,))
+            else:
+                cur.execute("UPDATE games SET winner = %s, updated_at = CURRENT_TIMESTAMP WHERE game_id = %s", (tie_breaker_winner, game_id))
 
         if not tie_breaker_tied:
+            with unit_of_work() as cur2:
+                cur2.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+                fresh_game = cur2.fetchone()
+
             archive_game_history(
-                game,
+                fresh_game,
                 game["player1_score"],
                 game["player2_score"],
                 tie_breaker_winner,
@@ -1135,40 +1142,42 @@ def end_game(game_id):
             
         current_user = get_jwt_identity()
 
+        with unit_of_work() as cur:
+            cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            game = cur.fetchone()
 
+            if not game:
+                return jsonify({"error": "Game not found"}), 404
 
-        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-        game = cursor.fetchone()
+            # Check if user is a player
+            if current_user not in [game["player1_name"], game["player2_name"]]:
+                return jsonify({"error": "Unauthorized"}), 403
 
-        if not game:
-            return jsonify({"error": "Game not found"}), 404
+            try:
+                p1_deck = json.loads(game["player1_deck_cards"] or "[]")
+                p2_deck = json.loads(game["player2_deck_cards"] or "[]")
+            except (json.JSONDecodeError, TypeError):
+                p1_deck = p2_deck = []
 
-        # Check if user is a player
-        if current_user not in [game["player1_name"], game["player2_name"]]:
-            return jsonify({"error": "Unauthorized"}), 403
+            # End the game
+            cur.execute(
+                """
+                UPDATE games 
+                SET is_active = false, updated_at = CURRENT_TIMESTAMP 
+                WHERE game_id = %s
+            """,
+                (game_id,),
+            )
 
-        try:
-            p1_deck = json.loads(game["player1_deck_cards"] or "[]")
-            p2_deck = json.loads(game["player2_deck_cards"] or "[]")
-        except (json.JSONDecodeError, TypeError):
-            p1_deck = p2_deck = []
-
-        # End the game
-        cursor.execute(
-            """
-            UPDATE games 
-            SET is_active = false, updated_at = CURRENT_TIMESTAMP 
-            WHERE game_id = %s
-        """,
-            (game_id,),
-        )
+        with unit_of_work() as cur2:
+            cur2.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            fresh_game = cur2.fetchone()
 
         archive_game_history(
-            conn,
-            game,
-            game["player1_score"],
-            game["player2_score"],
-            game["winner"],
+            fresh_game,
+            fresh_game["player1_score"],
+            fresh_game["player2_score"],
+            fresh_game["winner"],
             p1_deck,
             p2_deck,
         )
@@ -1199,96 +1208,66 @@ def get_user_games(username):
         if current_user != username:
             return jsonify({"error": "Unauthorized"}), 403
 
-        conn = get_db_connection()
-        try:
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-            cursor.execute(
-                """
-                SELECT game_id, turn, is_active, player1_name, player2_name, 
+        with unit_of_work() as cur:
+            cur.execute("""
+                SELECT game_id, turn, is_active, player1_name, player2_name,
                        player1_score, player2_score, winner, created_at
-                FROM games 
-                WHERE player1_name = %s OR player2_name = %s 
+                FROM games
+                WHERE player1_name = %s OR player2_name = %s
                 ORDER BY created_at DESC
-            """,
-                (username, username),
-            )
+            """, (username, username))
+            games = cur.fetchall()
 
-            games = cursor.fetchall()
+        history_payloads = {}
+        tampered_game_ids = set()
 
-            history_payloads = {}
-            tampered_game_ids = set()
-            if include_history and games:
-                history_cursor = conn.cursor(cursor_factory=RealDictCursor)
+        if include_history and games:
+            with unit_of_work() as cur:
+                game_ids = [g["game_id"] for g in games]
+                cur.execute("""
+                    SELECT game_id, archived_at, encrypted_payload, integrity_hash, player1_score, player2_score, winner
+                    FROM game_history
+                    WHERE game_id = ANY(%s)
+                """, (game_ids,))
+                history_rows = cur.fetchall()
+
+            for history_row in history_rows:
                 try:
-                    game_ids = [game["game_id"] for game in games]
-                    history_cursor.execute(
-                        """
-                        SELECT 
-                            game_id,
-                            archived_at,
-                            encrypted_payload,
-                            integrity_hash,
-                            player1_score,
-                            player2_score,
-                            winner
-                        FROM game_history
-                        WHERE game_id = ANY(%s)
-                    """,
-                        (game_ids,),
-                    )
-                    history_rows = history_cursor.fetchall()
-                    for history_row in history_rows:
-                        try:
-                            snapshot = decrypt_history_row(history_row)
-                        except ValueError:
-                            tampered_game_ids.add(history_row["game_id"])
-                            continue
+                    snapshot = decrypt_history_row(history_row)
+                except ValueError:
+                    tampered_game_ids.add(history_row["game_id"])
+                    continue
 
-                        history_payloads[history_row["game_id"]] = {
-                            "archived_at": (
-                                history_row["archived_at"].isoformat()
-                                if history_row["archived_at"]
-                                else None
-                            ),
-                            "player1_score": history_row["player1_score"],
-                            "player2_score": history_row["player2_score"],
-                            "winner": history_row["winner"],
-                            "snapshot": snapshot,
-                        }
-                finally:
-                    history_cursor.close()
+                history_payloads[history_row["game_id"]] = {
+                    "archived_at": history_row["archived_at"].isoformat() if history_row["archived_at"] else None,
+                    "player1_score": history_row["player1_score"],
+                    "player2_score": history_row["player2_score"],
+                    "winner": history_row["winner"],
+                    "snapshot": snapshot,
+                }
 
-            game_list = []
-            for game in games:
-                game_list.append(
-                    {
-                        "game_id": game["game_id"],
-                        "turn": game["turn"],
-                        "is_active": game["is_active"],
-                        "player1_name": game["player1_name"],
-                        "player2_name": game["player2_name"],
-                        "player1_score": game["player1_score"],
-                        "player2_score": game["player2_score"],
-                        "winner": game["winner"],
-                        "created_at": (
-                            game["created_at"].isoformat()
-                            if game["created_at"]
-                            else None
-                        ),
-                    }
-                )
-                if include_history:
-                    history = history_payloads.get(game["game_id"])
-                    if history:
-                        game_list[-1]["history"] = history
-                    elif game["game_id"] in tampered_game_ids:
-                        game_list[-1]["history_error"] = HISTORY_TAMPER_MESSAGE
+        game_list = []
+        for g in games:
+            rec = {
+                "game_id": g["game_id"],
+                "turn": g["turn"],
+                "is_active": g["is_active"],
+                "player1_name": g["player1_name"],
+                "player2_name": g["player2_name"],
+                "player1_score": g["player1_score"],
+                "player2_score": g["player2_score"],
+                "winner": g["winner"],
+                "created_at": g["created_at"].isoformat() if g["created_at"] else None,
+            }
+            if include_history:
+                history = history_payloads.get(g["game_id"])
+                if history:
+                    rec["history"] = history
+                elif g["game_id"] in tampered_game_ids:
+                    rec["history_error"] = HISTORY_TAMPER_MESSAGE
+            game_list.append(rec)
 
-            return jsonify({"games": game_list}), 200
-
-        finally:
-            conn.close()
+        return jsonify({"games": game_list}), 200
 
     except Exception as e:
         return jsonify({"error": f"Failed to get user games: {str(e)}"}), 500
@@ -1304,7 +1283,9 @@ def get_turn_info(game_id):
             
         current_user = get_jwt_identity()
 
-        
+        with unit_of_work() as cur:
+            cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            game = cur.fetchone()
 
         if not game:
             return jsonify({"error": "Game not found"}), 404
