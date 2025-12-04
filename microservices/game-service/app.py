@@ -11,9 +11,7 @@ from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 from flask_cors import CORS
-import psycopg2
-from psycopg2 import Binary
-from psycopg2.extras import RealDictCursor
+from common.db_manager import unit_of_work, db_health
 from dotenv import load_dotenv
 import requests
 
@@ -63,11 +61,6 @@ DATABASE_URL = os.getenv(
     "postgresql://gameuser:gamepassword@localhost:5432/battlecards",
 )
 CARD_SERVICE_URL = os.getenv("CARD_SERVICE_URL", "http://localhost:5002")
-
-
-def get_db_connection():
-    """Create and return a PostgreSQL database connection."""
-    return psycopg2.connect(DATABASE_URL)
 
 
 class Card:
@@ -148,13 +141,11 @@ HISTORY_LOCK_MESSAGE = "Game history is archived and cannot be modified"
 HISTORY_TAMPER_MESSAGE = "Stored match history failed integrity verification"
 
 
-def is_game_archived(conn, game_id):
+def is_game_archived(game_id):
     """Return True if the immutable history already exists for a game."""
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM game_history WHERE game_id = %s", (game_id,))
-    exists = cursor.fetchone() is not None
-    cursor.close()
-    return exists
+    with unit_of_work() as cur:
+        cur.execute("SELECT 1 FROM game_history WHERE game_id = %s", (game_id,))
+        return cur.fetchone() is not None
 
 
 def build_history_snapshot(
@@ -183,37 +174,35 @@ def build_history_snapshot(
     }
 
 
-def archive_game_history(
-    conn, game, player1_score, player2_score, winner_name, p1_deck, p2_deck
-):
+def archive_game_history(game, player1_score, player2_score, winner_name, p1_deck, p2_deck):
     """Encrypt and persist the final state for a completed game."""
     security = get_history_security()
     snapshot = build_history_snapshot(
         game, player1_score, player2_score, winner_name, p1_deck, p2_deck
     )
     encrypted_payload, integrity_hash = security.encrypt_snapshot(snapshot)
+    # encrypted_payload is bytes-like
 
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT INTO game_history (
-            game_id, player1_name, player2_name, player1_score, player2_score,
-            winner, encrypted_payload, integrity_hash
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (game_id) DO NOTHING
-    """,
-        (
-            game["game_id"],
-            game["player1_name"],
-            game["player2_name"],
-            player1_score,
-            player2_score,
-            winner_name,
-            Binary(encrypted_payload),
-            integrity_hash,
-        ),
-    )
-    cursor.close()
+    with unit_of_work() as cur:
+        cur.execute(
+            """
+            INSERT INTO game_history (
+                game_id, player1_name, player2_name, player1_score, player2_score,
+                winner, encrypted_payload, integrity_hash
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (game_id) DO NOTHING
+            """,
+            (
+                game["game_id"],
+                game["player1_name"],
+                game["player2_name"],
+                player1_score,
+                player2_score,
+                winner_name,
+                encrypted_payload,
+                integrity_hash,
+            ),
+        )
 
 
 def _raw_payload_to_bytes(raw_payload):
@@ -276,35 +265,30 @@ def create_game():
         # Create game
         game_id = str(uuid.uuid4())
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO games (
-                game_id, turn, is_active,
-                player1_name, player1_deck_cards, player1_hand_cards, 
-                player1_score, player2_name, player2_deck_cards, 
-                player2_hand_cards, player2_score
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """,
-            (
-                game_id,
-                1,
-                True,
-                player1_name,
-                json.dumps(player1_deck),
-                json.dumps([]),
-                0,
-                player2_name,
-                json.dumps(player2_deck),
-                json.dumps([]),
-                0,
-            ),
-        )
-
-        conn.commit()
-        conn.close()
+        with unit_of_work() as cur:
+            cur.execute(
+                """
+                INSERT INTO games (
+                    game_id, turn, is_active,
+                    player1_name, player1_deck_cards, player1_hand_cards, 
+                    player1_score, player2_name, player2_deck_cards, 
+                    player2_hand_cards, player2_score
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    game_id,
+                    1,
+                    True,
+                    player1_name,
+                    json.dumps(player1_deck),
+                    json.dumps([]),
+                    0,
+                    player2_name,
+                    json.dumps(player2_deck),
+                    json.dumps([]),
+                    0,
+                ),
+            )
 
         return (
             jsonify(
@@ -333,12 +317,10 @@ def get_game(game_id):
             
         current_user = get_jwt_identity()
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        with unit_of_work() as cur:
+            cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            game = cur.fetchone()
 
-        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-        game = cursor.fetchone()
-        conn.close()
 
         if not game:
             return jsonify({"error": "Game not found"}), 404
@@ -396,27 +378,25 @@ def get_game_history(game_id):
     try:
         current_user = get_jwt_identity()
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute(
-            """
-            SELECT 
-                game_id,
-                player1_name,
-                player2_name,
-                player1_score,
-                player2_score,
-                winner,
-                archived_at,
-                encrypted_payload,
-                integrity_hash
-            FROM game_history
-            WHERE game_id = %s
-        """,
-            (game_id,),
-        )
-        history = cursor.fetchone()
-        conn.close()
+        with unit_of_work() as cur:
+            cur.execute(
+                """
+                SELECT 
+                    game_id,
+                    player1_name,
+                    player2_name,
+                    player1_score,
+                    player2_score,
+                    winner,
+                    archived_at,
+                    encrypted_payload,
+                    integrity_hash
+                FROM game_history
+                WHERE game_id = %s
+                """,
+                (game_id,),
+            )
+            history = cur.fetchone()
 
         if not history:
             return jsonify({"error": "History not found"}), 404
@@ -466,12 +446,9 @@ def get_player_hand(game_id):
             
         current_user = get_jwt_identity()
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-        game = cursor.fetchone()
-        conn.close()
+        with unit_of_work() as cur:
+            cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            game = cur.fetchone()
 
         if not game:
             return jsonify({"error": "Game not found"}), 404
@@ -507,28 +484,26 @@ def draw_hand(game_id):
             
         current_user = get_jwt_identity()
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+# Use centralized transaction manager instead of direct DB access 
 
-        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-        game = cursor.fetchone()
+        # Fetch game state using database manager
+        with unit_of_work() as cur:
+            cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            game = cur.fetchone()
 
         if not game:
-            conn.close()
             return jsonify({"error": "Game not found"}), 404
 
-        if is_game_archived(conn, game["game_id"]):
-            conn.close()
+        if is_game_archived(game["game_id"]):
             return jsonify({"error": HISTORY_LOCK_MESSAGE}), 409
 
         if not game["is_active"]:
-            conn.close()
             return jsonify({"error": "Game is not active"}), 400
 
         # Determine player
         is_player1 = current_user == game["player1_name"]
         if not is_player1 and current_user != game["player2_name"]:
-            conn.close()
+            
             return jsonify({"error": "Unauthorized to play this game"}), 403
 
         # Parse deck
@@ -546,7 +521,6 @@ def draw_hand(game_id):
 
         # Check for endgame scenarios
         if len(deck) == 0:
-            conn.close()
             return jsonify({"error": "No cards left in deck"}), 400
 
         # For normal gameplay, require 3 cards. For endgame, allow fewer.
@@ -560,22 +534,28 @@ def draw_hand(game_id):
             remaining_deck = [card for card in deck if card not in hand]
 
         # Update database
-        cursor = conn.cursor()
-        if is_player1:
-            cursor.execute("""
-                UPDATE games 
-                SET player1_deck_cards = %s, player1_hand_cards = %s 
-                WHERE game_id = %s
-            """, (json.dumps(remaining_deck), json.dumps(hand), game_id))
-        else:
-            cursor.execute("""
-                UPDATE games 
-                SET player2_deck_cards = %s, player2_hand_cards = %s 
-                WHERE game_id = %s
-            """, (json.dumps(remaining_deck), json.dumps(hand), game_id))
-        
-        conn.commit()
-        conn.close()
+    
+        with unit_of_work() as cur:
+            if is_player1:
+                cur.execute(
+                    """
+                    UPDATE games
+                    SET player1_deck_cards = %s,
+                        player1_hand_cards = %s
+                    WHERE game_id = %s
+                    """,
+                    (json.dumps(remaining_deck), json.dumps(hand), game_id),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE games
+                    SET player2_deck_cards = %s,
+                        player2_hand_cards = %s
+                    WHERE game_id = %s
+                    """,
+                    (json.dumps(remaining_deck), json.dumps(hand), game_id),
+                )
 
         return (
             jsonify(
@@ -614,28 +594,22 @@ def play_card(game_id):
         except ValueError as e:
             return jsonify({'error': f'Invalid card index: {str(e)}'}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-        game = cursor.fetchone()
+        with unit_of_work() as cur:
+                cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+                game = cur.fetchone()
 
         if not game:
-            conn.close()
             return jsonify({"error": "Game not found"}), 404
 
-        if is_game_archived(conn, game["game_id"]):
-            conn.close()
+        if is_game_archived(game["game_id"]):
             return jsonify({"error": HISTORY_LOCK_MESSAGE}), 409
 
         if not game["is_active"]:
-            conn.close()
             return jsonify({"error": "Game is not active"}), 400
 
         # Determine player
         is_player1 = current_user == game["player1_name"]
         if not is_player1 and current_user != game["player2_name"]:
-            conn.close()
             return jsonify({"error": "Unauthorized to play this game"}), 403
 
         # Parse hand
@@ -652,7 +626,6 @@ def play_card(game_id):
             hand = []
 
         if not hand or card_index < 0 or card_index >= len(hand):
-            conn.close()
             return jsonify({"error": "Invalid card index"}), 400
 
         # Play the card
@@ -662,39 +635,46 @@ def play_card(game_id):
         ]
 
         # Update database
-        cursor = conn.cursor()
-        if is_player1:
-            cursor.execute("""
-                UPDATE games 
-                SET player1_hand_cards = %s, player1_played_card = %s 
-                WHERE game_id = %s
-            """, (json.dumps(remaining_hand), json.dumps(played_card), game_id))
-        else:
-            cursor.execute("""
-                UPDATE games 
-                SET player2_hand_cards = %s, player2_played_card = %s 
-                WHERE game_id = %s
-            """, (json.dumps(remaining_hand), json.dumps(played_card), game_id))
-        
-        conn.commit()
+        with unit_of_work() as cur:
+            if is_player1:
+                cur.execute(
+                    """
+                    UPDATE games
+                    SET player1_hand_cards = %s,
+                        player1_played_card = %s
+                    WHERE game_id = %s
+                    """,
+                    (json.dumps(remaining_hand), json.dumps(played_card), game_id),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE games
+                    SET player2_hand_cards = %s,
+                        player2_played_card = %s
+                    WHERE game_id = %s
+                    """,
+                    (json.dumps(remaining_hand), json.dumps(played_card), game_id),
+                )
 
         # Refresh game state to check if both players have played
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-        updated_game = cursor.fetchone()
+        with unit_of_work() as cur:
+            cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            updated_game = cur.fetchone()
+
+        both_played = check_auto_resolve_conditions(updated_game)
 
         # Check if we should auto-resolve the round
         auto_resolve_result = None
-        if check_auto_resolve_conditions(updated_game):
-            # Both players have played - automatically resolve the round
-            auto_resolve_result = auto_resolve_round(updated_game, conn)
 
-        conn.close()
+        # Both players have played - automatically resolve the round
+        if both_played:
+            auto_resolve_result = auto_resolve_round(updated_game)
 
         response = {
             "played_card": played_card,
             "remaining_hand": remaining_hand,
-            "both_played": check_auto_resolve_conditions(updated_game),
+            "both_played": both_played,
         }
 
         if auto_resolve_result:
@@ -707,7 +687,7 @@ def play_card(game_id):
         return jsonify({"error": f"Failed to play card: {str(e)}"}), 500
 
 
-def auto_resolve_round(game, conn):
+def auto_resolve_round(game):
     """Automatically resolve a round when both players have played cards."""
     try:
         # Parse played cards
@@ -781,29 +761,33 @@ def auto_resolve_round(game, conn):
                 winner_name = game["player2_name"]
 
         # Update database
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            UPDATE games 
-            SET player1_score = %s, player2_score = %s, 
-                player1_played_card = NULL, player2_played_card = NULL,
-                player1_hand_cards = '[]', player2_hand_cards = '[]',
-                is_active = %s, winner = %s, turn = turn + 1,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE game_id = %s
-        """,
-            (
-                new_p1_score,
-                new_p2_score,
-                not game_over,
-                winner_name,
-                game["game_id"],
-            ),
-        )
+        with unit_of_work() as cur:
+            cur.execute(
+                """
+                UPDATE games
+                SET player1_score = %s,
+                    player2_score = %s,
+                    player1_played_card = NULL,
+                    player2_played_card = NULL,
+                    player1_hand_cards = '[]',
+                    player2_hand_cards = '[]',
+                    is_active = %s,
+                    winner = %s,
+                    turn = turn + 1,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE game_id = %s
+                """,
+                (
+                    new_p1_score,
+                    new_p2_score,
+                    not game_over,
+                    winner_name,
+                    game["game_id"],
+                ),
+            )
 
         if game_over:
             archive_game_history(
-                conn,
                 game,
                 new_p1_score,
                 new_p2_score,
@@ -811,8 +795,6 @@ def auto_resolve_round(game, conn):
                 p1_deck,
                 p2_deck,
             )
-
-        conn.commit()
 
         return {
             "round_winner": round_winner,
@@ -1000,12 +982,9 @@ def check_tie_breaker_status(game_id):
             
         current_user = get_jwt_identity()
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-        game = cursor.fetchone()
-        conn.close()
+        with unit_of_work() as cur:
+            cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            game = cur.fetchone()
 
         if not game:
             return jsonify({"error": "Game not found"}), 404
