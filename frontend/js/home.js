@@ -62,7 +62,6 @@ function displayUserInfo() {
 function initializeEventListeners() {
     document.getElementById('menu-btn').addEventListener('click', toggleMenu);
     document.getElementById('launch-game-btn').addEventListener('click', launchGame);
-    document.getElementById('join-game-btn').addEventListener('click', () => openModal('join-modal'));
     
     // Close menu when clicking outside
     document.addEventListener('click', (e) => {
@@ -429,41 +428,6 @@ function startPollingForOpponent(gameId) {
             console.error('Error polling game status:', error);
         }
     }, 2000); // Poll every 2 seconds
-}
-
-async function joinGame() {
-    const gameCode = document.getElementById('game-code-input').value.trim().toUpperCase();
-    const alertContainer = document.getElementById('join-alert');
-    
-    if (!gameCode) {
-        alertContainer.innerHTML = '<div class="alert alert-error">Please enter a game code</div>';
-        return;
-    }
-    
-    const token = localStorage.getItem('token');
-    
-    try {
-        const response = await fetch(`${GAME_API_URL}/${gameCode}/join`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            closeModal('join-modal');
-            // Redirect to deck selection
-            window.location.href = `deck-selection.html?game_id=${gameCode}`;
-        } else {
-            alertContainer.innerHTML = `<div class="alert alert-error">${data.error || 'Failed to join game'}</div>`;
-        }
-    } catch (error) {
-        console.error('Error joining game:', error);
-        alertContainer.innerHTML = '<div class="alert alert-error">Network error. Please try again.</div>';
-    }
 }
 
 function openModal(modalId) {

@@ -42,8 +42,7 @@
         </div>
         
         <div class="game-buttons-container">
-            <button class="game-button" id="launch-game-btn">🚀 LAUNCH A GAME!</button>
-            <button class="game-button" id="join-game-btn">🎮 JOIN A GAME!</button>
+            <button class="game-button" id="launch-game-btn">🎮 Play!</button>
         </div>
     </div>
     
@@ -59,22 +58,6 @@
             </div>
             <div class="modal-buttons">
                 <button class="btn btn-secondary" onclick="closeModal('launch-modal')">Cancel</button>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Join Game Modal -->
-    <div class="modal" id="join-modal">
-        <div class="modal-content">
-            <h2>Join a Game</h2>
-            <div class="form-group">
-                <label for="game-code-input">Enter Game Code:</label>
-                <input type="text" id="game-code-input" placeholder="Enter code..." style="text-transform: uppercase;">
-            </div>
-            <div id="join-alert"></div>
-            <div class="modal-buttons">
-                <button class="btn btn-secondary" onclick="closeModal('join-modal')">Cancel</button>
-                <button class="btn" onclick="joinGame()">Join Game</button>
             </div>
         </div>
     </div>
