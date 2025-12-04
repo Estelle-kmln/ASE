@@ -253,12 +253,25 @@ class GameServiceUser(HttpUser):
                 # Get player 2 token and select deck
                 player2_token = self.get_auth_token_for_player2()
                 if player2_token:
-                    self.client.post(
+                    response = self.client.post(
                         f"/api/games/{self.game_id}/select-deck",
                         headers={"Authorization": f"Bearer {player2_token}"},
                         json={"deck": deck},
                         name="/api/games/[id]/select-deck [setup p2]"
                     )
+                    # Verify game is now active
+                    if response.status_code == 200:
+                        state_response = self.client.get(
+                            f"/api/games/{self.game_id}",
+                            headers={"Authorization": f"Bearer {self.token}"},
+                            name="/api/games/[id] [verify active]"
+                        )
+                        if state_response.status_code == 200:
+                            game_state = state_response.json().get("status")
+                            if game_state != "active":
+                                self.game_id = None  # Mark game as invalid
+                else:
+                    self.game_id = None  # No player2 token means game can't be activated
     
     def get_auth_token_for_player2(self):
         """Get auth token for player 2 (the opponent)"""
@@ -572,22 +585,34 @@ class CombinedUser(HttpUser):
             
             # 3c. Get player 2 token and select deck
             player2_token = self._get_player2_token(player2)
-            if player2_token:
-                self.client.post(
-                    f"/api/games/{game_id}/select-deck",
-                    headers={"Authorization": f"Bearer {player2_token}"},
-                    json={"deck": deck},
-                    name="/api/games/[id]/select-deck [combined p2]"
-                )
+            if not player2_token:
+                return  # Can't continue without player 2
             
-            # 4. Get game state
-            self.client.get(
+            p2_deck_response = self.client.post(
+                f"/api/games/{game_id}/select-deck",
+                headers={"Authorization": f"Bearer {player2_token}"},
+                json={"deck": deck},
+                name="/api/games/[id]/select-deck [combined p2]"
+            )
+            
+            if p2_deck_response.status_code != 200:
+                return  # Deck selection failed, can't continue
+            
+            # 4. Get game state and verify it's active
+            state_response = self.client.get(
                 f"/api/games/{game_id}",
                 headers={"Authorization": f"Bearer {self.token}"},
                 name="/api/games/[id] [combined]"
             )
             
-            # 5. Draw hand
+            if state_response.status_code != 200:
+                return
+            
+            game_state = state_response.json().get("status")
+            if game_state != "active":
+                return  # Game not active, can't draw hand
+            
+            # 5. Draw hand (only if game is active)
             self.client.post(
                 f"/api/games/{game_id}/draw-hand",
                 headers={"Authorization": f"Bearer {self.token}"},
