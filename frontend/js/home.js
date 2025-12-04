@@ -118,14 +118,15 @@ async function loadUserGames() {
         // Separate pending and active games - use case-insensitive comparison
         const currentUsername = currentUser.username.toLowerCase();
         
-        const pendingGames = games.filter(game => 
-            game.is_active &&  // Only show active game invitations
-            game.player2_name && 
-            game.player2_name.toLowerCase() === currentUsername && 
-            !game.player2_id
-        );
+        const pendingGames = games.filter(game => {
+            const isPlayer1 = game.player1_name && game.player1_name.toLowerCase() === currentUsername;
+            const isPlayer2 = game.player2_name && game.player2_name.toLowerCase() === currentUsername;
+            return game.game_status === 'pending' && (isPlayer1 || isPlayer2);
+        });
+        
         const activeGames = games.filter(game => 
-            game.is_active && (game.player1_id || game.player2_id)
+            (game.game_status === 'active' || game.game_status === 'deck_selection') && 
+            (game.player1_id || game.player2_id)
         );
         
         console.log('Pending games:', pendingGames);
@@ -156,25 +157,53 @@ function displayPendingGames(games) {
     }
     
     container.style.display = 'block';
-    list.innerHTML = games.map(game => `
-        <div style="background: rgba(255, 215, 0, 0.1); border: 2px solid #ffd700; border-radius: 8px; padding: 1rem; margin-bottom: 0.5rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="color: white;">
-                    <strong>${game.player1_name}</strong> invited you to play
-                    <br>
-                    <small style="color: #ccc;">Game ID: ${game.game_id.substring(0, 8)}...</small>
+    const currentUsername = currentUser.username.toLowerCase();
+    
+    list.innerHTML = games.map(game => {
+        const isInviter = game.player1_name.toLowerCase() === currentUsername;
+        const opponent = isInviter ? game.player2_name : game.player1_name;
+        
+        if (isInviter) {
+            // You sent the invitation - waiting for opponent
+            return `
+                <div style="background: rgba(52, 152, 219, 0.1); border: 2px solid #3498db; border-radius: 8px; padding: 1rem; margin-bottom: 0.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="color: white;">
+                            <strong>Waiting for ${opponent}</strong> to accept invitation
+                            <br>
+                            <small style="color: #ccc;">Game ID: ${game.game_id.substring(0, 8)}...</small>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn" style="margin: 0; padding: 0.5rem 1rem;" onclick="joinPendingGame('${game.game_id}')">
+                                Start Deck Selection
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button class="btn" style="margin: 0; padding: 0.5rem 1rem;" onclick="joinPendingGame('${game.game_id}')">
-                        Join Game
-                    </button>
-                    <button class="btn" style="margin: 0; padding: 0.5rem 1rem; background: #e74c3c;" onclick="ignoreInvitation('${game.game_id}')">
-                        Ignore
-                    </button>
+            `;
+        } else {
+            // You received the invitation
+            return `
+                <div style="background: rgba(255, 215, 0, 0.1); border: 2px solid #ffd700; border-radius: 8px; padding: 1rem; margin-bottom: 0.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="color: white;">
+                            <strong>${opponent}</strong> invited you to play
+                            <br>
+                            <small style="color: #ccc;">Game ID: ${game.game_id.substring(0, 8)}...</small>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button class="btn" style="margin: 0; padding: 0.5rem 1rem;" onclick="joinPendingGame('${game.game_id}')">
+                                Join Game
+                            </button>
+                            <button class="btn" style="margin: 0; padding: 0.5rem 1rem; background: #e74c3c;" onclick="ignoreInvitation('${game.game_id}')">
+                                Ignore
+                            </button>
+                        </div>
+                    </div>
                 </div>
-            </div>
-        </div>
-    `).join('');
+            `;
+        }
+    }).join('');
 }
 
 function displayActiveGames(games) {
@@ -206,33 +235,49 @@ function displayActiveGames(games) {
 }
 
 async function joinPendingGame(gameId) {
-    // Check game status first to determine where to redirect
+    // Accept the invitation and transition to deck selection
     const token = localStorage.getItem('token');
     
     try {
-        const response = await fetch(`${GAME_API_URL}/${gameId}/status`, {
+        // First, mark the game as accepted (transition from pending to deck_selection)
+        const acceptResponse = await fetch(`${GAME_API_URL}/${gameId}/accept`, {
+            method: 'POST',
             headers: {
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
             }
         });
         
-        if (response.ok) {
-            const data = await response.json();
-            
-            // If game is in deck_selection status, go to deck selection page
-            if (data.status === 'deck_selection') {
-                window.location.href = `deck-selection.html?game_id=${gameId}`;
-            } else {
-                // Otherwise go to game page
-                window.location.href = `game.html?game_id=${gameId}`;
-            }
+        if (acceptResponse.ok) {
+            // Successfully accepted, go to deck selection
+            window.location.href = `deck-selection.html?game_id=${gameId}`;
         } else {
-            // If status check fails, just go to game page
-            window.location.href = `game.html?game_id=${gameId}`;
+            // If accept endpoint doesn't exist or fails, check current status
+            const response = await fetch(`${GAME_API_URL}/${gameId}/status`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                
+                // If game is in deck_selection or pending status, go to deck selection page
+                if (data.status === 'deck_selection' || data.status === 'pending') {
+                    window.location.href = `deck-selection.html?game_id=${gameId}`;
+                } else {
+                    // Otherwise go to game page
+                    window.location.href = `game.html?game_id=${gameId}`;
+                }
+            } else {
+                // If status check fails, just go to deck selection page
+                window.location.href = `deck-selection.html?game_id=${gameId}`;
+            }
         }
     } catch (error) {
-        console.error('Error checking game status:', error);
-        window.location.href = `game.html?game_id=${gameId}`;
+        console.error('Error joining game:', error);
+        // On error, try to go to deck selection page anyway
+        window.location.href = `deck-selection.html?game_id=${gameId}`;
     }
 }
 

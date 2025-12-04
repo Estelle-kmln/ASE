@@ -1019,7 +1019,7 @@
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData).to.have.property('game_id');",
 									"    pm.expect(jsonData).to.have.property('turn');",
-									"    pm.expect(jsonData).to.have.property('is_active');",
+									"    pm.expect(jsonData).to.have.property('game_status');",
 									"    pm.expect(jsonData).to.have.property('player1');",
 									"    pm.expect(jsonData).to.have.property('player2');",
 									"});"

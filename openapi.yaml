@@ -125,8 +125,9 @@ components:
           format: uuid
         turn:
           type: integer
-        is_active:
-          type: boolean
+        game_status:
+          type: string
+          enum: [pending, active, deck_selection, completed, abandoned, ignored]
         player1:
           type: object
           properties:
@@ -159,7 +160,7 @@ components:
       required:
         - game_id
         - turn
-        - is_active
+        - game_status
         - player1
         - player2
     

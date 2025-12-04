@@ -138,11 +138,11 @@ class TestGameServiceGetGame(TestGameServiceSetup):
         data = response.json()
         self.assertIn("game_id", data)
         self.assertIn("turn", data)
-        self.assertIn("is_active", data)
+        self.assertIn("game_status", data)
         self.assertIn("player1", data)
         self.assertIn("player2", data)
         self.assertEqual(data["game_id"], self.game_id)
-        self.assertTrue(data["is_active"])
+        self.assertIn(data["game_status"], ['pending', 'active', 'deck_selection'])
 
     def test_get_game_success_player2(self):
         """Test player 2 can successfully retrieve game state."""

@@ -183,7 +183,7 @@ function updateGameDisplay() {
     updatePlayedCards();
     
     // Check if game is over
-    if (!gameState.is_active) {
+    if (gameState.game_status === 'completed' || gameState.game_status === 'abandoned' || gameState.game_status === 'ignored') {
         // If game ended without a winner, it was quit by a player
         if (!gameState.winner) {
             // Game was quit - redirect to home

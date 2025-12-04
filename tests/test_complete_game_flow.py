@@ -88,7 +88,7 @@ def play_complete_game(p1_token, p2_token, game_id):
             return False
         
         # Check if game is over
-        if not game_state['is_active']:
+        if game_state['game_status'] in ['completed', 'abandoned', 'ignored']:
             print(f"✅ Game completed after {rounds_played} rounds")
             print(f"   Winner: {game_state.get('winner', 'No winner')}")
             print(f"   Final Score: {game_state['player1']['score']} - {game_state['player2']['score']}")
@@ -187,7 +187,7 @@ def main():
     # Check final game state
     print(f"\n5. Checking final game state...")
     final_state = get_game_state(player1_token, game_id)
-    print(f"   is_active: {final_state['is_active']}")
+    print(f"   game_status: {final_state['game_status']}")
     print(f"   Winner: {final_state.get('winner', 'No winner')}")
     
     # Small delay to ensure database is updated

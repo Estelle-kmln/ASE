@@ -302,7 +302,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 {
   "game_id": "uuid-string",
   "turn": 1,
-  "is_active": true,
+  "game_status": "active",
   "current_player": 1,
   "player1": {
     "name": "player1",
@@ -482,7 +482,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 {
   "game_id": "uuid-string",
   "turn": 3,
-  "is_active": true,
+  "game_status": "active",
   "current_user": "alice",
   "player1_name": "alice",
   "player2_name": "bob",
