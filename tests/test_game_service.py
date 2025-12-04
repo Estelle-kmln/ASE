@@ -51,6 +51,47 @@ class TestGameServiceSetup(unittest.TestCase):
         cls.player2_token = response2.json().get("access_token")
         cls.player2_headers = {"Authorization": f"Bearer {cls.player2_token}"}
 
+    @classmethod
+    def create_active_game(cls):
+        """Helper method to create a fully active game with decks selected."""
+        # Step 1: Create game
+        response = requests.post(
+            f"{BASE_URL}/api/games",
+            headers=cls.player1_headers,
+            json={"player2_name": cls.player2_username},
+        )
+        game_id = response.json().get("game_id")
+
+        # Step 2: Accept invitation (transitions to deck_selection)
+        requests.post(
+            f"{BASE_URL}/api/games/{game_id}/accept",
+            headers=cls.player1_headers,
+        )
+
+        # Step 3: Player 1 selects deck
+        deck = [
+            {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
+            {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
+            {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
+            {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
+            {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"},
+            {"type": "Scissors"}, {"type": "Scissors"}
+        ]
+        requests.post(
+            f"{BASE_URL}/api/games/{game_id}/select-deck",
+            headers=cls.player1_headers,
+            json={"deck": deck},
+        )
+
+        # Step 4: Player 2 selects deck (transitions to active)
+        requests.post(
+            f"{BASE_URL}/api/games/{game_id}/select-deck",
+            headers=cls.player2_headers,
+            json={"deck": deck},
+        )
+
+        return game_id
+
 
 class TestGameServiceCreateGame(TestGameServiceSetup):
     """Test cases for POST /api/games endpoint."""
@@ -138,11 +179,11 @@ class TestGameServiceGetGame(TestGameServiceSetup):
         data = response.json()
         self.assertIn("game_id", data)
         self.assertIn("turn", data)
-        self.assertIn("is_active", data)
+        self.assertIn("game_status", data)
         self.assertIn("player1", data)
         self.assertIn("player2", data)
         self.assertEqual(data["game_id"], self.game_id)
-        self.assertTrue(data["is_active"])
+        self.assertIn(data["game_status"], ['pending', 'active', 'deck_selection'])
 
     def test_get_game_success_player2(self):
         """Test player 2 can successfully retrieve game state."""
@@ -260,13 +301,8 @@ class TestGameServiceDrawHand(TestGameServiceSetup):
     """Test cases for POST /api/games/<game_id>/draw-hand endpoint."""
 
     def setUp(self):
-        """Create a game for testing."""
-        response = requests.post(
-            f"{BASE_URL}/api/games",
-            headers=self.player1_headers,
-            json={"player2_name": self.player2_username},
-        )
-        self.game_id = response.json().get("game_id")
+        """Create an active game for testing."""
+        self.game_id = self.create_active_game()
 
     def test_draw_hand_success(self):
         """Test successfully drawing a hand."""
@@ -330,13 +366,8 @@ class TestGameServicePlayCard(TestGameServiceSetup):
     """Test cases for POST /api/games/<game_id>/play-card endpoint."""
 
     def setUp(self):
-        """Create a game and draw hands for testing."""
-        response = requests.post(
-            f"{BASE_URL}/api/games",
-            headers=self.player1_headers,
-            json={"player2_name": self.player2_username},
-        )
-        self.game_id = response.json().get("game_id")
+        """Create an active game and draw hands for testing."""
+        self.game_id = self.create_active_game()
 
         # Draw hand for player 1
         requests.post(
@@ -507,15 +538,34 @@ class TestGameHistoryEndpoints(TestGameServiceSetup):
     """Tests for immutable game history retrieval and tamper detection."""
 
     def _create_archived_game(self):
-        """Helper to create a game and immediately archive it by ending the match."""
-        create_response = requests.post(
-            f"{BASE_URL}/api/games",
-            headers=self.player1_headers,
-            json={"player2_name": self.player2_username},
-        )
-        self.assertEqual(create_response.status_code, 201)
-        game_id = create_response.json().get("game_id")
+        """Helper to create a game, play it, and archive it."""
+        # Create an active game with decks
+        game_id = self.create_active_game()
 
+        # Play one round to generate history
+        # Player 1 draws and plays
+        requests.post(
+            f"{BASE_URL}/api/games/{game_id}/draw-hand",
+            headers=self.player1_headers,
+        )
+        requests.post(
+            f"{BASE_URL}/api/games/{game_id}/play-card",
+            headers=self.player1_headers,
+            json={"card_index": 0},
+        )
+
+        # Player 2 draws and plays (this auto-resolves the round)
+        requests.post(
+            f"{BASE_URL}/api/games/{game_id}/draw-hand",
+            headers=self.player2_headers,
+        )
+        requests.post(
+            f"{BASE_URL}/api/games/{game_id}/play-card",
+            headers=self.player2_headers,
+            json={"card_index": 0},
+        )
+
+        # End the game to archive it
         end_response = requests.post(
             f"{BASE_URL}/api/games/{game_id}/end", headers=self.player1_headers
         )

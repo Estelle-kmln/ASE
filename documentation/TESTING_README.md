@@ -25,6 +25,91 @@ docker-compose up -d --build
 
 **Note**: The build script automatically generates and saves a `GAME_HISTORY_KEY` to `.env` if one doesn't exist. This key is required for game history encryption and is gitignored for security.
 
+## Running Tests Locally to Match GitHub Actions
+
+To replicate the same clean-slate testing environment that GitHub Actions uses (fresh database, no pre-existing test data):
+
+### Option 1: Fresh Database Reset (Recommended)
+
+```bash
+# 1. Stop all services and remove volumes (clears database)
+cd microservices
+docker-compose down -v
+
+# 2. Rebuild and start services (fresh database with init scripts only)
+docker-compose up -d --build
+
+# 3. Wait for services to be healthy (30-60 seconds)
+docker-compose ps
+
+# 4. Run your tests
+cd ..
+pytest tests/                                    # Python unit tests
+newman run tests/microservices_postman_collection.json  # Postman tests
+locust -f tests/locustfile.py                   # Locust performance tests
+```
+
+**Key Points:**
+- The `-v` flag in `docker-compose down -v` removes all volumes, including the PostgreSQL database
+- This ensures a completely fresh database with only the SQL initialization scripts (`01-init-cards.sql`, `02-game-history.sql`, etc.)
+- Tests must properly set up all required data (register users, create games, select decks) before testing gameplay
+- This matches GitHub Actions behavior where the database is fresh on every run
+
+### Option 2: Manual Database Cleanup
+
+If you prefer to keep services running and only reset the database:
+
+```bash
+# Connect to PostgreSQL container
+docker exec -it microservices-postgresql-1 psql -U battlecards_user -d battlecards_db
+
+# Drop and recreate the database
+DROP DATABASE battlecards_db;
+CREATE DATABASE battlecards_db;
+\q
+
+# Restart services to re-run init scripts
+docker-compose restart
+
+# Wait for services to be healthy
+docker-compose ps
+```
+
+### Why This Matters
+
+**GitHub Actions Environment:**
+- Fresh database on every test run
+- No pre-existing users, games, or test data
+- All tests must create their own setup data
+
+**Local Development:**
+- Database persists between runs
+- Old test data accumulates
+- Tests may pass locally due to existing data but fail in CI
+
+**Example Issue:**
+```python
+# This test passes locally (user already exists from previous run)
+# but fails in GitHub Actions (fresh database)
+def test_game_play():
+    game_id = "some-game-id"  # From previous test run
+    response = client.post(f"/api/games/{game_id}/draw-hand")
+    # ❌ Fails in CI: game doesn't exist
+```
+
+**Proper Test Setup:**
+```python
+def test_game_play():
+    # Create complete game setup
+    token = register_and_login_user("player1")
+    game_id = create_game(token, "player2")
+    accept_invitation(game_id, token)
+    select_deck_player1(game_id, token)
+    select_deck_player2(game_id, player2_token)
+    # ✓ Now the game is active and ready for testing
+    response = client.post(f"/api/games/{game_id}/draw-hand")
+```
+
 Wait for all services to be healthy (this may take 1-2 minutes). You can check service status with:
 
 ```bash
@@ -82,68 +167,6 @@ The project includes comprehensive Python unit tests covering all core game func
    - Start Docker Desktop (if not already running)
    - Build and start PostgreSQL: `cd microservices && docker-compose up -d --build postgresql`
    - Database available at `localhost:5432`
-
-### Running Python Unit Tests
-
-#### Run Individual Test Modules
-
-```bash
-# Activate virtual environment first
-source venv/bin/activate
-
-# Run specific test modules
-python3 -m unittest tests.test_game -v
-python3 -m unittest tests.test_hand -v
-python3 -m unittest tests.test_score -v
-python3 -m unittest tests.test_profile -v
-python3 -m unittest tests.test_view_card_collection -v
-python3 -m unittest tests.test_view_old_matches -v
-```
-
-### Test Coverage
-
-**Game Tests** (`test_game.py`):
-
-- Card collection (39 cards, 13 per type)
-- Deck creation and shuffling
-- Random deck generation
-- Deck validation (size, duplicates)
-- Game initialization
-
-**Hand Tests** (`test_hand.py`):
-
-- Drawing 3 cards for a turn
-- Playing a card and discarding others
-- Multiple rounds
-- Deck exhaustion handling
-
-**Score Tests** (`test_score.py`):
-
-- Battle scoring logic
-- Score tracking across rounds
-
-**Profile Tests** (`test_profile.py`) - *Requires Docker*:
-
-- User account creation
-- Username existence checking
-- Profile retrieval
-- Password updates
-- Login verification
-
-**View Tests**:
-
-- Card collection display (`test_view_card_collection.py`)
-- Old matches viewing (`test_view_old_matches.py`)
-
-**Total: 21 Python unit tests** covering all core functionality.
-
-### Test Structure
-
-- **Custom Tests**: `test_game.py` and `test_hand.py` use custom test functions with `run_all_tests()`
-- **Unittest Tests**: Other tests use Python's `unittest` framework
-- **Database Tests**: Profile tests connect to PostgreSQL via Docker (automatic cleanup)
-
----
 
 ## Locust Performance Tests
 
@@ -455,3 +478,49 @@ newman run tests/postman_unit_tests.json --reporters html --reporter-html-export
 newman run tests/postman_unit_tests.json --verbose
 ```
 
+---
+
+## Testing Checklist: Local vs CI/CD
+
+Use this checklist to ensure your tests will pass in both environments:
+
+### Before Committing Code
+
+- [ ] **Fresh database test**: Run `docker-compose down -v && docker-compose up -d --build`
+- [ ] **All unit tests pass**: `pytest tests/` (should see 0 failures)
+- [ ] **All Postman tests pass**: `newman run tests/microservices_postman_collection.json`
+- [ ] **Locust tests run without errors**: `locust -f tests/locustfile.py` (check for 400/401 errors)
+- [ ] **Test setup is complete**: Every test creates all required data (users, games, decks)
+- [ ] **No hardcoded IDs**: Tests don't rely on specific game IDs or user data from previous runs
+
+### Common Issues and Fixes
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| `401 UNAUTHORIZED` on player 2 | Trying to login before registering | Register player 2 first, then login if needed |
+| `400 BAD REQUEST` on draw-hand | Game not in `active` state | Complete full game flow: create → accept → both players select deck |
+| `404 NOT FOUND` on game endpoint | Game ID from previous test run | Create new game in test setup |
+| Tests pass locally but fail in CI | Database has old test data | Reset database with `docker-compose down -v` |
+| `405 METHOD NOT ALLOWED` | Missing game state transition | Ensure game goes through: `pending` → `deck_selection` → `active` |
+
+### Quick Commands Reference
+
+```bash
+# Fresh start (replicates GitHub Actions)
+cd microservices && docker-compose down -v && docker-compose up -d --build && cd ..
+
+# Run all test suites
+pytest tests/                                              # Python unit tests
+newman run tests/microservices_postman_collection.json     # Postman API tests  
+locust -f tests/locustfile.py                              # Locust performance tests
+
+# Check service health
+curl http://localhost:5001/health  # Auth
+curl http://localhost:5002/health  # Card
+curl http://localhost:5003/health  # Game
+curl http://localhost:5004/health  # Leaderboard
+
+# View service logs
+docker-compose -f microservices/docker-compose.yml logs -f game-service
+docker-compose -f microservices/docker-compose.yml logs -f auth-service
+```
