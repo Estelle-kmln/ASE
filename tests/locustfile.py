@@ -209,7 +209,7 @@ class GameServiceUser(HttpUser):
     wait_time = between(2, 5)
     
     def on_start(self):
-        """Get authentication token and create a game"""
+        """Get authentication token and create an active game with deck selection"""
         self.token = self.get_auth_token()
         self.game_id = None
         self.player2_name = f"opponent_{''.join(random.choices(string.ascii_lowercase + string.digits, k=6))}"
@@ -224,6 +224,67 @@ class GameServiceUser(HttpUser):
             )
             if response.status_code == 201:
                 self.game_id = response.json().get("game_id")
+                
+                # Accept invitation (transitions to deck_selection)
+                self.client.post(
+                    f"/api/games/{self.game_id}/accept",
+                    headers={"Authorization": f"Bearer {self.token}"},
+                    name="/api/games/[id]/accept [setup]"
+                )
+                
+                # Select deck for player 1 (transitions to active when both select)
+                deck = [
+                    {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
+                    {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
+                    {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
+                    {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
+                    {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"},
+                    {"type": "Scissors"}, {"type": "Scissors"}
+                ]
+                
+                # Player 1 selects deck
+                self.client.post(
+                    f"/api/games/{self.game_id}/select-deck",
+                    headers={"Authorization": f"Bearer {self.token}"},
+                    json={"deck": deck},
+                    name="/api/games/[id]/select-deck [setup p1]"
+                )
+                
+                # Get player 2 token and select deck
+                player2_token = self.get_auth_token_for_player2()
+                if player2_token:
+                    self.client.post(
+                        f"/api/games/{self.game_id}/select-deck",
+                        headers={"Authorization": f"Bearer {player2_token}"},
+                        json={"deck": deck},
+                        name="/api/games/[id]/select-deck [setup p2]"
+                    )
+    
+    def get_auth_token_for_player2(self):
+        """Get auth token for player 2 (the opponent)"""
+        # Try to login as player2 first
+        with self.client.post(
+            "/api/auth/login",
+            json={"username": self.player2_name, "password": "testpass123"},
+            catch_response=True,
+            name="/api/auth/login [for player2]"
+        ) as response:
+            if response.status_code == 200:
+                response.success()
+                return response.json().get("access_token")
+        
+        # If login fails, register
+        with self.client.post(
+            "/api/auth/register",
+            json={"username": self.player2_name, "password": "testpass123"},
+            catch_response=True,
+            name="/api/auth/register [for player2]"
+        ) as response:
+            if response.status_code == 201:
+                response.success()
+                return response.json().get("access_token")
+        
+        return None
     
     def get_auth_token(self):
         """Get a valid auth token"""
@@ -486,6 +547,39 @@ class CombinedUser(HttpUser):
         if game_response.status_code == 201:
             game_id = game_response.json().get("game_id")
             
+            # 3a. Accept invitation (transitions to deck_selection)
+            self.client.post(
+                f"/api/games/{game_id}/accept",
+                headers={"Authorization": f"Bearer {self.token}"},
+                name="/api/games/[id]/accept [combined]"
+            )
+            
+            # 3b. Select deck for player 1
+            deck = [
+                {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
+                {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
+                {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
+                {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
+                {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"},
+                {"type": "Scissors"}, {"type": "Scissors"}
+            ]
+            self.client.post(
+                f"/api/games/{game_id}/select-deck",
+                headers={"Authorization": f"Bearer {self.token}"},
+                json={"deck": deck},
+                name="/api/games/[id]/select-deck [combined p1]"
+            )
+            
+            # 3c. Get player 2 token and select deck
+            player2_token = self._get_player2_token(player2)
+            if player2_token:
+                self.client.post(
+                    f"/api/games/{game_id}/select-deck",
+                    headers={"Authorization": f"Bearer {player2_token}"},
+                    json={"deck": deck},
+                    name="/api/games/[id]/select-deck [combined p2]"
+                )
+            
             # 4. Get game state
             self.client.get(
                 f"/api/games/{game_id}",
@@ -547,4 +641,30 @@ class CombinedUser(HttpUser):
                 headers={"Authorization": f"Bearer {self.token}"},
                 name="/api/auth/profile [combined]"
             )
+    
+    def _get_player2_token(self, player2_name):
+        """Get auth token for player 2"""
+        # Try to login first
+        with self.client.post(
+            "/api/auth/login",
+            json={"username": player2_name, "password": "testpass123"},
+            catch_response=True,
+            name="/api/auth/login [player2 combined]"
+        ) as response:
+            if response.status_code == 200:
+                response.success()
+                return response.json().get("access_token")
+        
+        # If login fails, register
+        with self.client.post(
+            "/api/auth/register",
+            json={"username": player2_name, "password": "testpass123"},
+            catch_response=True,
+            name="/api/auth/register [player2 combined]"
+        ) as response:
+            if response.status_code == 201:
+                response.success()
+                return response.json().get("access_token")
+        
+        return None
 
