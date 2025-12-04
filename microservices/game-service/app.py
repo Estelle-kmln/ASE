@@ -994,8 +994,7 @@ def check_tie_breaker_status(game_id):
             p1_deck = p2_deck = []
 
         is_tied_game = (
-            not game["is_active"]
-            and game["winner"] is None
+            game["winner"] is None
             and game["player1_score"] == game["player2_score"]
         )
 
