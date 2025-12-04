@@ -201,6 +201,55 @@
 					}
 				},
 				{
+					"name": "Register User 2 - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response contains success message and token\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('message');",
+									"    pm.expect(jsonData).to.have.property('access_token');",
+									"    pm.expect(jsonData).to.have.property('user');",
+									"    pm.expect(jsonData.user).to.have.property('username');",
+									"    ",
+									"    // Store player 2's token and credentials",
+									"    pm.environment.set('auth_token_player2', jsonData.access_token);",
+									"    pm.environment.set('test_username_player2', jsonData.user.username);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"username\": \"testuser2{{$randomInt}}\",\n    \"password\": \"testpass123\"\n}"
+						},
+						"url": {
+							"raw": "{{auth_service_url}}/api/auth/register",
+							"host": ["{{auth_service_url}}"],
+							"path": ["api", "auth", "register"]
+						}
+					}
+				},
+				{
 					"name": "Login - Valid",
 					"event": [
 						{
@@ -935,7 +984,7 @@
 									"    pm.expect(jsonData).to.have.property('game_id');",
 									"    pm.expect(jsonData).to.have.property('player1_name');",
 									"    pm.expect(jsonData).to.have.property('player2_name');",
-									"    pm.expect(jsonData).to.have.property('status', 'created');",
+									"    pm.expect(jsonData).to.have.property('status', 'pending');",
 									"    ",
 									"    // Store game_id for subsequent tests",
 									"    pm.environment.set('test_game_id', jsonData.game_id);",
@@ -955,7 +1004,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"player2_name\": \"opponent{{$randomInt}}\"\n}"
+							"raw": "{\n    \"player2_name\": \"{{test_username_player2}}\"\n}"
 						},
 						"url": {
 							"raw": "{{game_service_url}}/api/games",
@@ -1022,6 +1071,10 @@
 									"    pm.expect(jsonData).to.have.property('game_status');",
 									"    pm.expect(jsonData).to.have.property('player1');",
 									"    pm.expect(jsonData).to.have.property('player2');",
+									"    pm.expect(jsonData.player1).to.have.property('name');",
+									"    pm.expect(jsonData.player1).to.have.property('score');",
+									"    pm.expect(jsonData.player2).to.have.property('name');",
+									"    pm.expect(jsonData.player2).to.have.property('score');",
 									"});"
 								],
 								"type": "text/javascript"
@@ -1065,6 +1118,136 @@
 							"raw": "{{game_service_url}}/api/games/invalid-game-id-123",
 							"host": ["{{game_service_url}}"],
 							"path": ["api", "games", "invalid-game-id-123"]
+						}
+					}
+				},
+				{
+					"name": "Accept Invitation - Valid",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains acceptance confirmation\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('message');",
+									"    pm.expect(jsonData).to.have.property('status', 'deck_selection');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/accept",
+							"host": ["{{game_service_url}}"],
+							"path": ["api", "games", "{{test_game_id}}", "accept"]
+						}
+					}
+				},
+				{
+					"name": "Select Deck - Player 1",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains deck selection confirmation\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('message');",
+									"    pm.expect(jsonData).to.have.property('deck');",
+									"    pm.expect(jsonData).to.have.property('both_selected');",
+									"    pm.expect(jsonData.deck).to.be.an('array');",
+									"    pm.expect(jsonData.deck).to.have.lengthOf(22);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"deck\": [\n        {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"},\n        {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"},\n        {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"},\n        {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"},\n        {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"},\n        {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/select-deck",
+							"host": ["{{game_service_url}}"],
+							"path": ["api", "games", "{{test_game_id}}", "select-deck"]
+						}
+					}
+				},
+				{
+					"name": "Select Deck - Player 2",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Temporarily switch to player 2's token",
+									"pm.environment.set('temp_token', pm.environment.get('auth_token'));",
+									"pm.environment.set('auth_token', pm.environment.get('auth_token_player2'));"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response shows both players selected and game is active\", function () {",
+									"    var jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('message');",
+									"    pm.expect(jsonData).to.have.property('both_selected', true);",
+									"    pm.expect(jsonData).to.have.property('status', 'active');",
+									"    pm.expect(jsonData.deck).to.have.lengthOf(22);",
+									"});",
+									"",
+									"// Restore player 1's token",
+									"pm.environment.set('auth_token', pm.environment.get('temp_token'));"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"deck\": [\n        {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"},\n        {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"},\n        {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"},\n        {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"},\n        {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"},\n        {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/select-deck",
+							"host": ["{{game_service_url}}"],
+							"path": ["api", "games", "{{test_game_id}}", "select-deck"]
 						}
 					}
 				},
@@ -1115,6 +1298,7 @@
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData).to.have.property('hand');",
 									"    pm.expect(jsonData).to.have.property('deck_size');",
+									"    pm.expect(jsonData).to.have.property('is_final_hand');",
 									"    pm.expect(jsonData).to.have.property('cards_drawn');",
 									"    pm.expect(jsonData.hand).to.be.an('array');",
 									"});"
@@ -1177,8 +1361,9 @@
 									"pm.test(\"Response contains played card info\", function () {",
 									"    var jsonData = pm.response.json();",
 									"    pm.expect(jsonData).to.have.property('played_card');",
-									"    pm.expect(jsonData).to.have.property('remaining_hand');",
 									"    pm.expect(jsonData).to.have.property('both_played');",
+									"    pm.expect(jsonData).to.have.property('remaining_hand');",
+									"    pm.expect(jsonData).to.have.property('discarded_cards');",
 									"});"
 								],
 								"type": "text/javascript"
@@ -1337,105 +1522,6 @@
 					}
 				},
 				{
-					"name": "Resolve Round - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200 or 400\", function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
-									"});",
-									"",
-									"pm.test(\"Response contains round result or error\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    if (pm.response.code === 200) {",
-									"        pm.expect(jsonData).to.have.property('player1_score');",
-									"        pm.expect(jsonData).to.have.property('player2_score');",
-									"        pm.expect(jsonData).to.have.property('game_over');",
-									"    } else {",
-									"        pm.expect(jsonData).to.have.property('error');",
-									"    }",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/resolve-round",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}", "resolve-round"]
-						}
-					}
-				},
-				{
-					"name": "Resolve Round - Invalid (No Game)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 404\", function () {",
-									"    pm.response.to.have.status(404);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error', 'Game not found');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/invalid-game/resolve-round",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "invalid-game", "resolve-round"]
-						}
-					}
-				},
-				{
-					"name": "Get Tie Breaker Status - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains tie breaker status\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('is_tied_game');",
-									"    pm.expect(jsonData).to.have.property('tie_breaker_possible');",
-									"    pm.expect(jsonData).to.have.property('player1_remaining_cards');",
-									"    pm.expect(jsonData).to.have.property('player2_remaining_cards');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/tie-breaker-status",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}", "tie-breaker-status"]
-						}
-					}
-				},
-				{
 					"name": "Get Tie Breaker Status - Invalid (No Game)",
 					"event": [
 						{
@@ -1462,51 +1548,6 @@
 							"raw": "{{game_service_url}}/api/games/invalid-game/tie-breaker-status",
 							"host": ["{{game_service_url}}"],
 							"path": ["api", "games", "invalid-game", "tie-breaker-status"]
-						}
-					}
-				},
-				{
-					"name": "Play Tie Breaker - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200 or 400\", function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
-									"});",
-									"",
-									"pm.test(\"Response contains tie breaker result or error\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    if (pm.response.code === 200) {",
-									"        pm.expect(jsonData).to.have.property('still_tied');",
-									"        pm.expect(jsonData).to.have.property('player1_card');",
-									"        pm.expect(jsonData).to.have.property('player2_card');",
-									"    } else {",
-									"        pm.expect(jsonData).to.have.property('error');",
-									"    }",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{}"
-						},
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/tie-breaker",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}", "tie-breaker"]
 						}
 					}
 				},
