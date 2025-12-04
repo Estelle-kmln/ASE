@@ -378,9 +378,11 @@ def get_game_history(game_id):
     try:
         current_user = get_jwt_identity()
 
+        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+
         with unit_of_work() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT 
                     game_id,
                     player1_name,
@@ -443,7 +445,7 @@ def get_player_hand(game_id):
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
         game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        
         current_user = get_jwt_identity()
 
         with unit_of_work() as cur:
@@ -480,11 +482,9 @@ def draw_hand(game_id):
     """Draw a new hand for the current player."""
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False) 
+        
         current_user = get_jwt_identity()
-
-# Use centralized transaction manager instead of direct DB access 
 
         # Fetch game state using database manager
         with unit_of_work() as cur:
@@ -507,12 +507,8 @@ def draw_hand(game_id):
             return jsonify({"error": "Unauthorized to play this game"}), 403
 
         # Parse deck
-        deck_field = (
-            "player1_deck_cards" if is_player1 else "player2_deck_cards"
-        )
-        hand_field = (
-            "player1_hand_cards" if is_player1 else "player2_hand_cards"
-        )
+        deck_field = "player1_deck_cards" if is_player1 else "player2_deck_cards"
+        hand_field = "player1_hand_cards" if is_player1 else "player2_hand_cards"
 
         try:
             deck = json.loads(game[deck_field] or "[]")
@@ -825,7 +821,7 @@ def resolve_round(game_id):
             if not game:
                 return jsonify({"error": "Game not found"}), 404
 
-            if is_game_archived(cur,game["game_id"]):
+            if is_game_archived(game["game_id"]):
                 return jsonify({"error": HISTORY_LOCK_MESSAGE}), 409
 
             if not game["is_active"]:
@@ -1139,19 +1135,16 @@ def end_game(game_id):
             
         current_user = get_jwt_identity()
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
 
         cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
         game = cursor.fetchone()
 
         if not game:
-            conn.close()
             return jsonify({"error": "Game not found"}), 404
 
         # Check if user is a player
         if current_user not in [game["player1_name"], game["player2_name"]]:
-            conn.close()
             return jsonify({"error": "Unauthorized"}), 403
 
         try:
@@ -1161,7 +1154,6 @@ def end_game(game_id):
             p1_deck = p2_deck = []
 
         # End the game
-        cursor = conn.cursor()
         cursor.execute(
             """
             UPDATE games 
@@ -1180,9 +1172,6 @@ def end_game(game_id):
             p1_deck,
             p2_deck,
         )
-
-        conn.commit()
-        conn.close()
 
         return jsonify({"message": "Game ended successfully"}), 200
 
@@ -1315,12 +1304,7 @@ def get_turn_info(game_id):
             
         current_user = get_jwt_identity()
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-        game = cursor.fetchone()
-        conn.close()
+        
 
         if not game:
             return jsonify({"error": "Game not found"}), 404
