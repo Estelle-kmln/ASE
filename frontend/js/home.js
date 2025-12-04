@@ -177,6 +177,9 @@ function displayPendingGames(games) {
                             <button class="btn" style="margin: 0; padding: 0.5rem 1rem;" onclick="joinPendingGame('${game.game_id}')">
                                 Start Deck Selection
                             </button>
+                            <button class="btn" style="margin: 0; padding: 0.5rem 1rem; background: #e74c3c;" onclick="cancelInvitation('${game.game_id}')">
+                                Cancel
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -335,6 +338,32 @@ async function ignoreInvitation(gameId) {
     }
     
     // Refresh the games list to remove the ignored invitation
+    await loadUserGames();
+}
+
+async function cancelInvitation(gameId) {
+    const token = localStorage.getItem('token');
+    
+    try {
+        // Call the cancel invitation endpoint
+        const response = await fetch(`${GAME_API_URL}/${gameId}/cancel`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            console.error('Error cancelling invitation:', error);
+            alert(error.error || 'Failed to cancel invitation');
+            return;
+        }
+    } catch (error) {
+        console.error('Error cancelling invitation:', error);
+    }
+    
+    // Refresh the games list to remove the cancelled invitation
     await loadUserGames();
 }
 

@@ -1521,6 +1521,56 @@ def ignore_invitation(game_id):
         return jsonify({"error": f"Failed to ignore invitation: {str(e)}"}), 500
 
 
+@app.route("/api/games/<game_id>/cancel", methods=["POST"])
+@jwt_required()
+def cancel_invitation(game_id):
+    """Cancel a game invitation by the player who created it."""
+    try:
+        # Basic input sanitization
+        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
+            
+        current_user = get_jwt_identity()
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+        game = cursor.fetchone()
+
+        if not game:
+            conn.close()
+            return jsonify({"error": "Game not found"}), 404
+
+        # Check if user is player1 (the inviter)
+        if current_user != game["player1_name"]:
+            conn.close()
+            return jsonify({"error": "Only the game creator can cancel this invitation"}), 403
+
+        # Only allow canceling pending invitations
+        if game.get("game_status") != "pending":
+            conn.close()
+            return jsonify({"error": "Can only cancel pending invitations"}), 400
+
+        # Mark the invitation as ignored (same effect as cancelling)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE games 
+            SET game_status = 'ignored', updated_at = CURRENT_TIMESTAMP 
+            WHERE game_id = %s
+        """,
+            (game_id,),
+        )
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({"message": "Invitation cancelled successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Failed to cancel invitation: {str(e)}"}), 500
+
+
 @app.route("/api/games/<game_id>/end", methods=["POST"])
 @jwt_required()
 def end_game(game_id):
