@@ -181,6 +181,7 @@ def get_my_matches():
                 created_at
             FROM games 
             WHERE game_status IN ('completed', 'abandoned')
+            AND game_status != 'ignored'
             AND (player1_name = %s OR player2_name = %s)
             ORDER BY created_at DESC
         """, (username, username))

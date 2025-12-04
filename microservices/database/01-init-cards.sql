@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS cards (
 CREATE TABLE IF NOT EXISTS games (
     game_id VARCHAR(255) PRIMARY KEY,
     turn INTEGER NOT NULL,
-    game_status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (game_status IN ('pending', 'active', 'completed', 'abandoned', 'ignored', 'deck_selection')), --Status of the game: pending (invitation not yet accepted), active (game in progress), deck_selection (selecting decks), completed (finished normally), abandoned (quit early), ignored (declined invitation). Replaces the old is_active boolean field.
+    game_status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (game_status IN ('pending', 'active', 'completed', 'abandoned', 'ignored', 'deck_selection')), --Status of the game: pending (invitation not yet accepted), active (game in progress), deck_selection (selecting decks), completed (finished normally), abandoned (quit early), ignored (declined invitation).
     player1_name VARCHAR(255) NOT NULL,
     player1_deck_cards TEXT,
     player1_hand_cards TEXT,
