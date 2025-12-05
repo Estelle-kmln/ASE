@@ -43,6 +43,7 @@ let pollInterval = null;
 document.addEventListener('DOMContentLoaded', () => {
     initializeEventListeners();
     displayUserInfo();
+    checkAdminStatus(); // Check if user is admin
     loadUserGames(); // Load user's games on page load
     
     // Refresh games list every 5 seconds to auto-remove finished games
@@ -56,6 +57,34 @@ function displayUserInfo() {
     } else {
         console.error('User data is invalid:', currentUser);
         document.getElementById('user-info').textContent = `Logged in as: Unknown`;
+    }
+}
+
+async function checkAdminStatus() {
+    try {
+        const token = localStorage.getItem('token');
+        const response = await fetch('http://localhost:8080/api/auth/profile', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            console.log('Admin check response:', data);
+            if (data.user && data.user.is_admin) {
+                console.log('User is admin, showing admin link');
+                document.getElementById('admin-link').style.display = 'block';
+            } else {
+                console.log('User is not admin');
+            }
+        } else {
+            console.error('Admin check failed:', response.status);
+        }
+    } catch (error) {
+        console.error('Error checking admin status:', error);
     }
 }
 

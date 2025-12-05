@@ -140,12 +140,12 @@ Expected: Login page loads with Battlecards styling
 # Register
 curl -X POST http://localhost:8080/api/auth/register `
   -H "Content-Type: application/json" `
-  -d '{\"username\":\"test\",\"email\":\"test@test.com\",\"password\":\"test123\"}'
+  -d '{\"username\":\"test\",\"password\":\"test123\"}'
 
 # Login
 curl -X POST http://localhost:8080/api/auth/login `
   -H "Content-Type: application/json" `
-  -d '{\"email\":\"test@test.com\",\"password\":\"test123\"}'
+  -d '{\"username\":\"test\",\"password\":\"test123\"}'
 ```
 
 ### Test Game Endpoints

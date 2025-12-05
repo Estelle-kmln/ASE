@@ -50,7 +50,7 @@ Your application now blocks:
 ### **Microservice Protection Status**
 | Service | Status | Protected Against |
 |---------|--------|-------------------|
-| **Auth Service** | ✅ **SECURED** | Username/password injection, email validation, JWT issuing |
+| **Auth Service** | ✅ **SECURED** | Username/password injection, JWT issuing |
 | **Game Service** | ✅ **SECURED** | Game ID validation, player name sanitization, JWT-based access control |
 | **Card Service** | ✅ **SECURED** | Card type validation, ID bounds checking, JWT-based access control |
 | **Leaderboard Service** | ✅ **SECURED** | Query parameter sanitization, JWT-based access control |
@@ -171,7 +171,6 @@ from input_sanitizer import InputSanitizer
 
 # Validate specific inputs
 clean_username = InputSanitizer.validate_username(user_input)
-clean_email = InputSanitizer.validate_email(email_input)
 safe_game_id = InputSanitizer.validate_game_id(game_id)
 
 # General string sanitization
@@ -183,7 +182,6 @@ safe_string = InputSanitizer.sanitize_string(user_input)
 |----------|---------|---------|
 | `validate_username()` | Usernames (3-50 chars, alphanumeric) | `testuser123` |
 | `validate_password()` | Passwords (4-128 chars, UTF-8) | `mypassword` |
-| `validate_email()` | Email addresses (RFC compliant) | `user@example.com` |
 | `validate_game_id()` | UUIDs for games | `550e8400-e29b-41d4-a716-446655440000` |
 | `validate_card_type()` | Card types only | `rock`, `paper`, `scissors` |
 | `validate_integer()` | Numbers with bounds | `validate_integer(value, min_val=0, max_val=100)` |
@@ -203,7 +201,6 @@ Expected output:
 ✅ Blocked SQL injection: Input contains potentially dangerous SQL patterns...
 ✅ Blocked XSS attempt: Input contains potentially dangerous SQL patterns...
 ✅ Blocked command injection: Input contains potentially dangerous command injection...
-✅ Valid email accepted: user@example.com
 ✅ Valid game ID accepted: 550e8400-e29b-41d4-a716-446655440000
 ✅ Blocked path traversal: Invalid game ID format...
 
@@ -342,7 +339,6 @@ def get_game(game_id):
 |------------|------------|---------|
 | Username | 50 chars | Prevent buffer overflow |
 | Password | 128 chars | Balance security & usability |
-| Email | 254 chars | RFC compliance |
 | General strings | 255 chars | Standard field limit |
 | JSON payloads | 1000 chars | Prevent DoS |
 | Request body | 1MB | Memory protection |

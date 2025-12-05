@@ -238,10 +238,6 @@ paths:
                   minLength: 4
                   maxLength: 128
                   description: Password (4-128 characters)
-                email:
-                  type: string
-                  format: email
-                  description: Email address (optional)
               required:
                 - username
                 - password

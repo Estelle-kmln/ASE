@@ -70,6 +70,22 @@ def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 
 
+def log_action(action: str, username: str = None, details: str = None):
+    """Log an action to the logs table."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO logs (action, username, details) VALUES (%s, %s, %s)",
+            (action, username, details)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        # Don't fail the main operation if logging fails
+        print(f"Failed to log action: {e}")
+
+
 class Card:
     """Card class for game logic."""
 
@@ -324,6 +340,9 @@ def create_game():
 
         conn.commit()
         conn.close()
+
+        # Log game creation
+        log_action("GAME_CREATED", player1_name, f"Created game {game_id} with {player2_name}")
 
         return (
             jsonify(
@@ -1465,6 +1484,9 @@ def accept_invitation(game_id):
         conn.commit()
         conn.close()
 
+        # Log invitation acceptance
+        log_action("GAME_INVITATION_ACCEPTED", current_user, f"Accepted game invitation {game_id}")
+
         return jsonify({"message": "Invitation accepted successfully", "status": "deck_selection"}), 200
 
     except Exception as e:
@@ -1515,6 +1537,9 @@ def ignore_invitation(game_id):
         conn.commit()
         conn.close()
 
+        # Log invitation declined
+        log_action("GAME_INVITATION_DECLINED", current_user, f"Declined game invitation {game_id}")
+
         return jsonify({"message": "Invitation ignored successfully"}), 200
 
     except Exception as e:
@@ -1564,6 +1589,9 @@ def cancel_invitation(game_id):
 
         conn.commit()
         conn.close()
+
+        # Log invitation cancellation
+        log_action("GAME_INVITATION_CANCELLED", current_user, f"Cancelled game invitation {game_id}")
 
         return jsonify({"message": "Invitation cancelled successfully"}), 200
 
@@ -1646,6 +1674,13 @@ def end_game(game_id):
 
         conn.commit()
         conn.close()
+
+        # Log game ending
+        if new_status == "completed":
+            winner = game["winner"] or "tie"
+            log_action("GAME_COMPLETED", current_user, f"Game {game_id} completed - Winner: {winner}")
+        elif new_status == "abandoned":
+            log_action("GAME_ABANDONED", current_user, f"Game {game_id} abandoned")
 
         return jsonify({"message": "Game ended successfully"}), 200
 
@@ -1997,6 +2032,11 @@ def select_deck(game_id):
 
         conn.commit()
         conn.close()
+
+        # Log deck selection
+        log_action("DECK_SELECTED", current_user, f"Selected deck for game {game_id}")
+        if both_selected:
+            log_action("GAME_STARTED", None, f"Game {game_id} started - Both players selected decks")
 
         return jsonify({
             "message": "Deck selected successfully",

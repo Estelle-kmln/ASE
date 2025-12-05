@@ -56,16 +56,7 @@ def test_security():
         print(f"✅ Blocked command injection: {str(e)[:50]}...")
         tests_passed += 1
     
-    # Test 5: Valid email
-    try:
-        result = InputSanitizer.validate_email('user@example.com')
-        print(f"✅ Valid email accepted: {result}")
-        tests_passed += 1
-    except Exception as e:
-        print(f"❌ Error with valid email: {str(e)}")
-        tests_failed += 1
-    
-    # Test 6: Game ID validation
+    # Test 5: Game ID validation
     try:
         result = InputSanitizer.validate_game_id('550e8400-e29b-41d4-a716-446655440000')
         print(f"✅ Valid game ID accepted: {result}")

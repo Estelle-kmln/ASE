@@ -111,14 +111,6 @@ class SecurityTestRunner:
             failed += 1
         
         if self.run_test(
-            "Valid Email Acceptance",
-            lambda: InputSanitizer.validate_email('user@example.com')
-        ):
-            passed += 1
-        else:
-            failed += 1
-        
-        if self.run_test(
             "Valid Game ID Acceptance",
             lambda: InputSanitizer.validate_game_id('550e8400-e29b-41d4-a716-446655440000')
         ):
