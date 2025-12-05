@@ -175,24 +175,7 @@ function displayUsers(users) {
             <td>${escapeHtml(user.username)}</td>
             <td>${roleBadge}</td>
             <td>${createdDate}</td>
-            <td>
-                <button 
-                    class="admin-action-btn btn-edit"
-                    data-user-id="${user.id}"
-                    data-username="${escapeHtml(user.username)}"
-                    data-is-admin="${isAdmin}"
-                    data-action="edit"
-                >
-                    ✏️ Edit
-                </button>
-            </td>
         `;
-        
-        // Add event listener to edit button
-        const editBtn = row.querySelector('[data-action="edit"]');
-        editBtn.addEventListener('click', () => {
-            openEditUserModal(user.id, user.username, isAdmin);
-        });
         
         tbody.appendChild(row);
     });
@@ -255,60 +238,6 @@ function clearUserSearch() {
     document.getElementById("clear-search-btn").style.display = "none";
     currentPage = 1;
     loadUsers();
-}
-
-/**
- * Open edit user modal
- */
-function openEditUserModal(userId, username, isAdmin) {
-    document.getElementById("edit-user-id").value = userId;
-    document.getElementById("edit-username").value = username;
-    document.getElementById("edit-role").value = isAdmin ? "ROLE_ADMIN" : "ROLE_USER";
-    
-    document.getElementById("edit-user-modal").style.display = "flex";
-}
-
-/**
- * Close edit user modal
- */
-function closeEditUserModal() {
-    document.getElementById("edit-user-modal").style.display = "none";
-    document.getElementById("edit-user-form").reset();
-}
-
-/**
- * Handle edit user form submission
- */
-async function handleEditUserSubmit(e) {
-    e.preventDefault();
-    
-    const userId = document.getElementById("edit-user-id").value;
-    const role = document.getElementById("edit-role").value;
-    
-    try {
-        const token = localStorage.getItem("token");
-        const response = await fetch(`http://localhost:8080/api/admin/users/${userId}`, {
-            method: "PUT",
-            headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                roles: [role]
-            })
-        });
-
-        if (response.ok) {
-            showMessage("User updated successfully", "success");
-            closeEditUserModal();
-            await loadUsers();
-        } else {
-            throw new Error("Failed to update user");
-        }
-    } catch (error) {
-        console.error("Error updating user:", error);
-        showMessage("Failed to update user. Please try again.", "error");
-    }
 }
 
 /**
