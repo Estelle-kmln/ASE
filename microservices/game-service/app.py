@@ -62,6 +62,25 @@ def expired_token_callback(jwt_header, jwt_payload):
     return jsonify({"error": "Token has expired"}), 401
 
 
+# Error handlers to ensure all errors return JSON (not HTML)
+@app.errorhandler(405)
+def method_not_allowed(error):
+    """Handle 405 Method Not Allowed errors."""
+    return jsonify({"error": "Method not allowed"}), 405
+
+
+@app.errorhandler(404)
+def not_found(error):
+    """Handle 404 Not Found errors."""
+    return jsonify({"error": "Resource not found"}), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 Internal Server errors."""
+    return jsonify({"error": "Internal server error"}), 500
+
+
 # Database configuration
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
