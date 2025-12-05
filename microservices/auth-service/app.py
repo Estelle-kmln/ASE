@@ -10,8 +10,10 @@ from flask import Flask, request, jsonify
 from flask_jwt_extended import (
     JWTManager,
     create_access_token,
+    create_refresh_token,
     jwt_required,
     get_jwt_identity,
+    get_jwt,
 )
 from flask_cors import CORS
 import psycopg2
@@ -35,7 +37,8 @@ app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = os.getenv(
     "JWT_SECRET_KEY", "your-secret-key-change-in-production"
 )
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=2)  # Short-lived access tokens
+app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)  # Long-lived refresh tokens
 
 # Initialize extensions
 jwt = JWTManager(app)
@@ -102,6 +105,88 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
 
 
+def store_refresh_token(user_id: int, refresh_token: str, expires_delta: timedelta) -> bool:
+    """Store a refresh token in the database."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        expires_at = datetime.now() + expires_delta
+        cursor.execute(
+            "INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (%s, %s, %s)",
+            (user_id, refresh_token, expires_at)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Failed to store refresh token: {e}")
+        return False
+
+
+def validate_refresh_token(refresh_token: str) -> dict:
+    """Validate a refresh token and return user info if valid."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            """SELECT rt.id, rt.user_id, rt.expires_at, rt.revoked, u.username 
+               FROM refresh_tokens rt
+               JOIN users u ON rt.user_id = u.id
+               WHERE rt.token = %s""",
+            (refresh_token,)
+        )
+        token_data = cursor.fetchone()
+        conn.close()
+        
+        if not token_data:
+            return None
+        
+        if token_data["revoked"]:
+            return None
+        
+        if token_data["expires_at"] < datetime.now():
+            return None
+        
+        return token_data
+    except Exception as e:
+        print(f"Failed to validate refresh token: {e}")
+        return None
+
+
+def revoke_refresh_token(refresh_token: str) -> bool:
+    """Revoke a refresh token."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE token = %s",
+            (refresh_token,)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Failed to revoke refresh token: {e}")
+        return False
+
+
+def revoke_all_user_tokens(user_id: int) -> bool:
+    """Revoke all refresh tokens for a user."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE user_id = %s AND revoked = FALSE",
+            (user_id,)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Failed to revoke user tokens: {e}")
+        return False
+
+
 @app.route("/health", methods=["GET"])
 def health_check():
     """Health check endpoint."""
@@ -157,8 +242,14 @@ def register():
         # Log the registration
         log_action("USER_REGISTERED", username, f"New user registered with ID: {user_id}")
 
-        # Create access token (JWT bearer token)
+        # Create access token and refresh token
         access_token = create_access_token(identity=username)
+        refresh_token = create_refresh_token(identity=username)
+        
+        # Store refresh token in database
+        refresh_expires = app.config["JWT_REFRESH_TOKEN_EXPIRES"]
+        store_refresh_token(user_id, refresh_token, refresh_expires)
+        
         # OAuth2-style metadata (support timedelta or numeric seconds)
         jwt_expires = app.config["JWT_ACCESS_TOKEN_EXPIRES"]
         expires_in = (
@@ -172,6 +263,7 @@ def register():
                 {
                     "message": "User registered successfully",
                     "access_token": access_token,
+                    "refresh_token": refresh_token,
                     "token_type": "bearer",
                     "expires_in": expires_in,
                     "user": {"id": user_id, "username": username},
@@ -306,8 +398,14 @@ def login():
         # Log successful login
         log_action("USER_LOGIN", username, "User logged in successfully")
 
-        # Create access token (JWT bearer token)
+        # Create access token and refresh token
         access_token = create_access_token(identity=username)
+        refresh_token = create_refresh_token(identity=username)
+        
+        # Store refresh token in database
+        refresh_expires = app.config["JWT_REFRESH_TOKEN_EXPIRES"]
+        store_refresh_token(user["id"], refresh_token, refresh_expires)
+        
         # OAuth2-style metadata (support timedelta or numeric seconds)
         jwt_expires = app.config["JWT_ACCESS_TOKEN_EXPIRES"]
         expires_in = (
@@ -321,6 +419,7 @@ def login():
                 {
                     "message": "Login successful",
                     "access_token": access_token,
+                    "refresh_token": refresh_token,
                     "token_type": "bearer",
                     "expires_in": expires_in,
                     "user": {"id": user["id"], "username": user["username"]},
@@ -448,6 +547,80 @@ def validate_token():
 
     except Exception as e:
         return jsonify({"error": f"Token validation failed: {str(e)}"}), 500
+
+
+@app.route("/api/auth/refresh", methods=["POST"])
+def refresh():
+    """Refresh access token using refresh token."""
+    try:
+        data = request.get_json()
+        
+        if not data or not data.get("refresh_token"):
+            return jsonify({"error": "Refresh token is required"}), 400
+        
+        refresh_token = data["refresh_token"]
+        
+        # Validate refresh token
+        token_data = validate_refresh_token(refresh_token)
+        
+        if not token_data:
+            log_action("TOKEN_REFRESH_FAILED", None, "Invalid or expired refresh token")
+            return jsonify({"error": "Invalid or expired refresh token"}), 401
+        
+        username = token_data["username"]
+        
+        # Create new access token
+        access_token = create_access_token(identity=username)
+        
+        # Log token refresh
+        log_action("TOKEN_REFRESHED", username, "Access token refreshed successfully")
+        
+        jwt_expires = app.config["JWT_ACCESS_TOKEN_EXPIRES"]
+        expires_in = (
+            int(jwt_expires.total_seconds())
+            if hasattr(jwt_expires, "total_seconds")
+            else int(jwt_expires)
+        )
+        
+        return jsonify({
+            "access_token": access_token,
+            "token_type": "bearer",
+            "expires_in": expires_in
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Token refresh failed: {str(e)}"}), 500
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+@jwt_required()
+def logout():
+    """Logout user and revoke refresh token."""
+    try:
+        current_user = get_jwt_identity()
+        data = request.get_json()
+        
+        if data and data.get("refresh_token"):
+            # Revoke specific refresh token
+            refresh_token = data["refresh_token"]
+            revoke_refresh_token(refresh_token)
+            log_action("USER_LOGOUT", current_user, "User logged out - refresh token revoked")
+        else:
+            # Revoke all refresh tokens for this user
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
+            user = cursor.fetchone()
+            conn.close()
+            
+            if user:
+                revoke_all_user_tokens(user[0])
+                log_action("USER_LOGOUT", current_user, "User logged out - all refresh tokens revoked")
+        
+        return jsonify({"message": "Logged out successfully"}), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Logout failed: {str(e)}"}), 500
 
 
 # Admin-only endpoints

@@ -60,27 +60,39 @@ function navigateTo(page) {
 }
 
 function logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    window.location.href = 'login.html';
+    if (window.TokenManagement) {
+        window.TokenManagement.logout();
+    } else {
+        // Fallback
+        localStorage.removeItem('token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('token_expiry');
+        localStorage.removeItem('user');
+        window.location.href = 'login.html';
+    }
 }
 
 async function loadProfile() {
-    const token = localStorage.getItem('token');
-    
-    if (!token) {
-        console.error('No token found');
-        localStorage.clear();
-        window.location.href = 'login.html';
-        return;
-    }
-    
     try {
-        const response = await fetch(`${AUTH_API_URL}/profile`, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
+        const fetchFunc = window.TokenManagement ? window.TokenManagement.authenticatedFetch : fetch;
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        
+        // Add auth header if not using authenticatedFetch
+        if (!window.TokenManagement) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                console.error('No token found');
+                localStorage.clear();
+                window.location.href = 'login.html';
+                return;
             }
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const response = await fetchFunc(`${AUTH_API_URL}/profile`, {
+            headers: headers
         });
         
         const data = await response.json();
@@ -192,7 +204,6 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
         }
     }
     
-    const token = localStorage.getItem('token');
     const updateData = {
         username,
         email
@@ -203,12 +214,20 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
     }
     
     try {
-        const response = await fetch(`${AUTH_API_URL}/profile`, {
+        const fetchFunc = window.TokenManagement ? window.TokenManagement.authenticatedFetch : fetch;
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        
+        // Add auth header if not using authenticatedFetch
+        if (!window.TokenManagement) {
+            const token = localStorage.getItem('token');
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const response = await fetchFunc(`${AUTH_API_URL}/profile`, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers: headers,
             body: JSON.stringify(updateData)
         });
         

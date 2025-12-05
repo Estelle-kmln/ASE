@@ -112,9 +112,21 @@ async function login(username, password) {
             // Clear any existing lockout timer
             clearLockoutTimer();
             
-            // Store token and user info
-            localStorage.setItem('token', data.access_token);
-            localStorage.setItem('user', JSON.stringify(data.user));
+            // Store tokens using token management utility
+            if (window.TokenManagement) {
+                window.TokenManagement.storeAuthTokens(data);
+            } else {
+                // Fallback to old method if token management not loaded
+                localStorage.setItem('token', data.access_token);
+                localStorage.setItem('user', JSON.stringify(data.user));
+                if (data.refresh_token) {
+                    localStorage.setItem('refresh_token', data.refresh_token);
+                }
+                if (data.expires_in) {
+                    const expiryTime = Date.now() + ((data.expires_in - 60) * 1000);
+                    localStorage.setItem('token_expiry', expiryTime.toString());
+                }
+            }
             
             showAlert('Login successful!', 'success');
             
@@ -247,9 +259,21 @@ async function register(username, password) {
         const data = await response.json();
         
         if (response.ok) {
-            // Store token and user info (registration now returns access token)
-            localStorage.setItem('token', data.access_token);
-            localStorage.setItem('user', JSON.stringify(data.user));
+            // Store tokens using token management utility
+            if (window.TokenManagement) {
+                window.TokenManagement.storeAuthTokens(data);
+            } else {
+                // Fallback to old method if token management not loaded
+                localStorage.setItem('token', data.access_token);
+                localStorage.setItem('user', JSON.stringify(data.user));
+                if (data.refresh_token) {
+                    localStorage.setItem('refresh_token', data.refresh_token);
+                }
+                if (data.expires_in) {
+                    const expiryTime = Date.now() + ((data.expires_in - 60) * 1000);
+                    localStorage.setItem('token_expiry', expiryTime.toString());
+                }
+            }
             
             showAlert('Registration successful!', 'success');
             
