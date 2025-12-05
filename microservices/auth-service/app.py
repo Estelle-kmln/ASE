@@ -236,7 +236,7 @@ def get_profile():
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         cursor.execute(
-            "SELECT id, username, is_admin, enabled, created_at FROM users WHERE username = %s",
+            "SELECT id, username, is_admin, created_at FROM users WHERE username = %s",
             (current_user,),
         )
         user = cursor.fetchone()
@@ -378,14 +378,15 @@ def list_users():
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Get total count
-        cursor.execute("SELECT COUNT(*) as count FROM users")
+        # Get total count (exclude admins)
+        cursor.execute("SELECT COUNT(*) as count FROM users WHERE is_admin = FALSE OR is_admin IS NULL")
         total = cursor.fetchone()["count"]
         
-        # Get paginated users
+        # Get paginated users (exclude admins)
         cursor.execute(
-            """SELECT id, username, is_admin, enabled, created_at 
+            """SELECT id, username, is_admin, created_at 
                FROM users 
+               WHERE is_admin = FALSE OR is_admin IS NULL
                ORDER BY created_at DESC 
                LIMIT %s OFFSET %s""",
             (size, offset)
@@ -400,7 +401,6 @@ def list_users():
                 "id": user["id"],
                 "username": user["username"],
                 "roles": ["ROLE_ADMIN" if user.get("is_admin") else "ROLE_USER"],
-                "enabled": user.get("enabled", True),
                 "created_at": user["created_at"].isoformat() if user["created_at"] else None
             })
         
@@ -431,19 +431,19 @@ def search_users():
         
         search_pattern = f"%{query}%"
         
-        # Get total count
+        # Get total count (exclude admins)
         cursor.execute(
             """SELECT COUNT(*) as count FROM users 
-               WHERE username ILIKE %s""",
+               WHERE username ILIKE %s AND (is_admin = FALSE OR is_admin IS NULL)""",
             (search_pattern,)
         )
         total = cursor.fetchone()["count"]
         
-        # Get paginated results
+        # Get paginated results (exclude admins)
         cursor.execute(
             """SELECT id, username, is_admin, enabled, created_at 
                FROM users 
-               WHERE username ILIKE %s
+               WHERE username ILIKE %s AND (is_admin = FALSE OR is_admin IS NULL)
                ORDER BY created_at DESC 
                LIMIT %s OFFSET %s""",
             (search_pattern, size, offset)
@@ -458,7 +458,6 @@ def search_users():
                 "id": user["id"],
                 "username": user["username"],
                 "roles": ["ROLE_ADMIN" if user.get("is_admin") else "ROLE_USER"],
-                "enabled": user.get("enabled", True),
                 "created_at": user["created_at"].isoformat() if user["created_at"] else None
             })
         
@@ -492,12 +491,7 @@ def update_user():
             conn.close()
             return jsonify({"error": "User not found"}), 404
         
-        # Update enabled status
-        if "enabled" in data:
-            cursor.execute(
-                "UPDATE users SET enabled = %s WHERE id = %s",
-                (data["enabled"], user_id)
-            )
+        username = user[0]
         
         # Update admin role
         if "roles" in data:
@@ -507,14 +501,14 @@ def update_user():
                 (is_admin, user_id)
             )
         
-        conn.commit()
-        
         # Log the action
         current_user = get_jwt_identity()
         cursor.execute(
             "INSERT INTO logs (action, username, details) VALUES (%s, %s, %s)",
-            ("USER_UPDATED", current_user, f"Updated user {user[0]} (ID: {user_id})")
+            ("USER_UPDATED", current_user, f"Updated user {username} (ID: {user_id})")
         )
+        
+        # Commit all changes at once
         conn.commit()
         conn.close()
         

@@ -12,7 +12,6 @@ let searchTimeout = null;
 
 // Check admin access on page load
 document.addEventListener("DOMContentLoaded", async () => {
-    await checkAuth();
     await checkAdminAccess();
     await loadUsers();
     setupEventListeners();
@@ -56,6 +55,18 @@ async function checkAdminAccess() {
  * Setup event listeners
  */
 function setupEventListeners() {
+    // Menu button
+    document.getElementById('menu-btn').addEventListener('click', toggleMenu);
+    
+    // Close menu when clicking outside
+    document.addEventListener('click', (e) => {
+        const menu = document.getElementById('dropdown-menu');
+        const menuBtn = document.getElementById('menu-btn');
+        if (!menu.contains(e.target) && e.target !== menuBtn) {
+            menu.classList.remove('active');
+        }
+    });
+    
     // Search input
     const searchInput = document.getElementById("user-search");
     searchInput.addEventListener("input", (e) => {
@@ -148,12 +159,6 @@ function displayUsers(users) {
     
     users.forEach(user => {
         const row = document.createElement("tr");
-        row.className = user.enabled ? "" : "user-disabled";
-        
-        // Username with status badge
-        const statusBadge = user.enabled 
-            ? '<span class="badge badge-success">Active</span>'
-            : '<span class="badge badge-inactive">Inactive</span>';
         
         // Role badge
         const isAdmin = user.roles && user.roles.includes("ROLE_ADMIN");
@@ -167,26 +172,27 @@ function displayUsers(users) {
             : "N/A";
         
         row.innerHTML = `
-            <td>${escapeHtml(user.username)} ${statusBadge}</td>
+            <td>${escapeHtml(user.username)}</td>
             <td>${roleBadge}</td>
-            <td>
-                <button 
-                    class="admin-action-btn ${user.enabled ? 'btn-disable' : 'btn-enable'}"
-                    onclick="toggleUserStatus(${user.id}, ${user.enabled})"
-                >
-                    ${user.enabled ? '🚫 Disable' : '✓ Enable'}
-                </button>
-            </td>
             <td>${createdDate}</td>
             <td>
                 <button 
                     class="admin-action-btn btn-edit"
-                    onclick="openEditUserModal(${user.id}, '${escapeHtml(user.username)}', ${isAdmin}, ${user.enabled})"
+                    data-user-id="${user.id}"
+                    data-username="${escapeHtml(user.username)}"
+                    data-is-admin="${isAdmin}"
+                    data-action="edit"
                 >
                     ✏️ Edit
                 </button>
             </td>
         `;
+        
+        // Add event listener to edit button
+        const editBtn = row.querySelector('[data-action="edit"]');
+        editBtn.addEventListener('click', () => {
+            openEditUserModal(user.id, user.username, isAdmin);
+        });
         
         tbody.appendChild(row);
     });
@@ -252,45 +258,12 @@ function clearUserSearch() {
 }
 
 /**
- * Toggle user enabled/disabled status
- */
-async function toggleUserStatus(userId, currentStatus) {
-    const action = currentStatus ? "disable" : "enable";
-    if (!confirm(`Are you sure you want to ${action} this user?`)) {
-        return;
-    }
-    
-    try {
-        const token = localStorage.getItem("token");
-        const response = await fetch(`http://localhost:8080/api/admin/users/${userId}`, {
-            method: "PUT",
-            headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ enabled: !currentStatus })
-        });
-
-        if (response.ok) {
-            showMessage(`User ${action}d successfully`, "success");
-            await loadUsers();
-        } else {
-            throw new Error(`Failed to ${action} user`);
-        }
-    } catch (error) {
-        console.error(`Error ${action}ing user:`, error);
-        showMessage(`Failed to ${action} user. Please try again.`, "error");
-    }
-}
-
-/**
  * Open edit user modal
  */
-function openEditUserModal(userId, username, isAdmin, enabled) {
+function openEditUserModal(userId, username, isAdmin) {
     document.getElementById("edit-user-id").value = userId;
     document.getElementById("edit-username").value = username;
     document.getElementById("edit-role").value = isAdmin ? "ROLE_ADMIN" : "ROLE_USER";
-    document.getElementById("edit-enabled").checked = enabled;
     
     document.getElementById("edit-user-modal").style.display = "flex";
 }
@@ -311,19 +284,17 @@ async function handleEditUserSubmit(e) {
     
     const userId = document.getElementById("edit-user-id").value;
     const role = document.getElementById("edit-role").value;
-    const enabled = document.getElementById("edit-enabled").checked;
     
     try {
         const token = localStorage.getItem("token");
-        const response = await fetch(`http://localhost/api/admin/users/${userId}`, {
+        const response = await fetch(`http://localhost:8080/api/admin/users/${userId}`, {
             method: "PUT",
             headers: {
                 Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                roles: [role],
-                enabled: enabled
+                roles: [role]
             })
         });
 
@@ -362,6 +333,10 @@ function toggleLogsView() {
  */
 async function loadLogs() {
     try {
+        // Show loading state
+        const logsList = document.getElementById("logs-list");
+        logsList.innerHTML = '<div class="loading-spinner">Loading logs...</div>';
+        
         const token = localStorage.getItem("token");
         const response = await fetch("http://localhost:8080/api/logs/list", {
             method: "GET",
@@ -451,6 +426,14 @@ function escapeHtml(text) {
         "'": '&#039;'
     };
     return text.toString().replace(/[&<>"']/g, m => map[m]);
+}
+
+/**
+ * Toggle menu
+ */
+function toggleMenu() {
+    const menu = document.getElementById('dropdown-menu');
+    menu.classList.toggle('active');
 }
 
 /**
