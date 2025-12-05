@@ -236,19 +236,17 @@ def decrypt_history_row(row):
     return security.decrypt_snapshot(encrypted_payload)
 
 
-def mark_game_as_active(conn, game_id):
+def mark_game_as_active(game_id):
     """Mark a game as active when player2 first interacts with it."""
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        UPDATE games 
-        SET game_status = 'active'
-        WHERE game_id = %s AND game_status = 'pending'
-    """,
-        (game_id,),
-    )
-    cursor.close()
-
+    with unit_of_work() as cur:
+        cur.execute(
+            """
+            UPDATE games 
+            SET game_status = 'active'
+            WHERE game_id = %s AND game_status = 'pending'
+            """,
+            (game_id,)
+        )
 
 @app.route("/health", methods=["GET"])
 def health_check():

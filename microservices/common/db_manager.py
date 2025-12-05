@@ -74,7 +74,8 @@ def unit_of_work():
     """
     conn = get_connection()
     try:
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
         yield cur
         conn.commit()
     except Exception:
