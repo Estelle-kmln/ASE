@@ -196,7 +196,6 @@ jobs:
           --spawn-rate 2 \
           --run-time 60s \
           --host https://localhost:8443 \
-          --insecure \
           --html locust-report.html \
           --csv locust-results
 
