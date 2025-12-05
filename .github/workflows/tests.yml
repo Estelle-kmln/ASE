@@ -36,15 +36,25 @@ jobs:
         cd microservices
         chmod +x build-and-start.sh
         ./build-and-start.sh
-        echo "Waiting for services to be ready..."
-        sleep 60
+
+    - name: Wait for services to be healthy
+      run: |
+        cd microservices
+        chmod +x wait-for-services.sh
+        ./wait-for-services.sh
 
     - name: Verify services are running
       run: |
         docker ps
-        echo "Checking service health..."
-        curl -f -k https://localhost:8443/health || echo "Nginx not ready yet"
-        sleep 30
+        echo "=== Service Status ==="
+        cd microservices
+        docker compose ps
+        echo ""
+        echo "=== Testing Auth Service through API Gateway ==="
+        curl -f -k https://localhost:8443/api/auth/health
+        echo ""
+        echo "=== Testing Card Service through API Gateway ==="
+        curl -f -k https://localhost:8443/api/cards/health
 
     - name: Run pytest tests for microservices
       env:
@@ -61,17 +71,29 @@ jobs:
       if: failure()
       run: |
         echo "=== Docker Compose Services ==="
-        docker ps -a
+        cd microservices
+        docker compose ps -a
+        echo ""
+        echo "=== PostgreSQL Logs ==="
+        docker compose logs postgresql || true
+        echo ""
         echo "=== Auth Service Logs ==="
-        docker logs auth-service || true
+        docker compose logs auth-service || true
+        echo ""
         echo "=== Card Service Logs ==="
-        docker logs card-service || true
+        docker compose logs card-service || true
+        echo ""
         echo "=== Game Service Logs ==="
-        docker logs game-service || true
+        docker compose logs game-service || true
+        echo ""
         echo "=== Leaderboard Service Logs ==="
-        docker logs leaderboard-service || true
-        echo "=== Nginx Logs ==="
-        docker logs nginx || true
+        docker compose logs leaderboard-service || true
+        echo ""
+        echo "=== Logs Service Logs ==="
+        docker compose logs logs-service || true
+        echo ""
+        echo "=== Nginx/API Gateway Logs ==="
+        docker compose logs api-gateway || true
 
     - name: Cleanup
       if: always()
@@ -111,14 +133,25 @@ jobs:
         cd microservices
         chmod +x build-and-start.sh
         ./build-and-start.sh
-        echo "Waiting for services to be ready..."
-        sleep 60
+
+    - name: Wait for services to be healthy
+      run: |
+        cd microservices
+        chmod +x wait-for-services.sh
+        ./wait-for-services.sh
 
     - name: Verify services are running
       run: |
         docker ps
-        curl -f -k https://localhost:8443/health || echo "Nginx not ready yet"
-        sleep 30
+        echo "=== Service Status ==="
+        cd microservices
+        docker compose ps
+        echo ""
+        echo "=== Testing Auth Service through API Gateway ==="
+        curl -f -k https://localhost:8443/api/auth/health
+        echo ""
+        echo "=== Testing Card Service through API Gateway ==="
+        curl -f -k https://localhost:8443/api/cards/health
 
     - name: Run Postman tests with Newman
       run: |
@@ -140,13 +173,29 @@ jobs:
       if: failure()
       run: |
         echo "=== Docker Compose Services ==="
-        docker ps -a
-        echo "=== Service Logs ==="
-        docker logs auth-service || true
-        docker logs card-service || true
-        docker logs game-service || true
-        docker logs leaderboard-service || true
-        docker logs nginx || true
+        cd microservices
+        docker compose ps -a
+        echo ""
+        echo "=== PostgreSQL Logs ==="
+        docker compose logs postgresql || true
+        echo ""
+        echo "=== Auth Service Logs ==="
+        docker compose logs auth-service || true
+        echo ""
+        echo "=== Card Service Logs ==="
+        docker compose logs card-service || true
+        echo ""
+        echo "=== Game Service Logs ==="
+        docker compose logs game-service || true
+        echo ""
+        echo "=== Leaderboard Service Logs ==="
+        docker compose logs leaderboard-service || true
+        echo ""
+        echo "=== Logs Service Logs ==="
+        docker compose logs logs-service || true
+        echo ""
+        echo "=== Nginx/API Gateway Logs ==="
+        docker compose logs api-gateway || true
 
     - name: Cleanup
       if: always()
@@ -177,14 +226,25 @@ jobs:
         cd microservices
         chmod +x build-and-start.sh
         ./build-and-start.sh
-        echo "Waiting for services to be ready..."
-        sleep 60
+
+    - name: Wait for services to be healthy
+      run: |
+        cd microservices
+        chmod +x wait-for-services.sh
+        ./wait-for-services.sh
 
     - name: Verify services are running
       run: |
         docker ps
-        curl -f -k https://localhost:8443/health || echo "Nginx not ready yet"
-        sleep 30
+        echo "=== Service Status ==="
+        cd microservices
+        docker compose ps
+        echo ""
+        echo "=== Testing Auth Service through API Gateway ==="
+        curl -f -k https://localhost:8443/api/auth/health
+        echo ""
+        echo "=== Testing Card Service through API Gateway ==="
+        curl -f -k https://localhost:8443/api/cards/health
 
     - name: Run Locust performance tests (headless)
       run: |
@@ -212,13 +272,29 @@ jobs:
       if: failure()
       run: |
         echo "=== Docker Compose Services ==="
-        docker ps -a
-        echo "=== Service Logs ==="
-        docker logs auth-service || true
-        docker logs card-service || true
-        docker logs game-service || true
-        docker logs leaderboard-service || true
-        docker logs nginx || true
+        cd microservices
+        docker compose ps -a
+        echo ""
+        echo "=== PostgreSQL Logs ==="
+        docker compose logs postgresql || true
+        echo ""
+        echo "=== Auth Service Logs ==="
+        docker compose logs auth-service || true
+        echo ""
+        echo "=== Card Service Logs ==="
+        docker compose logs card-service || true
+        echo ""
+        echo "=== Game Service Logs ==="
+        docker compose logs game-service || true
+        echo ""
+        echo "=== Leaderboard Service Logs ==="
+        docker compose logs leaderboard-service || true
+        echo ""
+        echo "=== Logs Service Logs ==="
+        docker compose logs logs-service || true
+        echo ""
+        echo "=== Nginx/API Gateway Logs ==="
+        docker compose logs api-gateway || true
 
     - name: Cleanup
       if: always()
