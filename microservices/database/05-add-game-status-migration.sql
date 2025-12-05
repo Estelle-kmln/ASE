@@ -35,6 +35,7 @@ BEGIN
 END $$;
 
 -- Step 3: Set default value and make it NOT NULL (only if column exists and is nullable)
+-- Skip this step if column is already NOT NULL (fresh databases)
 DO $$
 BEGIN
     IF EXISTS (
@@ -44,19 +45,17 @@ BEGIN
         AND column_name = 'game_status'
         AND is_nullable = 'YES'
     ) THEN
-        ALTER TABLE games 
-        ALTER COLUMN game_status SET DEFAULT 'pending',
-        ALTER COLUMN game_status SET NOT NULL;
-    ELSIF EXISTS (
-        SELECT 1 
-        FROM information_schema.columns 
-        WHERE table_name = 'games' 
-        AND column_name = 'game_status'
-    ) THEN
-        -- Column exists but is already NOT NULL, just set default if not set
+        -- Only alter if column is nullable (migration scenario)
         ALTER TABLE games 
         ALTER COLUMN game_status SET DEFAULT 'pending';
+        
+        -- Update any NULL values before making NOT NULL
+        UPDATE games SET game_status = 'pending' WHERE game_status IS NULL;
+        
+        ALTER TABLE games 
+        ALTER COLUMN game_status SET NOT NULL;
     END IF;
+    -- If column is already NOT NULL (fresh database), do nothing
 END $$;
 
 -- Step 4: Add CHECK constraint
