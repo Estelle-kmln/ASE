@@ -62,7 +62,19 @@ def expired_token_callback(jwt_header, jwt_payload):
     return jsonify({"error": "Token has expired"}), 401
 
 
-# Error handler for 500 to ensure JSON responses for unhandled exceptions
+# Error handlers to ensure all errors return JSON (not HTML)
+@app.errorhandler(405)
+def method_not_allowed(error):
+    """Handle 405 Method Not Allowed errors - returns JSON instead of HTML."""
+    return jsonify({"error": "Method not allowed"}), 405
+
+
+@app.errorhandler(404)
+def not_found(error):
+    """Handle 404 Not Found errors - returns JSON instead of HTML."""
+    return jsonify({"error": "Resource not found"}), 404
+
+
 @app.errorhandler(500)
 def internal_error(error):
     """Handle 500 Internal Server errors."""
