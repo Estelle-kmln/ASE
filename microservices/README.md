@@ -11,7 +11,7 @@ The application is split into four microservices:
 3. **Game Service** (Port 5003) - Game logic and state management
 4. **Leaderboard Service** (Port 5004) - Game results and rankings
 
-All services communicate through an Nginx API Gateway (Port 8080) and use PostgreSQL for data persistence.
+All services communicate through an Nginx API Gateway (Port 8443 for HTTPS, Port 8080 redirects to HTTPS) and use PostgreSQL for data persistence.
 
 ## Prerequisites
 
@@ -64,8 +64,10 @@ docker-compose ps
 
 Check that all services are running:
 ```bash
-curl http://localhost:8080/health
+curl -k https://localhost:8443/health
 ```
+
+**Note:** The `-k` flag is required for self-signed certificates. Your browser will show a security warning for self-signed certificates - this is expected in development. Click "Advanced" and "Proceed to localhost" to continue.
 
 Expected response:
 ```json
@@ -79,18 +81,20 @@ Expected response:
 python -m pytest tests/ -v
 
 # Test specific service
-curl http://localhost:8080/api/auth/health
-curl http://localhost:8080/api/cards/health  
-curl http://localhost:8080/api/games/health
-curl http://localhost:8080/api/leaderboard/health
+curl -k https://localhost:8443/api/auth/health
+curl -k https://localhost:8443/api/cards/health  
+curl -k https://localhost:8443/api/games/health
+curl -k https://localhost:8443/api/leaderboard/health
 ```
 
 ## API Documentation
 
 ### Base URL
 ```
-http://localhost:8080/api
+https://localhost:8443/api
 ```
+
+**Note:** All HTTP requests to port 8080 are automatically redirected to HTTPS on port 8443. The application uses self-signed SSL certificates for development. Browsers will show a security warning - click "Advanced" and "Proceed to localhost" to continue.
 
 ### Authentication
 
@@ -171,25 +175,25 @@ Import the API endpoints into Postman for testing:
 
 1. **Register User:**
    ```
-   POST http://localhost:8080/api/auth/register
+   POST https://localhost:8443/api/auth/register
    Body: {"username": "testuser", "password": "testpass"}
    ```
 
 2. **Login:**
    ```
-   POST http://localhost:8080/api/auth/login
+   POST https://localhost:8443/api/auth/login
    Body: {"username": "testuser", "password": "testpass"}
    ```
    
 3. **Get Cards:**
    ```
-   GET http://localhost:8080/api/cards/
+   GET https://localhost:8443/api/cards/
    Headers: Authorization: Bearer <token>
    ```
 
 4. **Create Game:**
    ```
-   POST http://localhost:8080/api/games/
+   POST https://localhost:8443/api/games/
    Headers: Authorization: Bearer <token>
    Body: {"player2_name": "opponent"}
    ```
@@ -218,9 +222,11 @@ python app.py
    POSTGRES_PASSWORD=<strong-db-password>
    ```
 
-2. **Use proper SSL certificates:**
-   - Replace self-signed certificates with CA-signed certificates
-   - Configure proper DNS and domains
+2. **SSL Certificates:**
+   - The application uses self-signed certificates for development (located in `nginx/ssl/`)
+   - For production, replace with CA-signed certificates (e.g., Let's Encrypt)
+   - Configure proper DNS and domains for production deployment
+   - Self-signed certificates will trigger browser security warnings - this is expected in development
 
 3. **Enable security features:**
    - Database connection encryption

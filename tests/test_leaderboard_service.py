@@ -7,9 +7,17 @@ import unittest
 import requests
 import time
 import os
+import urllib3
+
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # API Gateway base URL
-BASE_URL = os.getenv('BASE_URL', 'http://localhost:8080')
+BASE_URL = os.getenv('BASE_URL', 'https://localhost:8443')
+
+# Create a session with SSL verification disabled for self-signed certs
+session = requests.Session()
+session.verify = False
 
 
 class TestLeaderboardServiceSetup(unittest.TestCase):
@@ -23,7 +31,7 @@ class TestLeaderboardServiceSetup(unittest.TestCase):
         cls.test_password = "lbpass123"
         
         # Register and get token
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": cls.test_username, "password": cls.test_password}
         )
@@ -36,7 +44,7 @@ class TestLeaderboardServiceGetLeaderboard(TestLeaderboardServiceSetup):
     
     def test_get_leaderboard_success(self):
         """Test successfully retrieving the global leaderboard."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard",
             headers=self.headers
         )
@@ -60,7 +68,7 @@ class TestLeaderboardServiceGetLeaderboard(TestLeaderboardServiceSetup):
     def test_get_leaderboard_with_limit(self):
         """Test retrieving leaderboard with custom limit."""
         limit = 5
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard?limit={limit}",
             headers=self.headers
         )
@@ -73,7 +81,7 @@ class TestLeaderboardServiceGetLeaderboard(TestLeaderboardServiceSetup):
     
     def test_get_leaderboard_limit_exceeds_max(self):
         """Test that limit is capped at 100 even if higher requested."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard?limit=200",
             headers=self.headers
         )
@@ -85,14 +93,14 @@ class TestLeaderboardServiceGetLeaderboard(TestLeaderboardServiceSetup):
     
     def test_get_leaderboard_no_token(self):
         """Test getting leaderboard fails without authentication token."""
-        response = requests.get(f"{BASE_URL}/api/leaderboard")
+        response = session.get(f"{BASE_URL}/api/leaderboard")
         
         self.assertEqual(response.status_code, 401)
     
     def test_get_leaderboard_invalid_token(self):
         """Test getting leaderboard fails with invalid token."""
         invalid_headers = {"Authorization": "Bearer invalid_token_xyz"}
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard",
             headers=invalid_headers
         )
@@ -101,7 +109,7 @@ class TestLeaderboardServiceGetLeaderboard(TestLeaderboardServiceSetup):
     
     def test_get_leaderboard_ranking_order(self):
         """Test that leaderboard is ordered correctly by rank."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard",
             headers=self.headers
         )
@@ -121,7 +129,7 @@ class TestLeaderboardServiceGetPlayerStats(TestLeaderboardServiceSetup):
     def test_get_player_stats_success(self):
         """Test successfully retrieving player statistics."""
         # Use our own username for testing
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/player/{self.test_username}",
             headers=self.headers
         )
@@ -140,7 +148,7 @@ class TestLeaderboardServiceGetPlayerStats(TestLeaderboardServiceSetup):
     def test_get_player_stats_nonexistent_player(self):
         """Test getting stats for non-existent player returns empty stats."""
         fake_player = "nonexistent_player_12345"
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/player/{fake_player}",
             headers=self.headers
         )
@@ -154,14 +162,14 @@ class TestLeaderboardServiceGetPlayerStats(TestLeaderboardServiceSetup):
     
     def test_get_player_stats_no_token(self):
         """Test getting player stats fails without token."""
-        response = requests.get(f"{BASE_URL}/api/leaderboard/player/{self.test_username}")
+        response = session.get(f"{BASE_URL}/api/leaderboard/player/{self.test_username}")
         
         self.assertEqual(response.status_code, 401)
     
     def test_get_player_stats_invalid_token(self):
         """Test getting player stats fails with invalid token."""
         invalid_headers = {"Authorization": "Bearer invalid_token_xyz"}
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/player/{self.test_username}",
             headers=invalid_headers
         )
@@ -170,7 +178,7 @@ class TestLeaderboardServiceGetPlayerStats(TestLeaderboardServiceSetup):
     
     def test_get_player_stats_recent_games_structure(self):
         """Test recent games have correct structure."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/player/{self.test_username}",
             headers=self.headers
         )
@@ -195,7 +203,7 @@ class TestLeaderboardServiceGetRecentGames(TestLeaderboardServiceSetup):
     
     def test_get_recent_games_success(self):
         """Test successfully retrieving recent completed games."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/recent-games",
             headers=self.headers
         )
@@ -220,7 +228,7 @@ class TestLeaderboardServiceGetRecentGames(TestLeaderboardServiceSetup):
     def test_get_recent_games_with_limit(self):
         """Test retrieving recent games with custom limit."""
         limit = 5
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/recent-games?limit={limit}",
             headers=self.headers
         )
@@ -232,7 +240,7 @@ class TestLeaderboardServiceGetRecentGames(TestLeaderboardServiceSetup):
     
     def test_get_recent_games_limit_exceeds_max(self):
         """Test that limit is capped at 50 even if higher requested."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/recent-games?limit=100",
             headers=self.headers
         )
@@ -244,14 +252,14 @@ class TestLeaderboardServiceGetRecentGames(TestLeaderboardServiceSetup):
     
     def test_get_recent_games_no_token(self):
         """Test getting recent games fails without token."""
-        response = requests.get(f"{BASE_URL}/api/leaderboard/recent-games")
+        response = session.get(f"{BASE_URL}/api/leaderboard/recent-games")
         
         self.assertEqual(response.status_code, 401)
     
     def test_get_recent_games_invalid_token(self):
         """Test getting recent games fails with invalid token."""
         invalid_headers = {"Authorization": "Bearer invalid_token_xyz"}
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/recent-games",
             headers=invalid_headers
         )
@@ -264,7 +272,7 @@ class TestLeaderboardServiceGetTopPlayers(TestLeaderboardServiceSetup):
     
     def test_get_top_players_success(self):
         """Test successfully retrieving top players by various metrics."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/top-players",
             headers=self.headers
         )
@@ -292,14 +300,14 @@ class TestLeaderboardServiceGetTopPlayers(TestLeaderboardServiceSetup):
     
     def test_get_top_players_no_token(self):
         """Test getting top players fails without token."""
-        response = requests.get(f"{BASE_URL}/api/leaderboard/top-players")
+        response = session.get(f"{BASE_URL}/api/leaderboard/top-players")
         
         self.assertEqual(response.status_code, 401)
     
     def test_get_top_players_invalid_token(self):
         """Test getting top players fails with invalid token."""
         invalid_headers = {"Authorization": "Bearer invalid_token_xyz"}
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/top-players",
             headers=invalid_headers
         )
@@ -308,7 +316,7 @@ class TestLeaderboardServiceGetTopPlayers(TestLeaderboardServiceSetup):
     
     def test_get_top_players_list_sizes(self):
         """Test that each top players list is limited appropriately."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/top-players",
             headers=self.headers
         )
@@ -326,7 +334,7 @@ class TestLeaderboardServiceGetStatistics(TestLeaderboardServiceSetup):
     
     def test_get_statistics_success(self):
         """Test successfully retrieving global game statistics."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/statistics",
             headers=self.headers
         )
@@ -350,14 +358,14 @@ class TestLeaderboardServiceGetStatistics(TestLeaderboardServiceSetup):
     
     def test_get_statistics_no_token(self):
         """Test getting statistics fails without token."""
-        response = requests.get(f"{BASE_URL}/api/leaderboard/statistics")
+        response = session.get(f"{BASE_URL}/api/leaderboard/statistics")
         
         self.assertEqual(response.status_code, 401)
     
     def test_get_statistics_invalid_token(self):
         """Test getting statistics fails with invalid token."""
         invalid_headers = {"Authorization": "Bearer invalid_token_xyz"}
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/statistics",
             headers=invalid_headers
         )
@@ -366,7 +374,7 @@ class TestLeaderboardServiceGetStatistics(TestLeaderboardServiceSetup):
     
     def test_get_statistics_consistency(self):
         """Test that statistics are internally consistent."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard/statistics",
             headers=self.headers
         )
@@ -391,7 +399,7 @@ class TestLeaderboardServiceEdgeCases(TestLeaderboardServiceSetup):
     
     def test_leaderboard_with_zero_limit(self):
         """Test leaderboard with limit of 0."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard?limit=0",
             headers=self.headers
         )
@@ -403,7 +411,7 @@ class TestLeaderboardServiceEdgeCases(TestLeaderboardServiceSetup):
     
     def test_leaderboard_with_negative_limit(self):
         """Test leaderboard with negative limit."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/leaderboard?limit=-5",
             headers=self.headers
         )
@@ -416,7 +424,7 @@ class TestLeaderboardServiceEdgeCases(TestLeaderboardServiceSetup):
         # Create player with special chars
         unique_id = int(time.time() * 1000)
         username = f"player_test-123_{unique_id}"
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": username, "password": "pass1234"}
         )
@@ -425,7 +433,7 @@ class TestLeaderboardServiceEdgeCases(TestLeaderboardServiceSetup):
             token = response.json().get('access_token')
             headers = {"Authorization": f"Bearer {token}"}
             
-            response = requests.get(
+            response = session.get(
                 f"{BASE_URL}/api/leaderboard/player/{username}",
                 headers=headers
             )

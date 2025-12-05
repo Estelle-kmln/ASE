@@ -1,0 +1,45 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.2, pytest-9.0.1, pluggy-1.6.0 -- /Users/alexandermittet/LOCAL documents/ASE-1/ase/bin/python3.13
+cachedir: .pytest_cache
+rootdir: /Users/alexandermittet/LOCAL documents/ASE-1
+plugins: locust-2.42.6, cov-7.0.0
+collecting ... collected 131 items / 1 error
+
+==================================== ERRORS ====================================
+_____________ ERROR collecting tests/comprehensive_logging_test.py _____________
+tests/comprehensive_logging_test.py:69: in <module>
+    admin_token = admin_resp.json()['access_token']
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'access_token'
+------------------------------- Captured stdout --------------------------------
+Testing comprehensive user action logging...
+================================================================================
+
+1. Testing user registration...
+   Registered logtest_1764962934: 201
+
+2. Testing duplicate registration (should fail)...
+   Duplicate registration attempt: 409
+
+3. Testing failed login...
+   Failed login: 401
+
+4. Testing successful login...
+   Successful login: 200
+
+5. Testing profile view...
+   Profile viewed: 500
+
+6. Testing password change...
+   Password changed: 200
+
+7. Testing unauthorized admin access...
+   Unauthorized admin access attempt: 500
+
+8. Testing game creation...
+
+10. Testing admin log viewing...
+=========================== short test summary info ============================
+ERROR tests/comprehensive_logging_test.py - KeyError: 'access_token'
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+=============================== 1 error in 8.39s ===============================

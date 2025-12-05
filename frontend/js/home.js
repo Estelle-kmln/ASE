@@ -1,5 +1,5 @@
 // Configuration
-const GAME_API_URL = 'http://localhost:8080/api/games';
+const GAME_API_URL = 'https://localhost:8443/api/games';
 
 // State
 let currentUser = null;
@@ -63,7 +63,7 @@ function displayUserInfo() {
 async function checkAdminStatus() {
     try {
         const token = localStorage.getItem('token');
-        const response = await fetch('http://localhost:8080/api/auth/profile', {
+        const response = await fetch('https://localhost:8443/api/auth/profile', {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,

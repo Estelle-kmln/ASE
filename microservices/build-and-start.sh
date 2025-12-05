@@ -1,12 +1,15 @@
 #!/bin/bash
 
 # Build and Start Script for Battle Cards Microservices
-# Automatically generates GAME_HISTORY_KEY if not present
+# Automatically generates GAME_HISTORY_KEY and SSL certificates if not present
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/.env"
+SSL_DIR="${SCRIPT_DIR}/nginx/ssl"
+SSL_CERT="${SSL_DIR}/battlecards.crt"
+SSL_KEY="${SSL_DIR}/battlecards.key"
 
 # Function to generate a secure GAME_HISTORY_KEY (32-byte urlsafe base64)
 generate_history_key() {
@@ -62,6 +65,25 @@ if [ -f "$ENV_FILE" ]; then
     set -a
     source "$ENV_FILE"
     set +a
+fi
+
+# Generate SSL certificates if they don't exist
+if [ ! -f "$SSL_CERT" ] || [ ! -f "$SSL_KEY" ]; then
+    echo "Generating SSL certificates..."
+    mkdir -p "$SSL_DIR"
+    
+    if ! command -v openssl &> /dev/null; then
+        echo "Error: openssl not found. Please install openssl to generate SSL certificates." >&2
+        exit 1
+    fi
+    
+    openssl req -x509 -newkey rsa:4096 -keyout "$SSL_KEY" \
+        -out "$SSL_CERT" -days 365 -nodes \
+        -subj "/CN=localhost" 2>/dev/null
+    
+    echo "✓ Generated SSL certificates at ${SSL_DIR}/"
+else
+    echo "✓ Found existing SSL certificates at ${SSL_DIR}/"
 fi
 
 echo ""
