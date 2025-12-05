@@ -162,12 +162,9 @@ def get_my_matches():
             username = InputSanitizer.validate_username(username)
         except ValueError as e:
             return jsonify({'error': f'Invalid username: {str(e)}'}), 400
-        
-        def mark_game_as_active(game_id):
 
-            # Get all matches for this player
-            with unit_of_work() as cur:
-                cur.execute("""
+        with unit_of_work() as cur:
+            cur.execute("""
                 SELECT 
                     game_id,
                     player1_name,
@@ -184,7 +181,7 @@ def get_my_matches():
             """, (username, username))
             
             games = cur.fetchall()
-        
+
         matches = []
         for game in games:
             opponent = game['player2_name'] if game['player1_name'] == username else game['player1_name']
@@ -208,6 +205,7 @@ def get_my_matches():
         
     except Exception as e:
         return jsonify({'error': f'Failed to get matches: {str(e)}'}), 500
+
 
 @app.route('/api/leaderboard/player/<player_name>', methods=['GET'])
 @jwt_required()
