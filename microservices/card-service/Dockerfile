@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir --upgrade pip>=24.3.1 && \
 COPY . .
 
 # Copy shared common modules into container
-COPY ../common /app/common
+COPY common /app/common
 
 # Add shared code directory to Python path (used by all services for db_manager, utils, etc.)
 ENV PYTHONPATH="/app:/app/common"
