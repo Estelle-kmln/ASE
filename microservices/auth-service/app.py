@@ -208,18 +208,100 @@ def login():
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Get user from database
+        # Get user from database with lockout information
         cursor.execute(
-            "SELECT id, username, password FROM users WHERE username = %s",
+            """SELECT id, username, password, failed_login_attempts, 
+                      account_locked_until, last_failed_login 
+               FROM users WHERE username = %s""",
             (username,),
         )
         user = cursor.fetchone()
-        conn.close()
 
-        if not user or not verify_password(password, user["password"]):
-            # Log failed login attempt
-            log_action("LOGIN_FAILED", username, "Invalid username or password")
+        if not user:
+            conn.close()
+            # Log failed login attempt (user not found)
+            log_action("LOGIN_FAILED", username, "User not found")
             return jsonify({"error": "Invalid username or password"}), 401
+
+        # Check if account is locked
+        if user.get("account_locked_until"):
+            if user["account_locked_until"] > datetime.now():
+                # Account is still locked
+                locked_until = user["account_locked_until"].isoformat()
+                remaining_seconds = int((user["account_locked_until"] - datetime.now()).total_seconds())
+                conn.close()
+                log_action("LOGIN_BLOCKED", username, f"Account locked until {locked_until}")
+                return jsonify({
+                    "error": "Account is temporarily locked due to multiple failed login attempts",
+                    "locked_until": locked_until,
+                    "retry_after": remaining_seconds
+                }), 423  # 423 Locked status code
+            else:
+                # Lock period expired, reset the lockout
+                cursor.execute(
+                    """UPDATE users 
+                       SET failed_login_attempts = 0, 
+                           account_locked_until = NULL 
+                       WHERE username = %s""",
+                    (username,)
+                )
+                conn.commit()
+
+        # Verify password
+        if not verify_password(password, user["password"]):
+            # Increment failed login attempts
+            failed_attempts = (user.get("failed_login_attempts") or 0) + 1
+            
+            # Lock account after 3 failed attempts (15 minutes lockout)
+            if failed_attempts >= 3:
+                lockout_duration = timedelta(minutes=15)
+                locked_until = datetime.now() + lockout_duration
+                cursor.execute(
+                    """UPDATE users 
+                       SET failed_login_attempts = %s, 
+                           account_locked_until = %s,
+                           last_failed_login = CURRENT_TIMESTAMP
+                       WHERE username = %s""",
+                    (failed_attempts, locked_until, username)
+                )
+                conn.commit()
+                conn.close()
+                log_action("ACCOUNT_LOCKED", username, 
+                          f"Account locked after {failed_attempts} failed attempts until {locked_until.isoformat()}")
+                return jsonify({
+                    "error": "Account locked due to multiple failed login attempts",
+                    "locked_until": locked_until.isoformat(),
+                    "retry_after": int(lockout_duration.total_seconds())
+                }), 423
+            else:
+                # Update failed attempts count
+                cursor.execute(
+                    """UPDATE users 
+                       SET failed_login_attempts = %s,
+                           last_failed_login = CURRENT_TIMESTAMP
+                       WHERE username = %s""",
+                    (failed_attempts, username)
+                )
+                conn.commit()
+                conn.close()
+                log_action("LOGIN_FAILED", username, 
+                          f"Invalid password - attempt {failed_attempts} of 3")
+                return jsonify({
+                    "error": "Invalid username or password",
+                    "remaining_attempts": 3 - failed_attempts
+                }), 401
+
+        # Successful login - reset failed attempts
+        cursor.execute(
+            """UPDATE users 
+               SET failed_login_attempts = 0, 
+                   account_locked_until = NULL,
+                   last_failed_login = NULL
+               WHERE username = %s""",
+            (username,)
+        )
+        conn.commit()
+        conn.close()
 
         # Log successful login
         log_action("USER_LOGIN", username, "User logged in successfully")
