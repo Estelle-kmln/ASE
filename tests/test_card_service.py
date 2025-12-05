@@ -7,9 +7,17 @@ import unittest
 import requests
 import time
 import os
+import urllib3
+
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # API Gateway base URL
-BASE_URL = os.getenv('BASE_URL', 'http://localhost:8080')
+BASE_URL = os.getenv('BASE_URL', 'https://localhost:8443')
+
+# Create a session with SSL verification disabled for self-signed certs
+session = requests.Session()
+session.verify = False
 
 
 class TestCardServiceSetup(unittest.TestCase):
@@ -23,7 +31,7 @@ class TestCardServiceSetup(unittest.TestCase):
         cls.test_password = "cardpass123"
         
         # Register and get token
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": cls.test_username, "password": cls.test_password}
         )
@@ -36,7 +44,7 @@ class TestCardServiceGetAllCards(TestCardServiceSetup):
     
     def test_get_all_cards_success(self):
         """Test successfully retrieving all cards with valid token."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/cards",
             headers=self.headers
         )
@@ -55,14 +63,14 @@ class TestCardServiceGetAllCards(TestCardServiceSetup):
     
     def test_get_all_cards_no_token(self):
         """Test getting all cards fails without authentication token."""
-        response = requests.get(f"{BASE_URL}/api/cards")
+        response = session.get(f"{BASE_URL}/api/cards")
         
         self.assertEqual(response.status_code, 401)
     
     def test_get_all_cards_invalid_token(self):
         """Test getting all cards fails with invalid token."""
         invalid_headers = {"Authorization": "Bearer invalid_token_xyz"}
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/cards",
             headers=invalid_headers
         )
@@ -75,7 +83,7 @@ class TestCardServiceGetCardsByType(TestCardServiceSetup):
     
     def test_get_cards_by_type_rock_success(self):
         """Test successfully retrieving cards by type 'rock'."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/cards/by-type/rock",
             headers=self.headers
         )
@@ -92,7 +100,7 @@ class TestCardServiceGetCardsByType(TestCardServiceSetup):
     
     def test_get_cards_by_type_paper_success(self):
         """Test successfully retrieving cards by type 'paper'."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/cards/by-type/paper",
             headers=self.headers
         )
@@ -103,7 +111,7 @@ class TestCardServiceGetCardsByType(TestCardServiceSetup):
     
     def test_get_cards_by_type_scissors_success(self):
         """Test successfully retrieving cards by type 'scissors'."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/cards/by-type/scissors",
             headers=self.headers
         )
@@ -114,7 +122,7 @@ class TestCardServiceGetCardsByType(TestCardServiceSetup):
     
     def test_get_cards_by_type_invalid_type(self):
         """Test getting cards by invalid type fails."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/cards/by-type/invalid_type",
             headers=self.headers
         )
@@ -126,13 +134,13 @@ class TestCardServiceGetCardsByType(TestCardServiceSetup):
     
     def test_get_cards_by_type_no_token(self):
         """Test getting cards by type fails without token."""
-        response = requests.get(f"{BASE_URL}/api/cards/by-type/rock")
+        response = session.get(f"{BASE_URL}/api/cards/by-type/rock")
         
         self.assertEqual(response.status_code, 401)
     
     def test_get_cards_by_type_case_insensitive(self):
         """Test card type lookup is case insensitive."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/cards/by-type/ROCK",
             headers=self.headers
         )
@@ -148,13 +156,13 @@ class TestCardServiceGetCardById(TestCardServiceSetup):
     def test_get_card_by_id_success(self):
         """Test successfully retrieving a card by valid ID."""
         # First get all cards to find a valid ID
-        response = requests.get(f"{BASE_URL}/api/cards", headers=self.headers)
+        response = session.get(f"{BASE_URL}/api/cards", headers=self.headers)
         cards = response.json()['cards']
         
         if len(cards) > 0:
             card_id = cards[0]['id']
             
-            response = requests.get(
+            response = session.get(
                 f"{BASE_URL}/api/cards/{card_id}",
                 headers=self.headers
             )
@@ -166,7 +174,7 @@ class TestCardServiceGetCardById(TestCardServiceSetup):
     
     def test_get_card_by_id_not_found(self):
         """Test getting card by non-existent ID returns 404."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/cards/999999",
             headers=self.headers
         )
@@ -178,13 +186,13 @@ class TestCardServiceGetCardById(TestCardServiceSetup):
     
     def test_get_card_by_id_no_token(self):
         """Test getting card by ID fails without token."""
-        response = requests.get(f"{BASE_URL}/api/cards/1")
+        response = session.get(f"{BASE_URL}/api/cards/1")
         
         self.assertEqual(response.status_code, 401)
     
     def test_get_card_by_id_invalid_id_format(self):
         """Test getting card with invalid ID format."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/cards/invalid_id",
             headers=self.headers
         )
@@ -198,7 +206,7 @@ class TestCardServiceRandomDeck(TestCardServiceSetup):
     
     def test_create_random_deck_default_size(self):
         """Test creating random deck with default size (22)."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/cards/random-deck",
             headers=self.headers,
             json={}
@@ -220,7 +228,7 @@ class TestCardServiceRandomDeck(TestCardServiceSetup):
     def test_create_random_deck_custom_size(self):
         """Test creating random deck with custom size."""
         custom_size = 10
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/cards/random-deck",
             headers=self.headers,
             json={"size": custom_size}
@@ -233,7 +241,7 @@ class TestCardServiceRandomDeck(TestCardServiceSetup):
     
     def test_create_random_deck_size_too_small(self):
         """Test creating deck with size less than 1 fails."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/cards/random-deck",
             headers=self.headers,
             json={"size": 0}
@@ -246,7 +254,7 @@ class TestCardServiceRandomDeck(TestCardServiceSetup):
     
     def test_create_random_deck_size_too_large(self):
         """Test creating deck with size greater than 50 fails."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/cards/random-deck",
             headers=self.headers,
             json={"size": 51}
@@ -259,7 +267,7 @@ class TestCardServiceRandomDeck(TestCardServiceSetup):
     
     def test_create_random_deck_negative_size(self):
         """Test creating deck with negative size fails."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/cards/random-deck",
             headers=self.headers,
             json={"size": -5}
@@ -271,7 +279,7 @@ class TestCardServiceRandomDeck(TestCardServiceSetup):
     
     def test_create_random_deck_no_token(self):
         """Test creating random deck fails without token."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/cards/random-deck",
             json={"size": 10}
         )
@@ -311,7 +319,7 @@ class TestCardServiceStatistics(TestCardServiceSetup):
     
     def test_get_statistics_success(self):
         """Test successfully retrieving card statistics."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/cards/statistics",
             headers=self.headers
         )
@@ -332,13 +340,13 @@ class TestCardServiceStatistics(TestCardServiceSetup):
     
     def test_get_statistics_no_token(self):
         """Test getting statistics fails without token."""
-        response = requests.get(f"{BASE_URL}/api/cards/statistics")
+        response = session.get(f"{BASE_URL}/api/cards/statistics")
         
         self.assertEqual(response.status_code, 401)
     
     def test_get_statistics_percentages_sum(self):
         """Test that type percentages roughly sum to 100."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/cards/statistics",
             headers=self.headers
         )
@@ -357,7 +365,7 @@ class TestCardServiceTypes(TestCardServiceSetup):
     
     def test_get_card_types_success(self):
         """Test successfully retrieving available card types."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/cards/types",
             headers=self.headers
         )
@@ -371,13 +379,13 @@ class TestCardServiceTypes(TestCardServiceSetup):
     
     def test_get_card_types_no_token(self):
         """Test getting card types fails without token."""
-        response = requests.get(f"{BASE_URL}/api/cards/types")
+        response = session.get(f"{BASE_URL}/api/cards/types")
         
         self.assertEqual(response.status_code, 401)
     
     def test_get_card_types_contains_valid_types(self):
         """Test that returned types include expected game types."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/cards/types",
             headers=self.headers
         )

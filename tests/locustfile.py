@@ -17,7 +17,7 @@ from locust import HttpUser, task, between
 
 class AuthServiceUser(HttpUser):
     """Test user for Auth Service endpoints"""
-    host = "http://localhost:8080"
+    host = "https://localhost:8443"
     wait_time = between(1, 3)
     
     def on_start(self):
@@ -93,7 +93,7 @@ class AuthServiceUser(HttpUser):
 
 class CardServiceUser(HttpUser):
     """Test user for Card Service endpoints"""
-    host = "http://localhost:8080"
+    host = "https://localhost:8443"
     wait_time = between(1, 3)
     
     def on_start(self):
@@ -205,7 +205,7 @@ class CardServiceUser(HttpUser):
 
 class GameServiceUser(HttpUser):
     """Test user for Game Service endpoints"""
-    host = "http://localhost:8080"
+    host = "https://localhost:8443"
     wait_time = between(2, 5)
     
     def on_start(self):
@@ -396,7 +396,7 @@ class GameServiceUser(HttpUser):
 
 class LeaderboardServiceUser(HttpUser):
     """Test user for Leaderboard Service endpoints"""
-    host = "http://localhost:8080"
+    host = "https://localhost:8443"
     wait_time = between(1, 3)
     
     def on_start(self):
@@ -497,7 +497,7 @@ class LeaderboardServiceUser(HttpUser):
 
 class CombinedUser(HttpUser):
     """Combined user that tests all services in a realistic workflow"""
-    host = "http://localhost:8080"
+    host = "https://localhost:8443"
     wait_time = between(2, 5)
     
     def on_start(self):

@@ -1,5 +1,5 @@
 // Configuration
-const AUTH_API_URL = 'http://localhost:8080/api/auth';
+const AUTH_API_URL = 'https://localhost:8443/api/auth';
 
 // State
 let isEditMode = false;

@@ -7,9 +7,17 @@ import unittest
 import requests
 import time
 import os
+import urllib3
+
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # API Gateway base URL
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8080")
+BASE_URL = os.getenv("BASE_URL", "https://localhost:8443")
+
+# Create a session with SSL verification disabled for self-signed certs
+session = requests.Session()
+session.verify = False
 
 
 class TestAuthServiceRegister(unittest.TestCase):
@@ -23,7 +31,7 @@ class TestAuthServiceRegister(unittest.TestCase):
 
     def test_register_success(self):
         """Test successful user registration."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={
                 "username": self.test_username,
@@ -47,7 +55,7 @@ class TestAuthServiceRegister(unittest.TestCase):
 
     def test_register_missing_username(self):
         """Test registration fails without username."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"password": self.test_password},
         )
@@ -59,7 +67,7 @@ class TestAuthServiceRegister(unittest.TestCase):
 
     def test_register_missing_password(self):
         """Test registration fails without password."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": self.test_username},
         )
@@ -71,7 +79,7 @@ class TestAuthServiceRegister(unittest.TestCase):
 
     def test_register_missing_both(self):
         """Test registration fails without username and password."""
-        response = requests.post(f"{BASE_URL}/api/auth/register", json={})
+        response = session.post(f"{BASE_URL}/api/auth/register", json={})
 
         self.assertEqual(response.status_code, 400)
         data = response.json()
@@ -79,7 +87,7 @@ class TestAuthServiceRegister(unittest.TestCase):
 
     def test_register_username_too_short(self):
         """Test registration fails with username less than 3 characters."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": "ab", "password": self.test_password},
         )
@@ -91,7 +99,7 @@ class TestAuthServiceRegister(unittest.TestCase):
 
     def test_register_password_too_short(self):
         """Test registration fails with password less than 4 characters."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": self.test_username, "password": "abc"},
         )
@@ -113,7 +121,7 @@ class TestAuthServiceRegister(unittest.TestCase):
         )
 
         # Try to register with same username
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": self.test_username, "password": "differentpass"},
         )
@@ -128,7 +136,7 @@ class TestAuthServiceRegister(unittest.TestCase):
         username_with_spaces = f"  {self.test_username}  "
         password_with_spaces = f"  {self.test_password}  "
 
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={
                 "username": username_with_spaces,
@@ -162,7 +170,7 @@ class TestAuthServiceLogin(unittest.TestCase):
 
     def test_login_success(self):
         """Test successful login with valid credentials."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/login",
             json={
                 "username": self.test_username,
@@ -185,7 +193,7 @@ class TestAuthServiceLogin(unittest.TestCase):
 
     def test_login_wrong_password(self):
         """Test login fails with incorrect password."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/login",
             json={"username": self.test_username, "password": "wrongpassword"},
         )
@@ -197,7 +205,7 @@ class TestAuthServiceLogin(unittest.TestCase):
 
     def test_login_nonexistent_user(self):
         """Test login fails with non-existent username."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/login",
             json={
                 "username": "nonexistent_user_12345",
@@ -212,7 +220,7 @@ class TestAuthServiceLogin(unittest.TestCase):
 
     def test_login_missing_username(self):
         """Test login fails without username."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/login", json={"password": self.test_password}
         )
 
@@ -223,7 +231,7 @@ class TestAuthServiceLogin(unittest.TestCase):
 
     def test_login_missing_password(self):
         """Test login fails without password."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/login", json={"username": self.test_username}
         )
 
@@ -234,7 +242,7 @@ class TestAuthServiceLogin(unittest.TestCase):
 
     def test_login_empty_credentials(self):
         """Test login fails with empty credentials."""
-        response = requests.post(f"{BASE_URL}/api/auth/login", json={})
+        response = session.post(f"{BASE_URL}/api/auth/login", json={})
 
         self.assertEqual(response.status_code, 400)
         data = response.json()
@@ -242,7 +250,7 @@ class TestAuthServiceLogin(unittest.TestCase):
 
     def test_login_case_sensitive_username(self):
         """Test that username is case-sensitive."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/login",
             json={
                 "username": self.test_username.upper(),
@@ -264,7 +272,7 @@ class TestAuthServiceProfile(unittest.TestCase):
         self.test_password = "securepass123"
 
         # Register and get token
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={
                 "username": self.test_username,
@@ -276,7 +284,7 @@ class TestAuthServiceProfile(unittest.TestCase):
 
     def test_get_profile_success(self):
         """Test successfully retrieving user profile."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/auth/profile", headers=self.headers
         )
 
@@ -289,14 +297,14 @@ class TestAuthServiceProfile(unittest.TestCase):
 
     def test_get_profile_no_token(self):
         """Test profile retrieval fails without token."""
-        response = requests.get(f"{BASE_URL}/api/auth/profile")
+        response = session.get(f"{BASE_URL}/api/auth/profile")
 
         self.assertEqual(response.status_code, 401)
 
     def test_get_profile_invalid_token(self):
         """Test profile retrieval fails with invalid token."""
         invalid_headers = {"Authorization": "Bearer invalid_token_xyz"}
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/auth/profile", headers=invalid_headers
         )
 
@@ -305,7 +313,7 @@ class TestAuthServiceProfile(unittest.TestCase):
     def test_get_profile_malformed_token(self):
         """Test profile retrieval fails with malformed authorization header."""
         malformed_headers = {"Authorization": "InvalidFormat token"}
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/auth/profile", headers=malformed_headers
         )
 
@@ -314,7 +322,7 @@ class TestAuthServiceProfile(unittest.TestCase):
     def test_update_profile_password_success(self):
         """Test successfully updating user password."""
         new_password = "newsecurepass456"
-        response = requests.put(
+        response = session.put(
             f"{BASE_URL}/api/auth/profile",
             json={"password": new_password},
             headers=self.headers,
@@ -344,7 +352,7 @@ class TestAuthServiceProfile(unittest.TestCase):
 
     def test_update_profile_password_too_short(self):
         """Test updating password fails when password is too short."""
-        response = requests.put(
+        response = session.put(
             f"{BASE_URL}/api/auth/profile",
             json={"password": "abc"},
             headers=self.headers,
@@ -357,7 +365,7 @@ class TestAuthServiceProfile(unittest.TestCase):
 
     def test_update_profile_no_data(self):
         """Test updating profile fails with no data."""
-        response = requests.put(
+        response = session.put(
             f"{BASE_URL}/api/auth/profile", json={}, headers=self.headers
         )
 
@@ -368,7 +376,7 @@ class TestAuthServiceProfile(unittest.TestCase):
 
     def test_update_profile_no_token(self):
         """Test profile update fails without token."""
-        response = requests.put(
+        response = session.put(
             f"{BASE_URL}/api/auth/profile", json={"password": "newpass123"}
         )
 
@@ -377,7 +385,7 @@ class TestAuthServiceProfile(unittest.TestCase):
     def test_update_profile_invalid_token(self):
         """Test profile update fails with invalid token."""
         invalid_headers = {"Authorization": "Bearer invalid_token_xyz"}
-        response = requests.put(
+        response = session.put(
             f"{BASE_URL}/api/auth/profile",
             json={"password": "newpass123"},
             headers=invalid_headers,
@@ -396,7 +404,7 @@ class TestAuthServiceTokenValidation(unittest.TestCase):
         self.test_password = "securepass123"
 
         # Register and get token
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={
                 "username": self.test_username,
@@ -408,7 +416,7 @@ class TestAuthServiceTokenValidation(unittest.TestCase):
 
     def test_validate_token_success(self):
         """Test successful token validation."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/validate", headers=self.headers
         )
 
@@ -419,14 +427,14 @@ class TestAuthServiceTokenValidation(unittest.TestCase):
 
     def test_validate_token_no_token(self):
         """Test token validation fails without token."""
-        response = requests.post(f"{BASE_URL}/api/auth/validate")
+        response = session.post(f"{BASE_URL}/api/auth/validate")
 
         self.assertEqual(response.status_code, 401)
 
     def test_validate_token_invalid_token(self):
         """Test token validation fails with invalid token."""
         invalid_headers = {"Authorization": "Bearer invalid_token_xyz"}
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/validate", headers=invalid_headers
         )
 
@@ -435,7 +443,7 @@ class TestAuthServiceTokenValidation(unittest.TestCase):
     def test_validate_token_malformed_header(self):
         """Test token validation fails with malformed authorization header."""
         malformed_headers = {"Authorization": "InvalidFormat token"}
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/validate", headers=malformed_headers
         )
 
@@ -450,7 +458,7 @@ class TestAuthServiceEdgeCases(unittest.TestCase):
         unique_id = int(time.time() * 1000)
         username = f"user_test-123_{unique_id}"
 
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": username, "password": "pass1234"},
         )
@@ -502,7 +510,7 @@ class TestAuthServiceEdgeCases(unittest.TestCase):
     def test_register_with_empty_string_password(self):
         """Test registration fails with empty string password."""
         unique_id = int(time.time() * 1000)
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": f"user_{unique_id}", "password": ""},
         )
@@ -514,7 +522,7 @@ class TestAuthServiceEdgeCases(unittest.TestCase):
         unique_id = int(time.time() * 1000)
         long_username = f"a" * 200 + f"_{unique_id}"
 
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": long_username, "password": "pass1234"},
         )
