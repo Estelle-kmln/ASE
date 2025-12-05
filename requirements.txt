@@ -16,7 +16,7 @@ bleach==6.3.0
 validators==0.22.0
 
 # HTTP Client
-requests==2.32.4
+requests==2.32.5
 
 # WSGI Server
 gunicorn==23.0.0
