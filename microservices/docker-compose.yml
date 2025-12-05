@@ -23,7 +23,7 @@ services:
   # Auth Service
   auth-service:
     build:
-      context: ./auth-service
+      context: ./auth-service/Dockerfile
     environment:
       - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
       - JWT_SECRET_KEY=your-super-secret-key-change-in-production
@@ -43,7 +43,7 @@ services:
   # Card Service
   card-service:
     build:
-      context: ./card-service
+      context: ./card-service/Dockerfile
     environment:
       - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
       - JWT_SECRET_KEY=your-super-secret-key-change-in-production
@@ -66,7 +66,7 @@ services:
   # Game Service
   game-service:
     build:
-      context: ./game-service
+      context: ./game-service/Dockerfile
     environment:
       - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
       - JWT_SECRET_KEY=your-super-secret-key-change-in-production
@@ -92,7 +92,7 @@ services:
   # Leaderboard Service
   leaderboard-service:
     build:
-      context: ./leaderboard-service
+      context: ./leaderboard-service/Dockerfile
     environment:
       - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
       - JWT_SECRET_KEY=your-super-secret-key-change-in-production
