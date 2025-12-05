@@ -71,28 +71,44 @@ class TestGameServiceSetup(unittest.TestCase):
         game_id = response.json().get("game_id")
 
         # Step 2: Accept invitation (transitions to deck_selection)
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/accept",
             headers=cls.player1_headers,
         )
 
         # Step 3: Player 1 selects deck
         deck = [
-            {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
-            {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
-            {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
-            {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
-            {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"},
-            {"type": "Scissors"}, {"type": "Scissors"}
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
         ]
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/select-deck",
             headers=cls.player1_headers,
             json={"deck": deck},
         )
 
         # Step 4: Player 2 selects deck (transitions to active)
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/select-deck",
             headers=cls.player2_headers,
             json={"deck": deck},
@@ -191,7 +207,9 @@ class TestGameServiceGetGame(TestGameServiceSetup):
         self.assertIn("player1", data)
         self.assertIn("player2", data)
         self.assertEqual(data["game_id"], self.game_id)
-        self.assertIn(data["game_status"], ['pending', 'active', 'deck_selection'])
+        self.assertIn(
+            data["game_status"], ["pending", "active", "deck_selection"]
+        )
 
     def test_get_game_success_player2(self):
         """Test player 2 can successfully retrieve game state."""
@@ -378,7 +396,7 @@ class TestGameServicePlayCard(TestGameServiceSetup):
         self.game_id = self.create_active_game()
 
         # Draw hand for player 1
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{self.game_id}/draw-hand",
             headers=self.player1_headers,
         )
@@ -469,20 +487,20 @@ class TestGameServiceResolveRound(TestGameServiceSetup):
         self.game_id = response.json().get("game_id")
 
         # Draw and play cards for both players
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{self.game_id}/draw-hand",
             headers=self.player1_headers,
         )
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{self.game_id}/draw-hand",
             headers=self.player2_headers,
         )
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{self.game_id}/play-card",
             headers=self.player1_headers,
             json={"card_index": 0},
         )
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{self.game_id}/play-card",
             headers=self.player2_headers,
             json={"card_index": 0},
@@ -552,29 +570,29 @@ class TestGameHistoryEndpoints(TestGameServiceSetup):
 
         # Play one round to generate history
         # Player 1 draws and plays
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/draw-hand",
             headers=self.player1_headers,
         )
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/play-card",
             headers=self.player1_headers,
             json={"card_index": 0},
         )
 
         # Player 2 draws and plays (this auto-resolves the round)
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/draw-hand",
             headers=self.player2_headers,
         )
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/play-card",
             headers=self.player2_headers,
             json={"card_index": 0},
         )
 
         # End the game to archive it
-        end_response = requests.post(
+        end_response = session.post(
             f"{BASE_URL}/api/games/{game_id}/end", headers=self.player1_headers
         )
         self.assertEqual(end_response.status_code, 200)

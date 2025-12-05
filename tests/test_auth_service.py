@@ -112,7 +112,7 @@ class TestAuthServiceRegister(unittest.TestCase):
     def test_register_duplicate_username(self):
         """Test registration fails with duplicate username."""
         # Register first user
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/auth/register",
             json={
                 "username": self.test_username,
@@ -160,7 +160,7 @@ class TestAuthServiceLogin(unittest.TestCase):
         self.test_password = "securepass123"
 
         # Register a user for testing login
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/auth/register",
             json={
                 "username": self.test_username,
@@ -334,14 +334,14 @@ class TestAuthServiceProfile(unittest.TestCase):
         self.assertIn("successfully", data["message"].lower())
 
         # Verify new password works
-        login_response = requests.post(
+        login_response = session.post(
             f"{BASE_URL}/api/auth/login",
             json={"username": self.test_username, "password": new_password},
         )
         self.assertEqual(login_response.status_code, 200)
 
         # Verify old password doesn't work
-        old_login_response = requests.post(
+        old_login_response = session.post(
             f"{BASE_URL}/api/auth/login",
             json={
                 "username": self.test_username,
@@ -473,17 +473,17 @@ class TestAuthServiceEdgeCases(unittest.TestCase):
         password = "pass1234"
 
         # Register
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": username, "password": password},
         )
 
         # Login twice to get two tokens
-        response1 = requests.post(
+        response1 = session.post(
             f"{BASE_URL}/api/auth/login",
             json={"username": username, "password": password},
         )
-        response2 = requests.post(
+        response2 = session.post(
             f"{BASE_URL}/api/auth/login",
             json={"username": username, "password": password},
         )
@@ -495,11 +495,11 @@ class TestAuthServiceEdgeCases(unittest.TestCase):
         token2 = response2.json()["access_token"]
 
         # Both tokens should be valid
-        validate1 = requests.post(
+        validate1 = session.post(
             f"{BASE_URL}/api/auth/validate",
             headers={"Authorization": f"Bearer {token1}"},
         )
-        validate2 = requests.post(
+        validate2 = session.post(
             f"{BASE_URL}/api/auth/validate",
             headers={"Authorization": f"Bearer {token2}"},
         )
