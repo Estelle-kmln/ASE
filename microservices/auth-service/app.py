@@ -74,6 +74,22 @@ def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 
 
+def log_action(action: str, username: str = None, details: str = None):
+    """Log an action to the logs table."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO logs (action, username, details) VALUES (%s, %s, %s)",
+            (action, username, details)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        # Don't fail the main operation if logging fails
+        print(f"Failed to log action: {e}")
+
+
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
@@ -124,6 +140,8 @@ def register():
         )
         if cursor.fetchone()[0] > 0:
             conn.close()
+            # Log failed registration attempt
+            log_action("REGISTRATION_FAILED", username, "Username already exists")
             return jsonify({"error": "Username already exists"}), 409
 
         # Hash password and create user
@@ -135,6 +153,9 @@ def register():
         user_id = cursor.fetchone()[0]
         conn.commit()
         conn.close()
+
+        # Log the registration
+        log_action("USER_REGISTERED", username, f"New user registered with ID: {user_id}")
 
         # Create access token (JWT bearer token)
         access_token = create_access_token(identity=username)
@@ -196,7 +217,12 @@ def login():
         conn.close()
 
         if not user or not verify_password(password, user["password"]):
+            # Log failed login attempt
+            log_action("LOGIN_FAILED", username, "Invalid username or password")
             return jsonify({"error": "Invalid username or password"}), 401
+
+        # Log successful login
+        log_action("USER_LOGIN", username, "User logged in successfully")
 
         # Create access token (JWT bearer token)
         access_token = create_access_token(identity=username)
@@ -305,6 +331,8 @@ def update_profile():
                 "UPDATE users SET password = %s WHERE username = %s",
                 (hashed_password, current_user),
             )
+            # Log password change
+            log_action("PASSWORD_CHANGED", current_user, "User changed their password")
 
         conn.commit()
         conn.close()
@@ -358,6 +386,8 @@ def require_admin():
             conn.close()
             
             if not user or not user.get("is_admin"):
+                # Log unauthorized admin access attempt
+                log_action("UNAUTHORIZED_ADMIN_ACCESS", current_user, f"Attempted to access admin endpoint: {fn.__name__}")
                 return jsonify({"error": "Admin privileges required"}), 403
             
             return fn(*args, **kwargs)
@@ -371,6 +401,7 @@ def require_admin():
 def list_users():
     """List all users with pagination."""
     try:
+        current_user = get_jwt_identity()
         page = int(request.args.get("page", 0))
         size = int(request.args.get("size", 10))
         offset = page * size
@@ -420,6 +451,7 @@ def list_users():
 def search_users():
     """Search users by username."""
     try:
+        current_user = get_jwt_identity()
         query = request.args.get("query", "")
         page = int(request.args.get("page", 0))
         size = int(request.args.get("size", 10))
@@ -469,52 +501,6 @@ def search_users():
         
     except Exception as e:
         return jsonify({"error": f"Failed to search users: {str(e)}"}), 500
-
-
-@app.route("/api/admin/users/<int:user_id>", methods=["PUT"])
-@require_admin()
-def update_user():
-    """Update user (enable/disable, change roles)."""
-    try:
-        data = request.get_json()
-        user_id = int(request.view_args['user_id'])
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Check if user exists
-        cursor.execute("SELECT username FROM users WHERE id = %s", (user_id,))
-        user = cursor.fetchone()
-        if not user:
-            conn.close()
-            return jsonify({"error": "User not found"}), 404
-        
-        username = user[0]
-        
-        # Update admin role
-        if "roles" in data:
-            is_admin = "ROLE_ADMIN" in data["roles"]
-            cursor.execute(
-                "UPDATE users SET is_admin = %s WHERE id = %s",
-                (is_admin, user_id)
-            )
-        
-        # Log the action
-        current_user = get_jwt_identity()
-        cursor.execute(
-            "INSERT INTO logs (action, username, details) VALUES (%s, %s, %s)",
-            ("USER_UPDATED", current_user, f"Updated user {username} (ID: {user_id})")
-        )
-        
-        # Commit all changes at once
-        conn.commit()
-        conn.close()
-        
-        return jsonify({"message": "User updated successfully"}), 200
-        
-    except Exception as e:
-        return jsonify({"error": f"Failed to update user: {str(e)}"}), 500
-
 
 @app.route("/api/admin/roles", methods=["GET"])
 @require_admin()

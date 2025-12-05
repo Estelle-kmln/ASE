@@ -62,6 +62,22 @@ def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 
 
+def log_action(action: str, username: str = None, details: str = None):
+    """Log an action to the logs table."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO logs (action, username, details) VALUES (%s, %s, %s)",
+            (action, username, details)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        # Don't fail the main operation if logging fails
+        print(f"Failed to log action: {e}")
+
+
 def require_admin():
     """Decorator to require admin privileges."""
     def wrapper(fn):
@@ -98,6 +114,7 @@ def health_check():
 def list_logs():
     """List all logs with pagination."""
     try:
+        current_user = get_jwt_identity()
         page = int(request.args.get("page", 0))
         size = int(request.args.get("size", 50))
         offset = page * size
@@ -173,6 +190,7 @@ def create_log():
 def search_logs():
     """Search logs by action, username, or details."""
     try:
+        current_user = get_jwt_identity()
         query = request.args.get("query", "")
         page = int(request.args.get("page", 0))
         size = int(request.args.get("size", 50))
@@ -202,6 +220,10 @@ def search_logs():
         )
         logs = cursor.fetchall()
         conn.close()
+        
+        # Log admin searching logs
+        if page == 0:  # Only log the first page search to avoid too many entries
+            log_action("ADMIN_SEARCHED_LOGS", current_user, f"Searched logs with query: {query}")
         
         # Format logs
         formatted_logs = []
