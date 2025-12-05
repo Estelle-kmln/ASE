@@ -62,19 +62,7 @@ def expired_token_callback(jwt_header, jwt_payload):
     return jsonify({"error": "Token has expired"}), 401
 
 
-# Error handlers to ensure all errors return JSON (not HTML)
-@app.errorhandler(405)
-def method_not_allowed(error):
-    """Handle 405 Method Not Allowed errors."""
-    return jsonify({"error": "Method not allowed"}), 405
-
-
-@app.errorhandler(404)
-def not_found(error):
-    """Handle 404 Not Found errors."""
-    return jsonify({"error": "Resource not found"}), 404
-
-
+# Error handler for 500 to ensure JSON responses for unhandled exceptions
 @app.errorhandler(500)
 def internal_error(error):
     """Handle 500 Internal Server errors."""
@@ -1585,12 +1573,29 @@ def accept_invitation(game_id):
                 403,
             )
 
-        # Only allow accepting pending invitations
-        if game.get("game_status") != "pending":
+        # Allow accepting pending invitations or games already in deck_selection (idempotent)
+        if game.get("game_status") not in ["pending", "deck_selection"]:
             conn.close()
             return (
-                jsonify({"error": "Can only accept pending invitations"}),
+                jsonify(
+                    {
+                        "error": "Can only accept pending invitations or games in deck selection"
+                    }
+                ),
                 400,
+            )
+
+        # If already in deck_selection, just return success (idempotent)
+        if game.get("game_status") == "deck_selection":
+            conn.close()
+            return (
+                jsonify(
+                    {
+                        "message": "Game already in deck selection",
+                        "status": "deck_selection",
+                    }
+                ),
+                200,
             )
 
         # Mark the invitation as accepted and transition to deck_selection
