@@ -145,7 +145,13 @@ class InputSanitizer:
     @staticmethod
     def validate_password(password: str) -> str:
         """
-        Validate password input.
+        Validate password input with strong password requirements.
+        
+        Requirements:
+        - At least 8 characters long
+        - Contains at least one number
+        - Contains at least one special character
+        - Only allows: letters (a-z, A-Z), numbers (0-9), and special characters: !@$%^&*()_+={}[]:;,.?/<>-
         
         Args:
             password: Password to validate
@@ -154,22 +160,37 @@ class InputSanitizer:
             Original password if valid (passwords are not modified)
             
         Raises:
-            ValueError: If password is invalid
+            ValueError: If password is invalid or doesn't meet requirements
         """
         if not password:
             raise ValueError("Password cannot be empty")
         
-        # Check length
-        if len(password) < 4:
-            raise ValueError("Password must be at least 4 characters long")
+        # Check minimum length (8 characters)
+        if len(password) < 8:
+            raise ValueError("Password must be at least 8 characters long")
         
+        # Check maximum length
         if len(password) > 128:
             raise ValueError("Password is too long")
         
-        # Check for dangerous patterns (but allow some special characters in passwords)
-        for pattern in InputSanitizer.SQL_INJECTION_PATTERNS:
-            if re.search(pattern, password, re.IGNORECASE):
-                raise ValueError("Password contains invalid patterns")
+        # Check that password only contains allowed characters
+        # Allowed: letters, numbers, and specific special characters
+        allowed_pattern = r'^[a-zA-Z0-9!@$%^&*()_+={}\[\]:;,.?/<>-]+$'
+        if not re.match(allowed_pattern, password):
+            raise ValueError("Password contains invalid characters. Only letters, numbers, and these special characters are allowed: !@$%^&*()_+={}[]:;,.?/<>-")
+        
+        # Check for at least one number
+        if not re.search(r'\d', password):
+            raise ValueError("Password must contain at least one number")
+        
+        # Check for at least one special character from the allowed list
+        if not re.search(r'[!@$%^&*()_+={}\[\]:;,.?/<>-]', password):
+            raise ValueError("Password must contain at least one special character (!@$%^&*()_+={}[]:;,.?/<>-)")
+        
+        # Check for dangerous SQL patterns (keywords)
+        sql_keywords = r"\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|SCRIPT|TABLE|FROM|WHERE)\b"
+        if re.search(sql_keywords, password, re.IGNORECASE):
+            raise ValueError("Password contains invalid patterns")
         
         # Ensure it's valid UTF-8
         try:

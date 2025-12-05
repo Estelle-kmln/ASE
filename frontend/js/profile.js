@@ -144,6 +144,30 @@ function toggleEdit() {
     }
 }
 
+function validatePassword(password) {
+    // Check minimum length (8 characters)
+    if (password.length < 8) {
+        return 'Password must be at least 8 characters long';
+    }
+    
+    // Check for at least one number
+    if (!/\d/.test(password)) {
+        return 'Password must contain at least one number';
+    }
+    
+    // Check for at least one special character from allowed list
+    if (!/[!@$%^&*()_+=\[\]{}:;,.?/<>-]/.test(password)) {
+        return 'Password must contain at least one special character (!@$%^&*()_+={}[]:;,.?/<>-)';
+    }
+    
+    // Check that password only contains allowed characters
+    if (!/^[a-zA-Z0-9!@$%^&*()_+=\[\]{}:;,.?/<>-]+$/.test(password)) {
+        return 'Password contains invalid characters. Only letters, numbers, and these special characters are allowed: !@$%^&*()_+={}[]:;,.?/<>-';
+    }
+    
+    return null; // Password is valid
+}
+
 document.getElementById('profile-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     clearAlert();
@@ -159,8 +183,11 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
             showAlert('Passwords do not match!', 'error');
             return;
         }
-        if (password.length < 6) {
-            showAlert('Password must be at least 6 characters long', 'error');
+        
+        // Validate password strength
+        const passwordError = validatePassword(password);
+        if (passwordError) {
+            showAlert(passwordError, 'error');
             return;
         }
     }

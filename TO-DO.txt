@@ -7,8 +7,8 @@
 - Implement concurrent session detection/prevention
 
 3. Account Security Features
-- Account lockout after failed login attempts
-- Password strength enforcement (currently minimal) => add special characters and increase minimal length
+- ✅ Account lockout after failed login attempts (COMPLETED)
+- ✅ Password strength enforcement (COMPLETED - requires 8+ chars, numbers, special chars)
 
 4 Data Access Control
 - Ensure users can only access their own data
