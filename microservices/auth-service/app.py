@@ -37,7 +37,7 @@ app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = os.getenv(
     "JWT_SECRET_KEY", "your-secret-key-change-in-production"
 )
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=2)  # Short-lived access tokens
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=5)  # Short-lived access tokens
 app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)  # Long-lived refresh tokens
 
 # Initialize extensions

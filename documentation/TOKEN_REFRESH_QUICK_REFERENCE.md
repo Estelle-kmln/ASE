@@ -162,7 +162,7 @@ if (window.TokenManagement.TokenStorage.isTokenExpiringSoon()) {
 ### Access Token Lifetime
 File: `microservices/auth-service/app.py`
 ```python
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=2)
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=5)
 ```
 
 ### Refresh Token Lifetime

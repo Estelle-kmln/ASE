@@ -1,8 +1,8 @@
 1. Personal Data Encryption at Rest
-- Encrypt all information stored for a user
+- ✅ Encrypt all sensitive information stored for a user (COMPLETED)
 
 2. Enhanced Session Security
-- Add session timeout tracking 
+- ✅ Add session timeout tracking (COMPLETED)
 - ✅ Implement token refresh mechanism (COMPLETED)
 - Implement concurrent session detection/prevention
 
@@ -28,8 +28,6 @@ Since your task focuses on account data safety, I recommend focusing on:
 2. Enhance password requirements (enforce stronger passwords)
 
 3. Implement password change history (prevent reuse)
-
-4. Add additional PII encryption (if you collect email, phone, etc.)
 
 5. Enhanced session management (token refresh, concurrent session control)
 

@@ -15,7 +15,7 @@
    ✅ User registered
    ✅ Access token received
    ✅ Refresh token received
-   ⏱️  Expires in: 7200 seconds (2 hours)
+   ⏱️  Expires in: 12000 seconds (5 hours)
 
 2️⃣ Testing access token...
    ✅ Access token works!
@@ -115,7 +115,7 @@ $newToken | ConvertTo-Json
 ## Key Features
 
 ### 🔒 Security
-- **Short-lived access tokens**: 2 hours (was 24 hours)
+- **Short-lived access tokens**: 5 hours (was 24 hours)
 - **Server-side revocation**: Logout revokes refresh tokens
 - **Database tracking**: All tokens logged and monitored
 - **Expiry validation**: Both client and server-side checks
@@ -136,7 +136,7 @@ $newToken | ConvertTo-Json
 
 ### Current Settings
 ```python
-JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=2)    # 2 hours
+JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=5)    # 5 hours
 JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)   # 30 days
 ```
 

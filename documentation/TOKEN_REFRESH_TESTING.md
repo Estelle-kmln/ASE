@@ -131,7 +131,7 @@ Expected output:
 
 ### Method 4: Test Automatic Refresh
 
-Currently, access tokens expire in **2 hours**. To test automatic refresh:
+Currently, access tokens expire in **5 hours**. To test automatic refresh:
 
 #### Option A: Manually expire token for quick test
 1. Login to app
@@ -157,9 +157,9 @@ Then:
 3. Wait 2 minutes
 4. Watch automatic refresh happen
 
-#### Option C: Wait naturally (2 hours)
+#### Option C: Wait naturally (5 hours)
 1. Login and use the app
-2. Wait ~1 hour 55 minutes
+2. Wait ~4 hour 55 minutes
 3. Keep console open
 4. You'll see: "Token expiring soon, refreshing..."
 5. Make an API call - should work seamlessly
