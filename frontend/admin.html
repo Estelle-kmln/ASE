@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battlecards - Admin Panel</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <header class="header">
+        <h1>Admin Panel</h1>
+        <button class="menu-button" id="menu-btn">☰ Menu</button>
+        
+        <div class="dropdown-menu" id="dropdown-menu">
+            <div class="dropdown-item user-info" id="user-info"></div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item" onclick="navigateTo('index.html')">Home</div>
+            <div class="dropdown-item" onclick="navigateTo('profile.html')">Profile</div>
+            <div class="dropdown-item" onclick="navigateTo('game-history.html')">Game History</div>
+            <div class="dropdown-item" onclick="navigateTo('statistics.html')">Game Statistics</div>
+            <div class="dropdown-item" onclick="navigateTo('rules.html')">Game Rules</div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item" onclick="logout()">Logout</div>
+        </div>
+    </header>
+    
+    <div class="container">
+        <div class="admin-panel">
+            <!-- Admin Actions Section -->
+            <div class="admin-section">
+                <h2 class="admin-section-title">🔧 Administration</h2>
+                
+                <!-- Logs Section -->
+                <div class="admin-card">
+                    <h3 class="admin-card-title">📋 System Logs</h3>
+                    <button class="admin-button" id="view-logs-btn" onclick="toggleLogsView()">
+                        View Logs
+                    </button>
+                </div>
+                
+                <!-- Logs Display -->
+                <div class="admin-logs-container" id="logs-container" style="display: none;">
+                    <div class="admin-logs-header">
+                        <h3>System Activity Logs</h3>
+                        <button class="admin-button-secondary" onclick="refreshLogs()">🔄 Refresh</button>
+                    </div>
+                    <div class="admin-logs-list" id="logs-list">
+                        <div class="loading-spinner">Loading logs...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- User Management Section -->
+            <div class="admin-section">
+                <h2 class="admin-section-title">👥 User Management</h2>
+                
+                <!-- Search Bar -->
+                <div class="admin-search-container">
+                    <input 
+                        type="text" 
+                        id="user-search" 
+                        class="admin-search-input" 
+                        placeholder="🔍 Search users by username..."
+                    >
+                    <button class="admin-button-clear" id="clear-search-btn" onclick="clearUserSearch()" style="display: none;">
+                        ✕
+                    </button>
+                </div>
+                
+                <!-- Loading Indicator -->
+                <div class="loading-spinner" id="users-loading" style="display: none;">
+                    Loading users...
+                </div>
+                
+                <!-- Users Table -->
+                <div class="admin-table-container">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table-body">
+                            <!-- Users will be populated here -->
+                        </tbody>
+                    </table>
+                    
+                    <!-- Empty State -->
+                    <div class="admin-empty-state" id="users-empty-state" style="display: none;">
+                        <p>No users found</p>
+                    </div>
+                </div>
+                
+                <!-- Pagination Controls -->
+                <div class="admin-pagination">
+                    <div class="admin-pagination-info">
+                        <span>Show</span>
+                        <select id="page-size-select" class="admin-pagination-select">
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                        </select>
+                        <span>items per page</span>
+                    </div>
+                    
+                    <div class="admin-pagination-controls">
+                        <button class="admin-pagination-btn" id="prev-page-btn" onclick="previousPage()">
+                            « Previous
+                        </button>
+                        
+                        <div class="admin-pagination-page-info">
+                            <span>Page</span>
+                            <select id="current-page-select" class="admin-pagination-select">
+                                <option value="1">1</option>
+                            </select>
+                            <span>of <span id="total-pages">1</span></span>
+                        </div>
+                        
+                        <button class="admin-pagination-btn" id="next-page-btn" onclick="nextPage()">
+                            Next »
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Edit User Modal -->
+    <div class="modal" id="edit-user-modal">
+        <div class="modal-content">
+            <h2>Edit User</h2>
+            <form id="edit-user-form">
+                <input type="hidden" id="edit-user-id">
+                
+                <div class="form-group">
+                    <label for="edit-username">Username:</label>
+                    <input type="text" id="edit-username" class="form-input" readonly>
+                </div>
+                
+                <div class="form-group">
+                    <label for="edit-role">Role:</label>
+                    <select id="edit-role" class="form-input">
+                        <option value="ROLE_USER">User</option>
+                        <option value="ROLE_ADMIN">Administrator</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="edit-enabled">
+                        Account Enabled
+                    </label>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" class="button cancel" onclick="closeEditUserModal()">Cancel</button>
+                    <button type="submit" class="button">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script src="js/auth.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>

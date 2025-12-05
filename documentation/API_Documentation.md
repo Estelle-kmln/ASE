@@ -58,7 +58,6 @@ POST /api/auth/register
 ```json
 {
   "username": "string (min 3 chars)",
-  "email": "string (valid email)",
   "password": "string (min 4 chars)"
 }
 ```
@@ -66,7 +65,7 @@ POST /api/auth/register
 ```bash
 curl -X POST http://localhost:8080/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"username":"player1","email":"player1@example.com","password":"password123"}'
+  -d '{"username":"player1","password":"password123"}'
 ```
 **Response**:
 ```json
@@ -786,7 +785,7 @@ curl http://localhost:8080/api/leaderboard/health # Leaderboard Service
 # Create test user
 curl -X POST http://localhost:8080/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"username":"testuser","email":"test@example.com","password":"password123"}'
+  -d '{"username":"testuser","password":"password123"}'
 
 # Login and get token
 curl -X POST http://localhost:8080/api/auth/login \

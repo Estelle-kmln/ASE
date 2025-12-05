@@ -19,7 +19,7 @@ class InputSanitizer:
     SQL_INJECTION_PATTERNS = [
         r"(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|SCRIPT)\b)",
         r"(--|#|\/\*|\*\/)",
-        r"(\bOR\b.*=.*|\bAND\b.*=.*)",  # Fixed: single = is enough
+        r"(\bOR\b.*=.*|\bAND\b.*=.*)",
         r"(0x[0-9a-fA-F]+)",
         r"(\bCHAR\b|\bASCII\b|\bSUBSTRING\b)"
     ]
@@ -52,6 +52,7 @@ class InputSanitizer:
     # Valid characters for different input types
     ALPHANUMERIC = re.compile(r'^[a-zA-Z0-9]+$')
     USERNAME_PATTERN = re.compile(r'^[a-zA-Z0-9_.-]+$')
+    EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
     UUID_PATTERN = re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
     CARD_TYPE_PATTERN = re.compile(r'^(rock|paper|scissors)$', re.IGNORECASE)
     
@@ -104,7 +105,7 @@ class InputSanitizer:
         
         # If not allowing special characters, remove them
         if not allow_special:
-            sanitized = re.sub(r'[<>&"\'`]', '', sanitized)
+            sanitized = re.sub(r'[<>&"\'\'`]', '', sanitized)
         
         return sanitized
     
@@ -177,6 +178,35 @@ class InputSanitizer:
             raise ValueError("Password contains invalid characters")
         
         return password
+    
+    @staticmethod
+    def validate_email(email: str) -> str:
+        """
+        Validate and sanitize email input.
+        
+        Args:
+            email: Email to validate
+            
+        Returns:
+            Sanitized email
+            
+        Raises:
+            ValueError: If email is invalid
+        """
+        if not email:
+            raise ValueError("Email cannot be empty")
+        
+        # Basic sanitization
+        email = InputSanitizer.sanitize_string(email, max_length=254, allow_special=True)
+        
+        # Remove HTML entities
+        email = html.unescape(email)
+        
+        # Check format
+        if not InputSanitizer.EMAIL_PATTERN.match(email):
+            raise ValueError("Invalid email format")
+        
+        return email.lower()  # Normalize to lowercase
     
     @staticmethod
     def validate_game_id(game_id: str) -> str:

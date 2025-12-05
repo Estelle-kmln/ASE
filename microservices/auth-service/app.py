@@ -94,7 +94,7 @@ def health_check():
 
 @app.route("/api/auth/register", methods=["POST"])
 @require_sanitized_input(
-    {"username": "username", "password": "password", "email": "email"}
+    {"username": "username", "password": "password"}
 )
 def register():
     """Register a new user."""
@@ -112,12 +112,6 @@ def register():
         try:
             username = InputSanitizer.validate_username(data["username"])
             password = InputSanitizer.validate_password(data["password"])
-
-            # Optional email validation
-            email = None
-            if "email" in data and data["email"]:
-                email = InputSanitizer.validate_email(data["email"])
-
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
@@ -134,16 +128,10 @@ def register():
 
         # Hash password and create user
         hashed_password = hash_password(password)
-        if email:
-            cursor.execute(
-                "INSERT INTO users (username, password, email) VALUES (%s, %s, %s) RETURNING id",
-                (username, hashed_password, email),
-            )
-        else:
-            cursor.execute(
-                "INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id",
-                (username, hashed_password),
-            )
+        cursor.execute(
+            "INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id",
+            (username, hashed_password),
+        )
         user_id = cursor.fetchone()[0]
         conn.commit()
         conn.close()
@@ -248,7 +236,7 @@ def get_profile():
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         cursor.execute(
-            "SELECT id, username, created_at FROM users WHERE username = %s",
+            "SELECT id, username, is_admin, enabled, created_at FROM users WHERE username = %s",
             (current_user,),
         )
         user = cursor.fetchone()
@@ -263,6 +251,8 @@ def get_profile():
                     "user": {
                         "id": user["id"],
                         "username": user["username"],
+                        "is_admin": user.get("is_admin", False),
+                        "enabled": user.get("enabled", True),
                         "created_at": (
                             user["created_at"].isoformat()
                             if user["created_at"]
@@ -348,6 +338,200 @@ def validate_token():
 
     except Exception as e:
         return jsonify({"error": f"Token validation failed: {str(e)}"}), 500
+
+
+# Admin-only endpoints
+def require_admin():
+    """Decorator to require admin privileges."""
+    def wrapper(fn):
+        @jwt_required()
+        def decorator(*args, **kwargs):
+            current_user = get_jwt_identity()
+            
+            conn = get_db_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute(
+                "SELECT is_admin FROM users WHERE username = %s",
+                (current_user,)
+            )
+            user = cursor.fetchone()
+            conn.close()
+            
+            if not user or not user.get("is_admin"):
+                return jsonify({"error": "Admin privileges required"}), 403
+            
+            return fn(*args, **kwargs)
+        decorator.__name__ = fn.__name__
+        return decorator
+    return wrapper
+
+
+@app.route("/api/admin/users", methods=["GET"])
+@require_admin()
+def list_users():
+    """List all users with pagination."""
+    try:
+        page = int(request.args.get("page", 0))
+        size = int(request.args.get("size", 10))
+        offset = page * size
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get total count
+        cursor.execute("SELECT COUNT(*) as count FROM users")
+        total = cursor.fetchone()["count"]
+        
+        # Get paginated users
+        cursor.execute(
+            """SELECT id, username, is_admin, enabled, created_at 
+               FROM users 
+               ORDER BY created_at DESC 
+               LIMIT %s OFFSET %s""",
+            (size, offset)
+        )
+        users = cursor.fetchall()
+        conn.close()
+        
+        # Format users
+        formatted_users = []
+        for user in users:
+            formatted_users.append({
+                "id": user["id"],
+                "username": user["username"],
+                "roles": ["ROLE_ADMIN" if user.get("is_admin") else "ROLE_USER"],
+                "enabled": user.get("enabled", True),
+                "created_at": user["created_at"].isoformat() if user["created_at"] else None
+            })
+        
+        return jsonify({
+            "content": formatted_users,
+            "totalPages": (total + size - 1) // size,
+            "totalElements": total,
+            "number": page,
+            "size": size
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to list users: {str(e)}"}), 500
+
+
+@app.route("/api/admin/users/search", methods=["GET"])
+@require_admin()
+def search_users():
+    """Search users by username."""
+    try:
+        query = request.args.get("query", "")
+        page = int(request.args.get("page", 0))
+        size = int(request.args.get("size", 10))
+        offset = page * size
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        search_pattern = f"%{query}%"
+        
+        # Get total count
+        cursor.execute(
+            """SELECT COUNT(*) as count FROM users 
+               WHERE username ILIKE %s""",
+            (search_pattern,)
+        )
+        total = cursor.fetchone()["count"]
+        
+        # Get paginated results
+        cursor.execute(
+            """SELECT id, username, is_admin, enabled, created_at 
+               FROM users 
+               WHERE username ILIKE %s
+               ORDER BY created_at DESC 
+               LIMIT %s OFFSET %s""",
+            (search_pattern, size, offset)
+        )
+        users = cursor.fetchall()
+        conn.close()
+        
+        # Format users
+        formatted_users = []
+        for user in users:
+            formatted_users.append({
+                "id": user["id"],
+                "username": user["username"],
+                "roles": ["ROLE_ADMIN" if user.get("is_admin") else "ROLE_USER"],
+                "enabled": user.get("enabled", True),
+                "created_at": user["created_at"].isoformat() if user["created_at"] else None
+            })
+        
+        return jsonify({
+            "content": formatted_users,
+            "totalPages": (total + size - 1) // size,
+            "totalElements": total,
+            "number": page,
+            "size": size
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to search users: {str(e)}"}), 500
+
+
+@app.route("/api/admin/users/<int:user_id>", methods=["PUT"])
+@require_admin()
+def update_user():
+    """Update user (enable/disable, change roles)."""
+    try:
+        data = request.get_json()
+        user_id = int(request.view_args['user_id'])
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Check if user exists
+        cursor.execute("SELECT username FROM users WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
+        if not user:
+            conn.close()
+            return jsonify({"error": "User not found"}), 404
+        
+        # Update enabled status
+        if "enabled" in data:
+            cursor.execute(
+                "UPDATE users SET enabled = %s WHERE id = %s",
+                (data["enabled"], user_id)
+            )
+        
+        # Update admin role
+        if "roles" in data:
+            is_admin = "ROLE_ADMIN" in data["roles"]
+            cursor.execute(
+                "UPDATE users SET is_admin = %s WHERE id = %s",
+                (is_admin, user_id)
+            )
+        
+        conn.commit()
+        
+        # Log the action
+        current_user = get_jwt_identity()
+        cursor.execute(
+            "INSERT INTO logs (action, username, details) VALUES (%s, %s, %s)",
+            ("USER_UPDATED", current_user, f"Updated user {user[0]} (ID: {user_id})")
+        )
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"message": "User updated successfully"}), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to update user: {str(e)}"}), 500
+
+
+@app.route("/api/admin/roles", methods=["GET"])
+@require_admin()
+def list_roles():
+    """List available roles."""
+    return jsonify([
+        {"id": "ROLE_USER", "name": "User"},
+        {"id": "ROLE_ADMIN", "name": "Administrator"}
+    ]), 200
 
 
 if __name__ == "__main__":

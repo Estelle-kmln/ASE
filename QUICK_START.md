@@ -45,7 +45,6 @@ You'll see the login page as the default entry point.
 1. Click "Register here" on the login page
 2. Enter:
    - Username
-   - Email
    - Password (confirm it)
 3. Click "Register"
 4. After successful registration, login with your credentials

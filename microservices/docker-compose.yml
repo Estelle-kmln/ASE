@@ -109,6 +109,26 @@ services:
     networks:
       - battlecards-network
 
+  # Logs Service
+  logs-service:
+    build:
+      context: ./logs-service
+    environment:
+      - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
+      - JWT_SECRET_KEY=your-super-secret-key-change-in-production
+    ports:
+      - "5006:5006"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - battlecards-network
+
   # API Gateway (Nginx reverse proxy)
   api-gateway:
     image: nginx:alpine
@@ -125,6 +145,7 @@ services:
       - card-service
       - game-service
       - leaderboard-service
+      - logs-service
     networks:
       - battlecards-network
 

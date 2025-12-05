@@ -102,28 +102,6 @@ class TestInputSanitizer(unittest.TestCase):
             with self.assertRaises(ValueError, msg=f"Should reject: {password}"):
                 InputSanitizer.validate_password(password)
     
-    def test_email_validation(self):
-        """Test email validation."""
-        # Valid emails
-        valid_emails = ["test@example.com", "user.name@domain.org", "user+tag@example.net"]
-        for email in valid_emails:
-            result = InputSanitizer.validate_email(email)
-            self.assertEqual(result, email.lower())
-        
-        # Invalid emails
-        invalid_emails = [
-            "",  # Empty
-            "invalid-email",  # No @ symbol
-            "@domain.com",  # No local part
-            "user@",  # No domain
-            "user@domain",  # No TLD
-            "<script>alert('xss')</script>@domain.com"  # XSS attempt
-        ]
-        
-        for email in invalid_emails:
-            with self.assertRaises(ValueError, msg=f"Should reject: {email}"):
-                InputSanitizer.validate_email(email)
-    
     def test_game_id_validation(self):
         """Test game ID validation."""
         # Valid UUIDs
