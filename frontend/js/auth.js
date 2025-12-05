@@ -137,6 +137,9 @@ async function login(username, password) {
         } else if (response.status === 423) {
             // Account locked - start countdown timer
             handleAccountLockout(username, data);
+        } else if (response.status === 409) {
+            // Concurrent session conflict
+            handleConcurrentSession(data);
         } else if (response.status === 401 && data.remaining_attempts !== undefined) {
             // Failed login with remaining attempts warning
             const attemptsMessage = data.remaining_attempts > 0
@@ -296,6 +299,26 @@ function showAlert(message, type) {
 
 function clearAlert() {
     alertContainer.innerHTML = '';
+}
+
+function handleConcurrentSession(data) {
+    const activeSession = data.active_session || {};
+    const device = activeSession.device || 'Unknown Device';
+    const ipAddress = activeSession.ip_address || 'Unknown IP';
+    const createdAt = activeSession.created_at ? new Date(activeSession.created_at).toLocaleString() : 'Unknown';
+    
+    const message = `
+        <div style="text-align: left;">
+            <strong>Active Session Detected</strong><br><br>
+            You already have an active session on another device:<br><br>
+            <strong>Device:</strong> ${device}<br>
+            <strong>IP Address:</strong> ${ipAddress}<br>
+            <strong>Started:</strong> ${createdAt}<br><br>
+            Please logout from your other device first, or use the profile page to manage your sessions.
+        </div>
+    `;
+    
+    showAlert(message, 'error');
 }
 
 // Check if user is already logged in

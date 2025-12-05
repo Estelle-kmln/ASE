@@ -105,15 +105,93 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
 
 
-def store_refresh_token(user_id: int, refresh_token: str, expires_delta: timedelta) -> bool:
-    """Store a refresh token in the database."""
+def get_device_info() -> dict:
+    """Extract device information from request headers."""
+    user_agent = request.headers.get('User-Agent', 'Unknown')
+    ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
+    
+    # Parse user agent for simple device info
+    device_info = 'Unknown Device'
+    if 'Mobile' in user_agent:
+        if 'iPhone' in user_agent or 'iPad' in user_agent:
+            device_info = 'iOS Device'
+        elif 'Android' in user_agent:
+            device_info = 'Android Device'
+        else:
+            device_info = 'Mobile Device'
+    elif 'Windows' in user_agent:
+        if 'Edge' in user_agent:
+            device_info = 'Edge on Windows'
+        elif 'Chrome' in user_agent:
+            device_info = 'Chrome on Windows'
+        elif 'Firefox' in user_agent:
+            device_info = 'Firefox on Windows'
+        else:
+            device_info = 'Windows Device'
+    elif 'Macintosh' in user_agent or 'Mac OS' in user_agent:
+        if 'Safari' in user_agent and 'Chrome' not in user_agent:
+            device_info = 'Safari on Mac'
+        elif 'Chrome' in user_agent:
+            device_info = 'Chrome on Mac'
+        elif 'Firefox' in user_agent:
+            device_info = 'Firefox on Mac'
+        else:
+            device_info = 'Mac Device'
+    elif 'Linux' in user_agent:
+        device_info = 'Linux Device'
+    
+    return {
+        'device_info': device_info,
+        'ip_address': ip_address,
+        'user_agent': user_agent
+    }
+
+
+def get_active_sessions(user_id: int) -> list:
+    """Get all active (non-revoked, non-expired) sessions for a user."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            """SELECT id, device_info, ip_address, created_at, last_used_at 
+               FROM refresh_tokens 
+               WHERE user_id = %s AND revoked = FALSE AND expires_at > CURRENT_TIMESTAMP
+               ORDER BY created_at DESC""",
+            (user_id,)
+        )
+        sessions = cursor.fetchall()
+        conn.close()
+        return sessions
+    except Exception as e:
+        print(f"Failed to get active sessions: {e}")
+        return []
+
+
+def check_concurrent_session(user_id: int) -> bool:
+    """Check if user has an active session (strict mode)."""
+    sessions = get_active_sessions(user_id)
+    return len(sessions) > 0
+
+
+def store_refresh_token(user_id: int, refresh_token: str, expires_delta: timedelta, device_data: dict = None) -> bool:
+    """Store a refresh token in the database with device tracking."""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         expires_at = datetime.now() + expires_delta
+        
+        # Get device info if not provided
+        if device_data is None:
+            device_data = get_device_info()
+        
         cursor.execute(
-            "INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES (%s, %s, %s)",
-            (user_id, refresh_token, expires_at)
+            """INSERT INTO refresh_tokens 
+               (user_id, token, expires_at, device_info, ip_address, user_agent, last_used_at) 
+               VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)""",
+            (user_id, refresh_token, expires_at, 
+             device_data.get('device_info', 'Unknown'),
+             device_data.get('ip_address', 'Unknown'),
+             device_data.get('user_agent', 'Unknown'))
         )
         conn.commit()
         conn.close()
@@ -136,16 +214,26 @@ def validate_refresh_token(refresh_token: str) -> dict:
             (refresh_token,)
         )
         token_data = cursor.fetchone()
-        conn.close()
         
         if not token_data:
+            conn.close()
             return None
         
         if token_data["revoked"]:
+            conn.close()
             return None
         
         if token_data["expires_at"] < datetime.now():
+            conn.close()
             return None
+        
+        # Update last_used_at timestamp
+        cursor.execute(
+            "UPDATE refresh_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (token_data["id"],)
+        )
+        conn.commit()
+        conn.close()
         
         return token_data
     except Exception as e:
@@ -393,16 +481,37 @@ def login():
             (username,)
         )
         conn.commit()
+
+        # STRICT MODE: Check for concurrent sessions
+        if check_concurrent_session(user["id"]):
+            # Get active session info for the error message
+            active_sessions = get_active_sessions(user["id"])
+            session_info = active_sessions[0] if active_sessions else {}
+            
+            conn.close()
+            log_action("LOGIN_REJECTED", username, 
+                      f"Concurrent session detected - active session from {session_info.get('device_info', 'Unknown Device')}")
+            
+            return jsonify({
+                "error": "Another session is already active",
+                "message": "You already have an active session. Please logout from your other device first.",
+                "active_session": {
+                    "device": session_info.get('device_info', 'Unknown Device'),
+                    "ip_address": session_info.get('ip_address', 'Unknown'),
+                    "created_at": session_info.get('created_at').isoformat() if session_info.get('created_at') else None
+                }
+            }), 409  # 409 Conflict
+        
         conn.close()
 
         # Log successful login
-        log_action("USER_LOGIN", username, "User logged in successfully")
+        log_action("USER_LOGIN", username, f"User logged in successfully from {get_device_info()['device_info']}")
 
         # Create access token and refresh token
         access_token = create_access_token(identity=username)
         refresh_token = create_refresh_token(identity=username)
         
-        # Store refresh token in database
+        # Store refresh token in database with device tracking
         refresh_expires = app.config["JWT_REFRESH_TOKEN_EXPIRES"]
         store_refresh_token(user["id"], refresh_token, refresh_expires)
         
@@ -621,6 +730,123 @@ def logout():
         
     except Exception as e:
         return jsonify({"error": f"Logout failed: {str(e)}"}), 500
+
+
+@app.route("/api/auth/sessions", methods=["GET"])
+@jwt_required()
+def get_sessions():
+    """Get all active sessions for the current user."""
+    try:
+        current_user = get_jwt_identity()
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
+        user = cursor.fetchone()
+        conn.close()
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        sessions = get_active_sessions(user["id"])
+        
+        # Format sessions for response
+        formatted_sessions = []
+        for session in sessions:
+            formatted_sessions.append({
+                "id": session["id"],
+                "device": session.get("device_info", "Unknown Device"),
+                "ip_address": session.get("ip_address", "Unknown"),
+                "created_at": session["created_at"].isoformat() if session.get("created_at") else None,
+                "last_used_at": session["last_used_at"].isoformat() if session.get("last_used_at") else None
+            })
+        
+        return jsonify({
+            "sessions": formatted_sessions,
+            "total": len(formatted_sessions)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to get sessions: {str(e)}"}), 500
+
+
+@app.route("/api/auth/sessions/<int:session_id>", methods=["DELETE"])
+@jwt_required()
+def revoke_session(session_id):
+    """Revoke a specific session by ID."""
+    try:
+        current_user = get_jwt_identity()
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get user ID
+        cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
+        user = cursor.fetchone()
+        
+        if not user:
+            conn.close()
+            return jsonify({"error": "User not found"}), 404
+        
+        # Verify the session belongs to this user
+        cursor.execute(
+            "SELECT id, user_id FROM refresh_tokens WHERE id = %s",
+            (session_id,)
+        )
+        session = cursor.fetchone()
+        
+        if not session:
+            conn.close()
+            return jsonify({"error": "Session not found"}), 404
+        
+        if session["user_id"] != user["id"]:
+            conn.close()
+            log_action("UNAUTHORIZED_SESSION_REVOKE", current_user, 
+                      f"Attempted to revoke session {session_id} belonging to another user")
+            return jsonify({"error": "Unauthorized"}), 403
+        
+        # Revoke the session
+        cursor.execute(
+            "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (session_id,)
+        )
+        conn.commit()
+        conn.close()
+        
+        log_action("SESSION_REVOKED", current_user, f"User revoked session {session_id}")
+        
+        return jsonify({"message": "Session revoked successfully"}), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to revoke session: {str(e)}"}), 500
+
+
+@app.route("/api/auth/sessions/revoke-all", methods=["POST"])
+@jwt_required()
+def revoke_all_sessions():
+    """Revoke all sessions for the current user (except the current one if specified)."""
+    try:
+        current_user = get_jwt_identity()
+        data = request.get_json() or {}
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
+        user = cursor.fetchone()
+        conn.close()
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        # Revoke all tokens
+        revoke_all_user_tokens(user["id"])
+        
+        log_action("ALL_SESSIONS_REVOKED", current_user, "User revoked all sessions")
+        
+        return jsonify({"message": "All sessions revoked successfully"}), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to revoke all sessions: {str(e)}"}), 500
 
 
 # Admin-only endpoints
