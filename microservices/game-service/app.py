@@ -1667,11 +1667,15 @@ def ignore_invitation(game_id):
                 403,
             )
 
-        # Only allow ignoring pending invitations
-        if game.get("game_status") != "pending":
+        # Allow ignoring invitations in pending or deck_selection status
+        if game.get("game_status") not in ["pending", "deck_selection"]:
             conn.close()
             return (
-                jsonify({"error": "Can only ignore pending invitations"}),
+                jsonify(
+                    {
+                        "error": "Can only ignore pending invitations or games in deck selection"
+                    }
+                ),
                 400,
             )
 
@@ -1736,11 +1740,15 @@ def cancel_invitation(game_id):
                 403,
             )
 
-        # Only allow canceling pending invitations
-        if game.get("game_status") != "pending":
+        # Allow canceling invitations in pending or deck_selection status
+        if game.get("game_status") not in ["pending", "deck_selection"]:
             conn.close()
             return (
-                jsonify({"error": "Can only cancel pending invitations"}),
+                jsonify(
+                    {
+                        "error": "Can only cancel pending invitations or games in deck selection"
+                    }
+                ),
                 400,
             )
 
