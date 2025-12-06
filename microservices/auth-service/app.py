@@ -14,7 +14,7 @@ from flask_jwt_extended import (
     get_jwt_identity,
 )
 from flask_cors import CORS
-from common.db_manager import unit_of_work, db_health, get_connection, release_connection
+from common.db_manager import unit_of_work, db_health
 from dotenv import load_dotenv
 
 
