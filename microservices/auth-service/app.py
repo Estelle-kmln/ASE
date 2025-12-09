@@ -14,9 +14,9 @@ from flask_jwt_extended import (
     get_jwt_identity,
 )
 from flask_cors import CORS
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from common.db_manager import unit_of_work, db_health
 from dotenv import load_dotenv
+
 
 # Add utils directory to path for input sanitizer
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "utils"))
@@ -62,29 +62,21 @@ def expired_token_callback(jwt_header, jwt_payload):
     return jsonify({"error": "Token has expired"}), 401
 
 
-# Database configuration
+# Database configuration - kept for reference but not used directly anymore
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://gameuser:gamepassword@localhost:5432/battlecards",
 )
 
 
-def get_db_connection():
-    """Create and return a PostgreSQL database connection."""
-    return psycopg2.connect(DATABASE_URL)
-
-
 def log_action(action: str, username: str = None, details: str = None):
-    """Log an action to the logs table."""
+    """Log an action to the logs table using db_manager."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO logs (action, username, details) VALUES (%s, %s, %s)",
-            (action, username, details),
-        )
-        conn.commit()
-        conn.close()
+        with unit_of_work() as cur:
+            cur.execute(
+                "INSERT INTO logs (action, username, details) VALUES (%s, %s, %s)",
+                (action, username, details),
+            )
     except Exception as e:
         # Don't fail the main operation if logging fails
         print(f"Failed to log action: {e}")
@@ -105,8 +97,7 @@ def verify_password(password: str, hashed: str) -> bool:
 @app.route("/health", methods=["GET"])
 @app.route("/api/auth/health", methods=["GET"])
 def health_check():
-    """Health check endpoint."""
-    return jsonify({"status": "healthy", "service": "auth-service"}), 200
+    return jsonify(db_health()), 200
 
 
 @app.route("/api/auth/register", methods=["POST"])
@@ -130,30 +121,31 @@ def register():
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # Check if username already exists
-        cursor.execute(
-            "SELECT COUNT(*) FROM users WHERE username = %s", (username,)
-        )
-        if cursor.fetchone()[0] > 0:
-            conn.close()
-            # Log failed registration attempt
-            log_action(
-                "REGISTRATION_FAILED", username, "Username already exists"
-            )
-            return jsonify({"error": "Username already exists"}), 409
-
-        # Hash password and create user
         hashed_password = hash_password(password)
-        cursor.execute(
-            "INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id",
-            (username, hashed_password),
-        )
-        user_id = cursor.fetchone()[0]
-        conn.commit()
-        conn.close()
+
+        with unit_of_work() as cur:
+            # Check if username exists
+            cur.execute(
+                "SELECT COUNT(*) AS count FROM users WHERE username = %s",
+                (username,),
+            )
+            if cur.fetchone()["count"] > 0:
+                # Log failed registration attempt
+                log_action(
+                    "REGISTRATION_FAILED", username, "Username already exists"
+                )
+                return jsonify({"error": "Username already exists"}), 409
+
+            # Insert user
+            cur.execute(
+                """
+                INSERT INTO users (username, password)
+                VALUES (%s, %s)
+                RETURNING id
+                """,
+                (username, hashed_password),
+            )
+            user_id = cur.fetchone()["id"]
 
         # Log the registration
         log_action(
@@ -189,6 +181,7 @@ def register():
         return jsonify({"error": f"Registration failed: {str(e)}"}), 500
 
 
+
 @app.route("/api/auth/login", methods=["POST"])
 @require_sanitized_input({"username": "username", "password": "password"})
 def login():
@@ -210,16 +203,14 @@ def login():
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
         # Get user from database
-        cursor.execute(
-            "SELECT id, username, password FROM users WHERE username = %s",
-            (username,),
-        )
-        user = cursor.fetchone()
-        conn.close()
+        with unit_of_work() as cur:
+            cur.execute(
+                "SELECT id, username, password FROM users WHERE username = %s",
+                (username,),
+            )
+            user = cur.fetchone()
+        
 
         if not user or not verify_password(password, user["password"]):
             # Log failed login attempt
@@ -263,15 +254,12 @@ def get_profile():
     try:
         current_user = get_jwt_identity()
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        cursor.execute(
-            "SELECT id, username, is_admin, created_at FROM users WHERE username = %s",
-            (current_user,),
-        )
-        user = cursor.fetchone()
-        conn.close()
+        with unit_of_work() as cur:
+            cur.execute(
+                "SELECT id, username, is_admin, created_at FROM users WHERE username = %s",
+                (current_user,),
+            )
+            user = cur.fetchone()
 
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -310,39 +298,32 @@ def update_profile():
         if not data:
             return jsonify({"error": "No data provided"}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        with unit_of_work() as cur:
+            # Check if user exists
+            cur.execute(
+                "SELECT COUNT(*) AS count FROM users WHERE username = %s",
+                (current_user,)
+            )
+            if cur.fetchone()["count"] == 0:
+                return jsonify({"error": "User not found"}), 404
 
-        # Check if user exists
-        cursor.execute(
-            "SELECT COUNT(*) FROM users WHERE username = %s", (current_user,)
-        )
-        if cursor.fetchone()[0] == 0:
-            conn.close()
-            return jsonify({"error": "User not found"}), 404
+            # Update password if provided
+            if "password" in data and data["password"]:
+                try:
+                    new_password = InputSanitizer.validate_password(data["password"])
+                except ValueError as e:
+                    return jsonify({"error": str(e)}), 400
 
-        # Update password if provided
-        if "password" in data and data["password"]:
-            try:
-                new_password = InputSanitizer.validate_password(
-                    data["password"]
+                hashed = hash_password(new_password)
+                cur.execute(
+                    "UPDATE users SET password = %s WHERE username = %s",
+                    (hashed, current_user)
                 )
-            except ValueError as e:
-                conn.close()
-                return jsonify({"error": str(e)}), 400
-
-            hashed_password = hash_password(new_password)
-            cursor.execute(
-                "UPDATE users SET password = %s WHERE username = %s",
-                (hashed_password, current_user),
-            )
-            # Log password change
-            log_action(
-                "PASSWORD_CHANGED", current_user, "User changed their password"
-            )
-
-        conn.commit()
-        conn.close()
+                
+                # Log password change
+                log_action(
+                    "PASSWORD_CHANGED", current_user, "User changed their password"
+                )
 
         return jsonify({"message": "Profile updated successfully"}), 200
 
@@ -357,14 +338,12 @@ def validate_token():
     try:
         current_user = get_jwt_identity()
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT COUNT(*) FROM users WHERE username = %s", (current_user,)
-        )
-        user_exists = cursor.fetchone()[0] > 0
-        conn.close()
+        with unit_of_work() as cur:
+            cur.execute(
+                "SELECT COUNT(*) AS count FROM users WHERE username = %s",
+                (current_user,)
+            )
+            user_exists = cur.fetchone()["count"] > 0
 
         if not user_exists:
             return jsonify({"error": "Invalid token"}), 401
@@ -384,14 +363,12 @@ def require_admin():
         def decorator(*args, **kwargs):
             current_user = get_jwt_identity()
 
-            conn = get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute(
-                "SELECT is_admin FROM users WHERE username = %s",
-                (current_user,),
-            )
-            user = cursor.fetchone()
-            conn.close()
+            with unit_of_work() as cur:
+                cur.execute(
+                    "SELECT is_admin FROM users WHERE username = %s",
+                    (current_user,),
+                )
+                user = cur.fetchone()
 
             if not user or not user.get("is_admin"):
                 # Log unauthorized admin access attempt
@@ -420,23 +397,20 @@ def list_users():
         size = int(request.args.get("size", 10))
         offset = page * size
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        with unit_of_work() as cur:
+            # Get total count
+            cur.execute("SELECT COUNT(*) as count FROM users")
+            total = cur.fetchone()["count"]
 
-        # Get total count
-        cursor.execute("SELECT COUNT(*) as count FROM users")
-        total = cursor.fetchone()["count"]
-
-        # Get paginated users
-        cursor.execute(
-            """SELECT id, username, is_admin, created_at 
-               FROM users 
-               ORDER BY created_at DESC 
-               LIMIT %s OFFSET %s""",
-            (size, offset),
-        )
-        users = cursor.fetchall()
-        conn.close()
+            # Get paginated users
+            cur.execute(
+                """SELECT id, username, is_admin, created_at 
+                   FROM users 
+                   ORDER BY created_at DESC 
+                   LIMIT %s OFFSET %s""",
+                (size, offset),
+            )
+            users = cur.fetchall()
 
         # Format users
         formatted_users = []
@@ -484,29 +458,26 @@ def search_users():
         size = int(request.args.get("size", 10))
         offset = page * size
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        with unit_of_work() as cur:
+            search_pattern = f"%{query}%"
 
-        search_pattern = f"%{query}%"
+            # Get total count
+            cur.execute(
+                "SELECT COUNT(*) as count FROM users WHERE username ILIKE %s",
+                (search_pattern,),
+            )
+            total = cur.fetchone()["count"]
 
-        # Get total count
-        cursor.execute(
-            "SELECT COUNT(*) as count FROM users WHERE username ILIKE %s",
-            (search_pattern,),
-        )
-        total = cursor.fetchone()["count"]
-
-        # Get paginated results
-        cursor.execute(
-            """SELECT id, username, is_admin, created_at 
-               FROM users 
-               WHERE username ILIKE %s
-               ORDER BY created_at DESC 
-               LIMIT %s OFFSET %s""",
-            (search_pattern, size, offset),
-        )
-        users = cursor.fetchall()
-        conn.close()
+            # Get paginated results
+            cur.execute(
+                """SELECT id, username, is_admin, created_at 
+                   FROM users 
+                   WHERE username ILIKE %s
+                   ORDER BY created_at DESC 
+                   LIMIT %s OFFSET %s""",
+                (search_pattern, size, offset),
+            )
+            users = cur.fetchall()
 
         # Format users
         formatted_users = []

@@ -8,8 +8,7 @@ from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from flask_jwt_extended import JWTManager, jwt_required
 from flask_cors import CORS
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from common.db_manager import unit_of_work, db_health
 from dotenv import load_dotenv
 
 # Add utils directory to path for input sanitizer
@@ -55,7 +54,7 @@ def get_db_connection():
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
-    return jsonify({'status': 'healthy', 'service': 'leaderboard-service'}), 200
+    return jsonify(db_health()), 200
 
 @app.route('/api/leaderboard', methods=['GET'])
 @jwt_required()
@@ -69,65 +68,63 @@ def get_leaderboard():
         except ValueError:
             limit = 10  # Default to 10 if invalid
         
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Calculate wins for each player
-        cursor.execute("""
-            WITH player_stats AS (
-                -- Player 1 wins
-                SELECT player1_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player1_name
-                GROUP BY player1_name
+        with unit_of_work() as cur:
+
+            # Calculate wins for each player
+            cur.execute("""
+                WITH player_stats AS (
+                    -- Player 1 wins
+                    SELECT player1_name as player, COUNT(*) as wins
+                    FROM games 
+                    WHERE is_active = false AND winner = player1_name
+                    GROUP BY player1_name
+
+                    UNION ALL
+
+                    -- Player 2 wins
+                    SELECT player2_name as player, COUNT(*) as wins
+                    FROM games 
+                    WHERE is_active = false AND winner = player2_name
+                    GROUP BY player2_name
+                ),
+                total_games AS (
+                    -- Total games for each player
+                    SELECT player1_name as player, COUNT(*) as total_games
+                    FROM games
+                    WHERE is_active = false
+                    GROUP BY player1_name
+
+                    UNION ALL
                 
-                UNION ALL
-                
-                -- Player 2 wins
-                SELECT player2_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player2_name
-                GROUP BY player2_name
-            ),
-            total_games AS (
-                -- Total games for each player
-                SELECT player1_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player1_name
-                
-                UNION ALL
-                
-                SELECT player2_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player2_name
-            ),
-            aggregated_stats AS (
+                    SELECT player2_name as player, COUNT(*) as total_games
+                    FROM games
+                    WHERE is_active = false
+                    GROUP BY player2_name
+                ),
+                aggregated_stats AS (
+                    SELECT 
+                        p.player,
+                        SUM(p.wins) as total_wins,
+                        SUM(t.total_games) as total_games
+                    FROM player_stats p
+                    FULL OUTER JOIN total_games t ON p.player = t.player
+                    GROUP BY p.player
+                )
                 SELECT 
-                    COALESCE(p.player, t.player) as player,
-                    SUM(p.wins) as total_wins,
-                    SUM(t.total_games) as total_games
-                FROM player_stats p
-                FULL OUTER JOIN total_games t ON p.player = t.player
-                GROUP BY COALESCE(p.player, t.player)
-            )
-            SELECT 
-                player,
-                COALESCE(total_wins, 0) as wins,
-                COALESCE(total_games, 0) as games,
-                CASE 
-                    WHEN COALESCE(total_games, 0) = 0 THEN 0 
-                    ELSE ROUND((COALESCE(total_wins, 0)::decimal / total_games) * 100, 2)
-                END as win_percentage
-            FROM aggregated_stats
-            WHERE player IS NOT NULL
-            ORDER BY wins DESC, win_percentage DESC, games DESC
-            LIMIT %s
-        """, (limit,))
+                    player,
+                    COALESCE(total_wins, 0) as wins,
+                    COALESCE(total_games, 0) as games,
+                    CASE 
+                        WHEN COALESCE(total_games, 0) = 0 THEN 0 
+                         ELSE ROUND((COALESCE(total_wins, 0)::decimal / total_games) * 100, 2)
+                    END as win_percentage
+                FROM aggregated_stats
+                WHERE player IS NOT NULL
+                ORDER BY wins DESC, win_percentage DESC, games DESC
+                LIMIT %s
+            """, (limit,))
         
-        results = cursor.fetchall()
-        conn.close()
+            results = cur.fetchall()
         
         leaderboard = []
         for i, player in enumerate(results, 1):
@@ -165,30 +162,26 @@ def get_my_matches():
             username = InputSanitizer.validate_username(username)
         except ValueError as e:
             return jsonify({'error': f'Invalid username: {str(e)}'}), 400
-        
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Get all matches for this player
-        cursor.execute("""
-            SELECT 
-                game_id,
-                player1_name,
-                player2_name,
-                player1_score,
-                player2_score,
-                winner,
-                created_at
-            FROM games 
-            WHERE game_status IN ('completed', 'abandoned')
-            AND game_status != 'ignored'
-            AND (player1_name = %s OR player2_name = %s)
-            ORDER BY created_at DESC
-        """, (username, username))
-        
-        games = cursor.fetchall()
-        conn.close()
-        
+
+        with unit_of_work() as cur:
+            cur.execute("""
+                SELECT 
+                    game_id,
+                    player1_name,
+                    player2_name,
+                    player1_score,
+                    player2_score,
+                    winner,
+                    created_at
+                FROM games 
+                WHERE game_status IN ('completed', 'abandoned')
+                AND game_status != 'ignored'
+                AND (player1_name = %s OR player2_name = %s)
+                ORDER BY created_at DESC
+            """, (username, username))
+            
+            games = cur.fetchall()
+
         matches = []
         for game in games:
             opponent = game['player2_name'] if game['player1_name'] == username else game['player1_name']
@@ -213,6 +206,7 @@ def get_my_matches():
     except Exception as e:
         return jsonify({'error': f'Failed to get matches: {str(e)}'}), 500
 
+
 @app.route('/api/leaderboard/player/<player_name>', methods=['GET'])
 @jwt_required()
 def get_player_stats(player_name):
@@ -223,69 +217,67 @@ def get_player_stats(player_name):
             player_name = InputSanitizer.validate_username(player_name)
         except ValueError as e:
             return jsonify({'error': f'Invalid player name: {str(e)}'}), 400
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Get player's overall stats
-        cursor.execute("""
-            WITH player_wins AS (
-                SELECT COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned')
-                AND (
-                    (winner = player1_name AND player1_name = %s) OR 
-                    (winner = player2_name AND player2_name = %s)
+        with unit_of_work() as cur:
+
+            # Get player's overall stats
+            cur.execute("""
+                WITH player_wins AS (
+                    SELECT COUNT(*) as wins
+                    FROM games 
+                    WHERE is_active = false 
+                    AND (
+                        (winner = player1_name AND player1_name = %s) OR 
+                        (winner = player2_name AND player2_name = %s)
+                    )
+                ),
+                player_games AS (
+                    SELECT COUNT(*) as total_games
+                    FROM games 
+                    WHERE is_active = false 
+                    AND (player1_name = %s OR player2_name = %s)
                 )
-            ),
-            player_games AS (
-                SELECT COUNT(*) as total_games
+                SELECT 
+                    p.wins,
+                    g.total_games,
+                    (g.total_games - p.wins) as losses,
+                    CASE 
+                        WHEN g.total_games = 0 THEN 0 
+                        ELSE ROUND((p.wins::decimal / g.total_games) * 100, 2)
+                    END as win_percentage
+                FROM player_wins p, player_games g
+            """, (player_name, player_name, player_name, player_name))
+        
+            stats = cur.fetchone()
+        
+            if not stats or stats['total_games'] == 0:
+                return jsonify({
+                    'player': player_name,
+                    'wins': 0,
+                    'losses': 0,
+                    'total_games': 0,
+                    'win_percentage': 0,
+                    'recent_games': []
+                }), 200
+        
+            # Get recent games
+            cur.execute("""
+                SELECT 
+                    game_id,
+                    player1_name,
+                    player2_name,
+                    player1_score,
+                    player2_score,
+                    winner,
+                    created_at
                 FROM games 
                 WHERE game_status IN ('completed', 'abandoned')
                 AND (player1_name = %s OR player2_name = %s)
-            )
-            SELECT 
-                p.wins,
-                g.total_games,
-                (g.total_games - p.wins) as losses,
-                CASE 
-                    WHEN g.total_games = 0 THEN 0 
-                    ELSE ROUND((p.wins::decimal / g.total_games) * 100, 2)
-                END as win_percentage
-            FROM player_wins p, player_games g
-        """, (player_name, player_name, player_name, player_name))
+                ORDER BY created_at DESC
+                LIMIT 10
+            """, (player_name, player_name))
         
-        stats = cursor.fetchone()
-        
-        if not stats or stats['total_games'] == 0:
-            conn.close()
-            return jsonify({
-                'player': player_name,
-                'wins': 0,
-                'losses': 0,
-                'total_games': 0,
-                'win_percentage': 0,
-                'recent_games': []
-            }), 200
-        
-        # Get recent games
-        cursor.execute("""
-            SELECT 
-                game_id,
-                player1_name,
-                player2_name,
-                player1_score,
-                player2_score,
-                winner,
-                created_at
-            FROM games 
-            WHERE game_status IN ('completed', 'abandoned')
-            AND (player1_name = %s OR player2_name = %s)
-            ORDER BY created_at DESC
-            LIMIT 10
-        """, (player_name, player_name))
-        
-        recent_games = cursor.fetchall()
-        conn.close()
+            recent_games = cur.fetchall()
         
         games_list = []
         for game in recent_games:
@@ -327,28 +319,26 @@ def get_recent_games():
         except ValueError:
             limit = 10  # Default to 10 if invalid
         
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        with unit_of_work() as cur:
+            # Fetch recent completed games
+            cur.execute("""
+                SELECT 
+                    game_id,
+                    player1_name,
+                    player2_name,
+                    player1_score,
+                    player2_score,
+                    winner,
+                    turn,
+                    created_at,
+                    updated_at
+                FROM games 
+                WHERE is_active = false
+                ORDER BY updated_at DESC
+                LIMIT %s
+            """, (limit,))
         
-        cursor.execute("""
-            SELECT 
-                game_id,
-                player1_name,
-                player2_name,
-                player1_score,
-                player2_score,
-                winner,
-                turn,
-                created_at,
-                updated_at
-            FROM games 
-            WHERE game_status IN ('completed', 'abandoned')
-            ORDER BY updated_at DESC
-            LIMIT %s
-        """, (limit,))
-        
-        games = cursor.fetchall()
-        conn.close()
+            games = cur.fetchall()
         
         games_list = []
         for game in games:
@@ -377,116 +367,114 @@ def get_recent_games():
 def get_top_players():
     """Get top players by different metrics."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        with unit_of_work() as cur:
         
-        # Top players by wins
-        cursor.execute("""
-            WITH player_stats AS (
-                SELECT player1_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player1_name
-                GROUP BY player1_name
+            # Top players by wins
+            cur.execute("""
+                WITH player_stats AS (
+                    SELECT player1_name as player, COUNT(*) as wins
+                    FROM games 
+                    WHERE is_active = false AND winner = player1_name
+                    GROUP BY player1_name
                 
-                UNION ALL
+                    UNION ALL
                 
-                SELECT player2_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player2_name
-                GROUP BY player2_name
-            )
-            SELECT 
-                player,
-                SUM(wins) as total_wins
-            FROM player_stats
-            WHERE player IS NOT NULL
-            GROUP BY player
-            ORDER BY total_wins DESC
-            LIMIT 5
-        """)
-        
-        top_by_wins = cursor.fetchall()
-        
-        # Top players by win percentage (min 5 games)
-        cursor.execute("""
-            WITH player_stats AS (
-                -- Player 1 wins
-                SELECT player1_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player1_name
-                GROUP BY player1_name
-                
-                UNION ALL
-                
-                -- Player 2 wins
-                SELECT player2_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player2_name
-                GROUP BY player2_name
-            ),
-            total_games AS (
-                -- Total games for each player
-                SELECT player1_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player1_name
-                
-                UNION ALL
-                
-                SELECT player2_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player2_name
-            ),
-            aggregated_stats AS (
+                    SELECT player2_name as player, COUNT(*) as wins
+                    FROM games 
+                    WHERE is_active = false AND winner = player2_name
+                    GROUP BY player2_name
+                )
                 SELECT 
-                    COALESCE(p.player, t.player) as player,
-                    SUM(p.wins) as total_wins,
-                    SUM(t.total_games) as total_games
-                FROM player_stats p
-                FULL OUTER JOIN total_games t ON p.player = t.player
-                GROUP BY COALESCE(p.player, t.player)
-            )
-            SELECT 
-                player,
-                COALESCE(total_wins, 0) as wins,
-                COALESCE(total_games, 0) as games,
-                ROUND((COALESCE(total_wins, 0)::decimal / total_games) * 100, 2) as win_percentage
-            FROM aggregated_stats
-            WHERE player IS NOT NULL AND COALESCE(total_games, 0) >= 5
-            ORDER BY win_percentage DESC
-            LIMIT 5
-        """)
+                    player,
+                    SUM(wins) as total_wins
+                FROM player_stats
+                WHERE player IS NOT NULL
+                GROUP BY player
+                ORDER BY total_wins DESC
+                LIMIT 5
+            """)
         
-        top_by_percentage = cursor.fetchall()
+            top_by_wins = cur.fetchall()
         
-        # Most active players
-        cursor.execute("""
-            WITH total_games AS (
-                SELECT player1_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player1_name
+            # Top players by win percentage (min 5 games)
+            cur.execute("""
+                WITH player_stats AS (
+                    -- Player 1 wins
+                    SELECT player1_name as player, COUNT(*) as wins
+                    FROM games 
+                    WHERE is_active = false AND winner = player1_name
+                    GROUP BY player1_name
                 
-                UNION ALL
+                    UNION ALL
                 
-                SELECT player2_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player2_name
-            )
-            SELECT 
-                player,
-                SUM(total_games) as total_games
-            FROM total_games
-            WHERE player IS NOT NULL
-            GROUP BY player
-            ORDER BY total_games DESC
-            LIMIT 5
-        """)
+                    -- Player 2 wins
+                    SELECT player2_name as player, COUNT(*) as wins
+                    FROM games 
+                    WHERE is_active = false AND winner = player2_name
+                    GROUP BY player2_name
+                ),
+                total_games AS (
+                    -- Total games for each player
+                    SELECT player1_name as player, COUNT(*) as total_games
+                    FROM games
+                    WHERE is_active = false
+                    GROUP BY player1_name
+                
+                    UNION ALL
+                
+                    SELECT player2_name as player, COUNT(*) as total_games
+                    FROM games
+                    WHERE is_active = false
+                    GROUP BY player2_name
+                ),
+                aggregated_stats AS (
+                    SELECT 
+                        p.player,
+                        SUM(p.wins) as total_wins,
+                        SUM(t.total_games) as total_games
+                    FROM player_stats p
+                    FULL OUTER JOIN total_games t ON p.player = t.player
+                    GROUP BY p.player
+                )
+                SELECT 
+                    player,
+                    COALESCE(total_wins, 0) as wins,
+                    COALESCE(total_games, 0) as games,
+                    ROUND((COALESCE(total_wins, 0)::decimal / total_games) * 100, 2) as win_percentage
+                FROM aggregated_stats
+                WHERE player IS NOT NULL AND COALESCE(total_games, 0) >= 5
+                ORDER BY win_percentage DESC
+                LIMIT 5
+            """)
         
-        most_active = cursor.fetchall()
-        conn.close()
+            top_by_percentage = cur.fetchall()
+        
+            # Most active players
+            cur.execute("""
+                WITH total_games AS (
+                    SELECT player1_name as player, COUNT(*) as total_games
+                    FROM games
+                    WHERE is_active = false
+                    GROUP BY player1_name
+                
+                    UNION ALL
+                
+                    SELECT player2_name as player, COUNT(*) as total_games
+                    FROM games
+                    WHERE is_active = false
+                    GROUP BY player2_name
+                )
+                SELECT 
+                    player,
+                    SUM(total_games) as total_games
+                FROM total_games
+                WHERE player IS NOT NULL
+                GROUP BY player
+                ORDER BY total_games DESC
+                LIMIT 5
+            """)
+        
+            most_active = cur.fetchall()
         
         return jsonify({
             'top_by_wins': [
@@ -519,53 +507,52 @@ def get_top_players():
 def get_global_statistics():
     """Get global game statistics."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Total games and players
-        cursor.execute("""
-            SELECT 
-                COUNT(*) as total_games,
-                COUNT(DISTINCT player1_name) + COUNT(DISTINCT player2_name) as unique_players
-            FROM games 
-            WHERE game_status IN ('completed', 'abandoned')
-        """)
+        with unit_of_work() as cur:
+
+            # Total games and players
+            cur.execute("""
+                SELECT 
+                    COUNT(*) as total_games,
+                    COUNT(DISTINCT player1_name) + COUNT(DISTINCT player2_name) as unique_players
+                FROM games 
+                WHERE is_active = false
+            """)
         
-        basic_stats = cursor.fetchone()
+            basic_stats = cur.fetchone()
         
-        # Games by outcome
-        cursor.execute("""
-            SELECT 
-                COUNT(CASE WHEN winner IS NOT NULL THEN 1 END) as games_with_winner,
-                COUNT(CASE WHEN winner IS NULL THEN 1 END) as tied_games
-            FROM games 
-            WHERE game_status IN ('completed', 'abandoned')
-        """)
+            # Games by outcome
+            cur.execute("""
+               SELECT 
+                    COUNT(CASE WHEN winner IS NOT NULL THEN 1 END) as games_with_winner,
+                    COUNT(CASE WHEN winner IS NULL THEN 1 END) as tied_games
+                FROM games 
+                WHERE is_active = false
+            """)
         
-        outcome_stats = cursor.fetchone()
+            outcome_stats = cur.fetchone()
         
-        # Average game duration
-        cursor.execute("""
-            SELECT 
-                AVG(turn) as avg_game_turns,
-                MIN(turn) as shortest_game,
-                MAX(turn) as longest_game
-            FROM games 
-            WHERE game_status IN ('completed', 'abandoned')
-        """)
+            # Average game duration
+            cur.execute("""
+                SELECT 
+                    AVG(turn) as avg_game_turns,
+                    MIN(turn) as shortest_game,
+                    MAX(turn) as longest_game
+                FROM games 
+                WHERE is_active = false
+            """)
         
-        duration_stats = cursor.fetchone()
+            duration_stats = cur.fetchone()
         
-        # Recent activity (games in last 7 days)
-        cursor.execute("""
-            SELECT COUNT(*) as games_last_week
-            FROM games 
-            WHERE game_status IN ('completed', 'abandoned')
-            AND created_at >= %s
-        """, (datetime.now() - timedelta(days=7),))
+            # Recent activity (games in last 7 days)
+            cur.execute("""
+                SELECT COUNT(*) as games_last_week
+                FROM games 
+                WHERE is_active = false 
+                AND created_at >= %s
+            """, (datetime.now() - timedelta(days=7),))
         
-        recent_activity = cursor.fetchone()
-        conn.close()
+            recent_activity = cur.fetchone()
         
         return jsonify({
             'total_completed_games': basic_stats['total_games'],
