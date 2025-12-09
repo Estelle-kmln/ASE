@@ -13,11 +13,15 @@ COPY auth-service/requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip>=24.3.1 && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy application code (from auth-service folder)
+COPY auth-service/app.py .
+COPY auth-service/input_sanitizer.py .
 
 # Copy shared common modules into container
 COPY common /app/common
+
+# Copy utils for all services
+COPY utils /app/utils
 
 # Add shared code directory to Python path (used by all services for db_manager, utils, etc.)
 ENV PYTHONPATH="/app:/app/common"
