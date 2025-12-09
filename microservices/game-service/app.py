@@ -1320,7 +1320,7 @@ def accept_invitation(game_id):
                 return jsonify({"error": "Only players in this game can accept"}), 403
 
             # Only allow accepting pending invitations
-            if game.get["game_status"] != "pending":
+            if game.get("game_status") != "pending":
                 return jsonify({"error": "Can only accept pending invitations"}), 400
 
             # Mark the invitation as accepted and transition to deck_selection
@@ -1361,7 +1361,7 @@ def ignore_invitation(game_id):
                 return jsonify({"error": "Only the invited player can ignore this invitation"}), 403
 
             # Only allow ignoring pending invitations
-            if game.get["game_status"] != "pending":
+            if game.get("game_status") != "pending":
                 return jsonify({"error": "Can only ignore pending invitations"}), 400
 
             # Mark the invitation as ignored
@@ -1387,129 +1387,6 @@ def cancel_invitation(game_id):
     try:
         # Basic input sanitization
         game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
-        current_user = get_jwt_identity()
-
-        with unit_of_work() as cur:
-            cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-            game = cur.fetchone()
-
-            if not game:
-                return jsonify({"error": "Game not found"}), 404
-
-            # Check if user is player1 (the inviter)
-            if current_user != game["player1_name"]:
-                return jsonify({"error": "Only the game creator can cancel this invitation"}), 403
-
-            # Only allow canceling pending invitations
-            if game.get["game_status"] != "pending":
-                return jsonify({"error": "Can only cancel pending invitations"}), 400
-
-            # Mark the invitation as ignored (same effect as cancelling)
-            cur.execute(
-                """
-                UPDATE games 
-                SET game_status = 'ignored', updated_at = CURRENT_TIMESTAMP 
-                WHERE game_id = %s
-            """,
-                (game_id,),
-            )
-
-        return jsonify({"message": "Invitation cancelled successfully"}), 200
-
-    except Exception as e:
-        return jsonify({"error": f"Failed to cancel invitation: {str(e)}"}), 500
-
-
-@app.route("/api/games/<game_id>/accept", methods=["POST"])
-@jwt_required()
-def accept_invitation(game_id):
-    """Accept a pending game invitation and transition to deck selection."""
-    try:
-        # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
-        current_user = get_jwt_identity()
-
-        with unit_of_work() as cur:
-            cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-            game = cur.fetchone()
-
-            if not game:
-                return jsonify({"error": "Game not found"}), 404
-
-            # Check if user is player2 (the invited player) or player1 (can also accept to start deck selection)
-            if current_user not in [game["player1_name"], game["player2_name"]]:
-                return jsonify({"error": "Only players in this game can accept"}), 403
-
-            # Only allow accepting pending invitations
-            if game.get["game_status"] != "pending":
-                return jsonify({"error": "Can only accept pending invitations"}), 400
-
-            # Mark the invitation as accepted and transition to deck_selection
-            cur.execute(
-                """
-                UPDATE games 
-                SET game_status = 'deck_selection', updated_at = CURRENT_TIMESTAMP 
-                WHERE game_id = %s
-            """,
-                (game_id,),
-            )
-
-        return jsonify({"message": "Invitation accepted successfully", "status": "deck_selection"}), 200
-
-    except Exception as e:
-        return jsonify({"error": f"Failed to accept invitation: {str(e)}"}), 500
-
-
-@app.route("/api/games/<game_id>/ignore", methods=["POST"])
-@jwt_required()
-def ignore_invitation(game_id):
-    """Ignore/decline a game invitation."""
-    try:
-        # Basic input sanitization
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
-        current_user = get_jwt_identity()
-
-        with unit_of_work() as cur:
-            cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
-            game = cur.fetchone()
-
-            if not game:
-                return jsonify({"error": "Game not found"}), 404
-
-            # Check if user is player2 (the invited player)
-            if current_user != game["player2_name"]:
-                return jsonify({"error": "Only the invited player can ignore this invitation"}), 403
-
-            # Only allow ignoring pending invitations
-            if game.get["game_status"] != "pending":
-                return jsonify({"error": "Can only ignore pending invitations"}), 400
-
-            # Mark the invitation as ignored
-            cur.execute(
-                """
-                UPDATE games 
-                SET game_status = 'ignored', updated_at = CURRENT_TIMESTAMP 
-                WHERE game_id = %s
-            """,
-                (game_id,),
-            )
-
-        return jsonify({"message": "Invitation ignored successfully"}), 200
-
-    except Exception as e:
-        return jsonify({"error": f"Failed to ignore invitation: {str(e)}"}), 500
-
-
-@app.route("/api/games/<game_id>/cancel", methods=["POST"])
-@jwt_required()
-def cancel_invitation(game_id):
-    """Cancel a game invitation by the player who created it."""
-    try:
-        # Basic input sanitization
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=True)
             
         current_user = get_jwt_identity()
 

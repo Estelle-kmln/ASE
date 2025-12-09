@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify
 from flask_jwt_extended import JWTManager, jwt_required
 from flask_cors import CORS
 from psycopg2.extras import RealDictCursor
-from common.db_manager import unit_of_work, db_health, get_connection, release_connection
+from common.db_manager import unit_of_work, db_health
 from dotenv import load_dotenv
 import requests
 
