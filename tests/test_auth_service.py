@@ -380,15 +380,27 @@ class TestAuthServiceProfile(unittest.TestCase):
         self.assertIn("message", data)
         self.assertIn("successfully", data["message"].lower())
 
+        # Force logout to clear any active sessions
+        logout_session = requests.Session()
+        logout_session.verify = False
+        logout_session.post(
+            f"{BASE_URL}/api/auth/force-logout",
+            json={"username": self.test_username, "password": new_password},
+        )
+
         # Verify new password works
-        login_response = session.post(
+        login_session = requests.Session()
+        login_session.verify = False
+        login_response = login_session.post(
             f"{BASE_URL}/api/auth/login",
             json={"username": self.test_username, "password": new_password},
         )
         self.assertEqual(login_response.status_code, 200)
 
         # Verify old password doesn't work
-        old_login_response = session.post(
+        old_login_session = requests.Session()
+        old_login_session.verify = False
+        old_login_response = old_login_session.post(
             f"{BASE_URL}/api/auth/login",
             json={
                 "username": self.test_username,

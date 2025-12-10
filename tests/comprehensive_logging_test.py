@@ -238,8 +238,8 @@ class TestComprehensiveLogging:
 
         for log in logs[:15]:
             timestamp = log["timestamp"][:19] if log["timestamp"] else "N/A"
-            action = log["action"]
-            user = log.get("username", "N/A")
+            action = log["action"] or "N/A"
+            user = log.get("username") or "N/A"
             details = log.get("details", "")
             print(f"{timestamp} | {action:30s} | {user:20s}")
             if details:

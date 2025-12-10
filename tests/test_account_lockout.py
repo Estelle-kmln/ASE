@@ -5,9 +5,13 @@ Test script for account lockout mechanism after 3 failed login attempts.
 import requests
 import time
 import sys
+import urllib3
+
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Configuration
-BASE_URL = "http://localhost:8080"
+BASE_URL = "https://localhost:8443"
 AUTH_URL = f"{BASE_URL}/api/auth"
 
 def print_result(step, success, message):
@@ -33,7 +37,8 @@ def test_account_lockout():
     print("Step 1: Registering test user...")
     response = requests.post(
         f"{AUTH_URL}/register",
-        json={"username": test_username, "password": test_password}
+        json={"username": test_username, "password": test_password},
+        verify=False
     )
     all_tests_passed &= print_result(
         "1", 
@@ -51,7 +56,8 @@ def test_account_lockout():
     print("\nStep 2: Testing first failed login attempt...")
     response = requests.post(
         f"{AUTH_URL}/login",
-        json={"username": test_username, "password": wrong_password}
+        json={"username": test_username, "password": wrong_password},
+        verify=False
     )
     data = response.json()
     all_tests_passed &= print_result(
@@ -71,7 +77,8 @@ def test_account_lockout():
     print("\nStep 3: Testing second failed login attempt...")
     response = requests.post(
         f"{AUTH_URL}/login",
-        json={"username": test_username, "password": wrong_password}
+        json={"username": test_username, "password": wrong_password},
+        verify=False
     )
     data = response.json()
     all_tests_passed &= print_result(
@@ -91,7 +98,8 @@ def test_account_lockout():
     print("\nStep 4: Testing third failed login attempt (should lock account)...")
     response = requests.post(
         f"{AUTH_URL}/login",
-        json={"username": test_username, "password": wrong_password}
+        json={"username": test_username, "password": wrong_password},
+        verify=False
     )
     data = response.json()
     all_tests_passed &= print_result(
@@ -120,7 +128,8 @@ def test_account_lockout():
     print("\nStep 5: Testing login with correct password while locked...")
     response = requests.post(
         f"{AUTH_URL}/login",
-        json={"username": test_username, "password": test_password}
+        json={"username": test_username, "password": test_password},
+        verify=False
     )
     all_tests_passed &= print_result(
         "5",
@@ -134,7 +143,8 @@ def test_account_lockout():
     print("\nStep 6: Testing that account remains locked...")
     response = requests.post(
         f"{AUTH_URL}/login",
-        json={"username": test_username, "password": wrong_password}
+        json={"username": test_username, "password": wrong_password},
+        verify=False
     )
     all_tests_passed &= print_result(
         "6",
@@ -166,8 +176,8 @@ def test_successful_login_after_failed_attempts():
     print("="*70 + "\n")
     
     test_username = f"reset_test_{int(time.time())}"
-    test_password = "correct_password123"
-    wrong_password = "wrong_password123"
+    test_password = "CorrectPass123!"
+    wrong_password = "WrongPass123!"
     
     all_tests_passed = True
     
@@ -175,7 +185,8 @@ def test_successful_login_after_failed_attempts():
     print("Step 1: Registering test user...")
     response = requests.post(
         f"{AUTH_URL}/register",
-        json={"username": test_username, "password": test_password}
+        json={"username": test_username, "password": test_password},
+        verify=False
     )
     all_tests_passed &= print_result(
         "1",
@@ -190,7 +201,8 @@ def test_successful_login_after_failed_attempts():
     for i in range(2):
         response = requests.post(
             f"{AUTH_URL}/login",
-            json={"username": test_username, "password": wrong_password}
+            json={"username": test_username, "password": wrong_password},
+            verify=False
         )
         print(f"   Failed attempt {i+1}: {response.status_code}")
         time.sleep(1)
@@ -199,7 +211,8 @@ def test_successful_login_after_failed_attempts():
     print("\nStep 3: Logging in with correct password...")
     response = requests.post(
         f"{AUTH_URL}/login",
-        json={"username": test_username, "password": test_password}
+        json={"username": test_username, "password": test_password},
+        verify=False
     )
     all_tests_passed &= print_result(
         "3",
@@ -214,7 +227,8 @@ def test_successful_login_after_failed_attempts():
     for i in range(2):
         response = requests.post(
             f"{AUTH_URL}/login",
-            json={"username": test_username, "password": wrong_password}
+            json={"username": test_username, "password": wrong_password},
+            verify=False
         )
         data = response.json()
         remaining = data.get("remaining_attempts")
