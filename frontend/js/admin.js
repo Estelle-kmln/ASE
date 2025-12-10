@@ -42,6 +42,11 @@ async function checkAdminAccess() {
                 alert("Access denied. Admin privileges required.");
                 window.location.href = "index.html";
             }
+        } else if (response.status === 401 || response.status === 404) {
+            // Token expired, invalid, or user no longer exists
+            console.error('Unauthorized or user not found - clearing session');
+            localStorage.clear();
+            window.location.href = "login.html";
         } else {
             window.location.href = "login.html";
         }

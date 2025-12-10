@@ -109,10 +109,10 @@ async function loadProfile() {
             // Update localStorage with latest data
             currentUser = userData;
             localStorage.setItem('user', JSON.stringify(userData));
-        } else if (response.status === 401) {
-            // Token expired or invalid
-            console.error('Unauthorized - token may be expired');
-            showAlert('Session expired. Please login again.', 'error');
+        } else if (response.status === 401 || response.status === 404 || (data.error && data.error === 'User not found')) {
+            // Token expired, invalid, or user no longer exists
+            console.error('Unauthorized or user not found - clearing session');
+            showAlert('Session expired or user not found. Please login again.', 'error');
             setTimeout(() => {
                 localStorage.clear();
                 window.location.href = 'login.html';

@@ -214,7 +214,23 @@ function startPollingForGameStart() {
                 }
             });
             
+            if (!response.ok) {
+                // Game might have been cancelled/ignored
+                clearInterval(pollInterval);
+                alert('The game invitation was cancelled or declined by your opponent.');
+                window.location.href = 'index.html';
+                return;
+            }
+            
             const data = await response.json();
+            
+            // Check if game was ignored/cancelled
+            if (data.status === 'ignored') {
+                clearInterval(pollInterval);
+                alert('The game invitation was cancelled or declined by your opponent.');
+                window.location.href = 'index.html';
+                return;
+            }
             
             if (data.status === 'in_progress') {
                 // Both players have selected decks, game can start!
