@@ -5,7 +5,7 @@
 This document provides comprehensive documentation for the Battle Card Game microservices architecture. The system implements a rock-paper-scissors card battle game with user authentication, card management, game logic, and leaderboards.
 
 **Document Version**: 1.0  
-**Date**: November 15, 2025  
+**Date**: November 15, 2025  (updated on December 10, 2025)
 **Team**: Advanced Software Engineering Project  
 
 ---
@@ -14,7 +14,7 @@ This document provides comprehensive documentation for the Battle Card Game micr
 
 ### **Service Overview**
 
-The Battle Card Game consists of 5 microservices running on different ports:
+The Battle Card Game consists of 6 microservices running on different ports:
 
 | Service | Gateway Path | Purpose | Status |
 |---------|--------------|---------|--------|
@@ -22,6 +22,7 @@ The Battle Card Game consists of 5 microservices running on different ports:
 | **🃏 Card Service** | /api/cards | Card collection and deck management | ✅ Active |
 | **🎯 Game Service** | /api/games | Game logic and battle mechanics | ✅ Active |
 | **🏆 Leaderboard Service** | /api/leaderboard | Rankings and statistics | ✅ Active |
+| **🗄️ Database Manager** | Internal (common module) | Centralized connection pooling and transaction management | ✅ Active |
 | **🌐 Nginx Gateway** | 8443 (HTTPS), 8080 (HTTP redirects) | API Gateway and reverse proxy | ✅ Active |
 | **🗄️ PostgreSQL Database** | 5432 | Data persistence | ✅ Active |
 
@@ -37,18 +38,43 @@ All services are accessed through the Nginx gateway at `https://localhost:8443`.
 
 **SSL Certificates:** The application uses self-signed SSL certificates for development. Browsers will show a security warning when accessing the application - click "Advanced" and "Proceed to localhost" to continue. For production, replace with CA-signed certificates.
 
+### **Health Check All Services**
+
+Each microservice provides a health check endpoint that does NOT require authentication:
+
+```http
+GET /health
+```
+
+**Available on all services**:
+- `https://localhost:8443/api/auth/health` - Auth Service
+- `https://localhost:8443/api/cards/health` - Card Service
+- `https://localhost:8443/api/games/health` - Game Service
+- `https://localhost:8443/api/leaderboard/health` - Leaderboard Service
+
+**Response** (Success):
+```json
+{
+  "status": "ok",
+  "service": "auth-service"
+}
+```
+
+**Response** (Database Down):
+```json
+{
+  "database": "unavailable",
+  "error": "connection refused"
+}
+```
+
+**Authentication**: Not required
+
 ---
 
 ## **🔐 Authentication Service** (`/api/auth`)
 
 All API endpoints except health checks require authentication using Bearer tokens.
-
-### **Health Check**
-```http
-GET /health
-```
-**Purpose**: Service health status monitoring  
-**Authentication**: Not required  
 
 ### **User Registration**
 ```http
@@ -132,13 +158,6 @@ POST /api/auth/validate
 ## **🃏 Card Service** (`/api/cards`)
 
 Manages the card collection and deck operations for the battle card game.
-
-### **Health Check**
-```http
-GET /health
-```
-**Purpose**: Service health status  
-**Authentication**: Not required
 
 ### **Get All Cards**
 ```http
@@ -248,13 +267,6 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 ## **🎯 Game Service** (`/api/games`)
 
 Handles all game logic, battle mechanics, and game state management.
-
-### **Health Check**
-```http
-GET /health
-```
-**Purpose**: Service health status  
-**Authentication**: Not required
 
 ### **Create New Game**
 ```http
@@ -550,16 +562,219 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 
 ---
 
+## **🗄️ Database Manager** (`common/db_manager.py`)
+
+The Database Manager is a **shared module** that provides centralized database connection pooling and transaction management for all microservices. It ensures consistent database access patterns and handles connection lifecycle automatically.
+
+### **Purpose**
+- Centralized PostgreSQL connection pooling
+- Automatic transaction management (commit/rollback)
+- Connection retry logic for service startup
+- Health check integration
+- Prevents connection leaks and resource exhaustion
+
+### **Architecture**
+All microservices (Auth, Card, Game, Leaderboard) import and use the Database Manager instead of directly managing PostgreSQL connections.
+
+### **Key Components**
+
+#### **1. Connection Pool**
+```python
+from common.db_manager import unit_of_work
+```
+
+**Configuration**:
+- **Min Connections**: 1 (configurable via `DB_POOL_MIN`)
+- **Max Connections**: 10 (configurable via `DB_POOL_MAX`)
+- **Database**: PostgreSQL 16
+- **Connection String**: `DATABASE_URL` environment variable
+- **Cursor Type**: RealDictCursor (returns rows as dictionaries)
+
+**Environment Variables**:
+```bash
+DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
+DB_POOL_MIN=1    # Optional, defaults to 1
+DB_POOL_MAX=10   # Optional, defaults to 10
+```
+
+#### **2. Unit of Work Pattern**
+The primary interface for database operations. Automatically handles connection acquisition, transaction commit/rollback, and connection release.
+
+**Usage Example**:
+```python
+from common.db_manager import unit_of_work
+
+# Query data
+with unit_of_work() as cur:
+    cur.execute("SELECT * FROM users WHERE username = %s", (username,))
+    user = cur.fetchone()
+    # Automatic commit on success
+
+# Insert/Update data
+with unit_of_work() as cur:
+    cur.execute(
+        "INSERT INTO games (game_id, player1_name) VALUES (%s, %s)",
+        (game_id, player_name)
+    )
+    # Automatic commit on success
+    # Automatic rollback on exception
+```
+
+**Features**:
+- ✅ Automatic transaction commit on success
+- ✅ Automatic rollback on exceptions
+- ✅ Connection automatically returned to pool
+- ✅ Cursor cleanup in finally block
+- ✅ Exception propagation for proper error handling
+
+#### **3. Direct Connection Access**
+For advanced use cases requiring raw connection objects (e.g., passing connections between functions).
+
+```python
+from common.db_manager import get_connection, release_connection
+
+conn = get_connection()
+try:
+    # Use connection
+    cur = conn.cursor()
+    cur.execute("SELECT 1")
+    conn.commit()
+finally:
+    release_connection(conn)
+```
+
+**⚠️ Warning**: Must call `release_connection()` to avoid connection leaks. Prefer `unit_of_work()` for standard operations.
+
+#### **4. Health Check**
+Returns database connection status for service health endpoints.
+
+```python
+from common.db_manager import db_health
+
+# In service health endpoint
+@app.route("/health")
+def health_check():
+    return jsonify(db_health()), 200
+```
+
+**Response**:
+```json
+{
+  "database": "ok"
+}
+```
+
+**On Failure**:
+```json
+{
+  "database": "unavailable",
+  "error": "connection refused"
+}
+```
+
+### **Startup Behavior**
+
+**Retry Logic**: On service startup, the Database Manager attempts to connect to PostgreSQL up to **15 times** with **2-second delays** between attempts. This handles Docker container startup ordering.
+
+**Logging**:
+```
+[2025-12-10 10:15:23] INFO: Postgres connection pool created.
+```
+
+**Failure**:
+```
+[2025-12-10 10:15:23] WARNING: Postgres not ready (attempt 1/15): connection refused
+...
+RuntimeError: Unable to create Postgres connection pool after retries.
+```
+
+### **Service Integration**
+
+All microservices use the Database Manager for database operations:
+
+**Auth Service**:
+```python
+from common.db_manager import unit_of_work
+
+with unit_of_work() as cur:
+    cur.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (...))
+```
+
+**Card Service**:
+```python
+from common.db_manager import unit_of_work
+
+with unit_of_work() as cur:
+    cur.execute("SELECT * FROM cards ORDER BY type, power")
+    cards = cur.fetchall()
+```
+
+**Game Service**:
+```python
+from common.db_manager import unit_of_work
+
+with unit_of_work() as cur:
+    cur.execute("UPDATE games SET winner = %s WHERE game_id = %s", (...))
+```
+
+**Leaderboard Service**:
+```python
+from common.db_manager import unit_of_work
+
+with unit_of_work() as cur:
+    cur.execute("SELECT username, COUNT(*) as wins FROM games GROUP BY username")
+    rankings = cur.fetchall()
+```
+
+### **Benefits**
+
+| Feature | Benefit |
+|---------|---------|
+| **Connection Pooling** | Reuses connections, reduces overhead, prevents exhaustion |
+| **Automatic Transactions** | No manual commit/rollback, prevents partial updates |
+| **Exception Safety** | Automatic rollback on errors, prevents data corruption |
+| **Resource Cleanup** | Guaranteed connection release, prevents leaks |
+| **Retry Logic** | Handles startup race conditions with PostgreSQL |
+| **Centralized Configuration** | Single source of truth for DB settings |
+| **Logging** | Visibility into connection pool health |
+
+### **Troubleshooting**
+
+**Connection Pool Exhausted**:
+```
+psycopg2.pool.PoolError: connection pool exhausted
+```
+**Solution**: Increase `DB_POOL_MAX` or check for connection leaks (unreleased connections).
+
+**Connection Timeout During Startup**:
+```
+RuntimeError: Unable to create Postgres connection pool after retries.
+```
+**Solution**: Ensure PostgreSQL container is healthy before services start (use `depends_on` with health checks in docker-compose).
+
+**Cursor Errors**:
+```
+psycopg2.ProgrammingError: cursor already closed
+```
+**Solution**: Always use `unit_of_work()` context manager, don't reuse cursors outside the context.
+
+### **Performance Considerations**
+
+- **Pool Size**: Default max 10 connections handles typical load; increase for high concurrency
+- **Connection Reuse**: Pool maintains persistent connections, reducing handshake overhead
+- **RealDictCursor**: Slight overhead vs tuples, but improves code readability
+- **Transaction Scope**: Keep `unit_of_work()` blocks small to minimize lock duration
+
+### **Location**
+- **Module**: `microservices/common/db_manager.py`
+- **Shared by**: All microservices (auth-service, card-service, game-service, leaderboard-service)
+- **Docker Path**: Copied to `/app/common` in each service container
+
+---
+
 ## **🏆 Leaderboard Service** (`localhost:5004`)
 
 Provides rankings, statistics, and game history analysis.
-
-### **Health Check**
-```http
-GET /health
-```
-**Purpose**: Service health status  
-**Authentication**: Not required
 
 ### **Global Leaderboard**
 ```http
@@ -816,6 +1031,7 @@ All services are operational and healthy:
 - ✅ **Card Service**: Accessible at /api/cards  
 - ✅ **Game Service**: Accessible at /api/games
 - ✅ **Leaderboard Service**: Accessible at /api/leaderboard
+- ✅ **Database Manager**: Connection pooling active (1-10 connections), all services using unit_of_work() pattern
 - ✅ **Database**: PostgreSQL initialized with 39 cards
 
 ### **Database Schema**
@@ -906,8 +1122,8 @@ HTTP status codes follow REST conventions (200, 400, 401, 403, 404, 500).
 For technical issues or questions about this API documentation, please contact the development team.
 
 **Project**: Advanced Software Engineering - Battle Card Game  
-**Version**: 1.0  
-**Last Updated**: November 15, 2025
+**Version**: 2.0  
+**Last Updated**: December 10, 2025
 
 ---
 
