@@ -84,7 +84,7 @@ def log_action(action: str, username: str = None, details: str = None):
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO logs (action, username, details) VALUES (%s, %s, %s)",
-            (action, username, details)
+            (action, username, details),
         )
         conn.commit()
         conn.close()
@@ -276,15 +276,14 @@ def revoke_all_user_tokens(user_id: int) -> bool:
 
 
 @app.route("/health", methods=["GET"])
+@app.route("/api/auth/health", methods=["GET"])
 def health_check():
     """Health check endpoint."""
     return jsonify({"status": "healthy", "service": "auth-service"}), 200
 
 
 @app.route("/api/auth/register", methods=["POST"])
-@require_sanitized_input(
-    {"username": "username", "password": "password"}
-)
+@require_sanitized_input({"username": "username", "password": "password"})
 def register():
     """Register a new user."""
     try:
@@ -314,7 +313,9 @@ def register():
         if cursor.fetchone()[0] > 0:
             conn.close()
             # Log failed registration attempt
-            log_action("REGISTRATION_FAILED", username, "Username already exists")
+            log_action(
+                "REGISTRATION_FAILED", username, "Username already exists"
+            )
             return jsonify({"error": "Username already exists"}), 409
 
         # Hash password and create user
@@ -328,7 +329,11 @@ def register():
         conn.close()
 
         # Log the registration
-        log_action("USER_REGISTERED", username, f"New user registered with ID: {user_id}")
+        log_action(
+            "USER_REGISTERED",
+            username,
+            f"New user registered with ID: {user_id}",
+        )
 
         # Create access token and refresh token
         access_token = create_access_token(identity=username)
@@ -622,7 +627,9 @@ def update_profile():
                 (hashed_password, current_user),
             )
             # Log password change
-            log_action("PASSWORD_CHANGED", current_user, "User changed their password")
+            log_action(
+                "PASSWORD_CHANGED", current_user, "User changed their password"
+            )
 
         conn.commit()
         conn.close()
@@ -852,28 +859,35 @@ def revoke_all_sessions():
 # Admin-only endpoints
 def require_admin():
     """Decorator to require admin privileges."""
+
     def wrapper(fn):
         @jwt_required()
         def decorator(*args, **kwargs):
             current_user = get_jwt_identity()
-            
+
             conn = get_db_connection()
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute(
                 "SELECT is_admin FROM users WHERE username = %s",
-                (current_user,)
+                (current_user,),
             )
             user = cursor.fetchone()
             conn.close()
-            
+
             if not user or not user.get("is_admin"):
                 # Log unauthorized admin access attempt
-                log_action("UNAUTHORIZED_ADMIN_ACCESS", current_user, f"Attempted to access admin endpoint: {fn.__name__}")
+                log_action(
+                    "UNAUTHORIZED_ADMIN_ACCESS",
+                    current_user,
+                    f"Attempted to access admin endpoint: {fn.__name__}",
+                )
                 return jsonify({"error": "Admin privileges required"}), 403
-            
+
             return fn(*args, **kwargs)
+
         decorator.__name__ = fn.__name__
         return decorator
+
     return wrapper
 
 
@@ -886,43 +900,56 @@ def list_users():
         page = int(request.args.get("page", 0))
         size = int(request.args.get("size", 10))
         offset = page * size
-        
+
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
+
         # Get total count
         cursor.execute("SELECT COUNT(*) as count FROM users")
         total = cursor.fetchone()["count"]
-        
+
         # Get paginated users
         cursor.execute(
             """SELECT id, username, is_admin, created_at 
                FROM users 
                ORDER BY created_at DESC 
                LIMIT %s OFFSET %s""",
-            (size, offset)
+            (size, offset),
         )
         users = cursor.fetchall()
         conn.close()
-        
+
         # Format users
         formatted_users = []
         for user in users:
-            formatted_users.append({
-                "id": user["id"],
-                "username": user["username"],
-                "roles": ["ROLE_ADMIN" if user.get("is_admin") else "ROLE_USER"],
-                "created_at": user["created_at"].isoformat() if user["created_at"] else None
-            })
-        
-        return jsonify({
-            "content": formatted_users,
-            "totalPages": (total + size - 1) // size,
-            "totalElements": total,
-            "number": page,
-            "size": size
-        }), 200
-        
+            formatted_users.append(
+                {
+                    "id": user["id"],
+                    "username": user["username"],
+                    "roles": [
+                        "ROLE_ADMIN" if user.get("is_admin") else "ROLE_USER"
+                    ],
+                    "created_at": (
+                        user["created_at"].isoformat()
+                        if user["created_at"]
+                        else None
+                    ),
+                }
+            )
+
+        return (
+            jsonify(
+                {
+                    "content": formatted_users,
+                    "totalPages": (total + size - 1) // size,
+                    "totalElements": total,
+                    "number": page,
+                    "size": size,
+                }
+            ),
+            200,
+        )
+
     except Exception as e:
         return jsonify({"error": f"Failed to list users: {str(e)}"}), 500
 
@@ -937,19 +964,19 @@ def search_users():
         page = int(request.args.get("page", 0))
         size = int(request.args.get("size", 10))
         offset = page * size
-        
+
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
+
         search_pattern = f"%{query}%"
-        
+
         # Get total count
         cursor.execute(
             "SELECT COUNT(*) as count FROM users WHERE username ILIKE %s",
-            (search_pattern,)
+            (search_pattern,),
         )
         total = cursor.fetchone()["count"]
-        
+
         # Get paginated results
         cursor.execute(
             """SELECT id, username, is_admin, created_at 
@@ -957,43 +984,62 @@ def search_users():
                WHERE username ILIKE %s
                ORDER BY created_at DESC 
                LIMIT %s OFFSET %s""",
-            (search_pattern, size, offset)
+            (search_pattern, size, offset),
         )
         users = cursor.fetchall()
         conn.close()
-        
+
         # Format users
         formatted_users = []
         for user in users:
-            formatted_users.append({
-                "id": user["id"],
-                "username": user["username"],
-                "roles": ["ROLE_ADMIN" if user.get("is_admin") else "ROLE_USER"],
-                "created_at": user["created_at"].isoformat() if user["created_at"] else None
-            })
-        
-        return jsonify({
-            "content": formatted_users,
-            "totalPages": (total + size - 1) // size,
-            "totalElements": total,
-            "number": page,
-            "size": size
-        }), 200
-        
+            formatted_users.append(
+                {
+                    "id": user["id"],
+                    "username": user["username"],
+                    "roles": [
+                        "ROLE_ADMIN" if user.get("is_admin") else "ROLE_USER"
+                    ],
+                    "created_at": (
+                        user["created_at"].isoformat()
+                        if user["created_at"]
+                        else None
+                    ),
+                }
+            )
+
+        return (
+            jsonify(
+                {
+                    "content": formatted_users,
+                    "totalPages": (total + size - 1) // size,
+                    "totalElements": total,
+                    "number": page,
+                    "size": size,
+                }
+            ),
+            200,
+        )
+
     except Exception as e:
         return jsonify({"error": f"Failed to search users: {str(e)}"}), 500
+
 
 @app.route("/api/admin/roles", methods=["GET"])
 @require_admin()
 def list_roles():
     """List available roles."""
-    return jsonify([
-        {"id": "ROLE_USER", "name": "User"},
-        {"id": "ROLE_ADMIN", "name": "Administrator"}
-    ]), 200
+    return (
+        jsonify(
+            [
+                {"id": "ROLE_USER", "name": "User"},
+                {"id": "ROLE_ADMIN", "name": "Administrator"},
+            ]
+        ),
+        200,
+    )
 
 
 if __name__ == "__main__":
     # For development only - debug mode controlled by environment variable
-    debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 't')
+    debug_mode = os.getenv("FLASK_DEBUG", "False").lower() in ("true", "1", "t")
     app.run(host="0.0.0.0", port=5001, debug=debug_mode)

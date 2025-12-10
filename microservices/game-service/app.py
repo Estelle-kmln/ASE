@@ -20,8 +20,12 @@ import requests
 from security import get_history_security
 
 # Add utils directory to path for input sanitizer
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'utils'))
-from input_sanitizer import InputSanitizer, SecurityMiddleware, require_sanitized_input
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "utils"))
+from input_sanitizer import (
+    InputSanitizer,
+    SecurityMiddleware,
+    require_sanitized_input,
+)
 
 # Load environment variables
 load_dotenv()
@@ -37,6 +41,7 @@ app.config["JWT_SECRET_KEY"] = os.getenv(
 jwt = JWTManager(app)
 CORS(app)
 security = SecurityMiddleware(app)
+
 
 # JWT error handlers - convert 422 to 401 for invalid tokens
 @jwt.invalid_token_loader
@@ -55,6 +60,25 @@ def unauthorized_callback(error_string):
 def expired_token_callback(jwt_header, jwt_payload):
     """Handle expired token errors."""
     return jsonify({"error": "Token has expired"}), 401
+
+
+# Error handlers to ensure all errors return JSON (not HTML)
+@app.errorhandler(405)
+def method_not_allowed(error):
+    """Handle 405 Method Not Allowed errors - returns JSON instead of HTML."""
+    return jsonify({"error": "Method not allowed"}), 405
+
+
+@app.errorhandler(404)
+def not_found(error):
+    """Handle 404 Not Found errors - returns JSON instead of HTML."""
+    return jsonify({"error": "Resource not found"}), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 Internal Server errors."""
+    return jsonify({"error": "Internal server error"}), 500
 
 
 # Database configuration
@@ -77,7 +101,7 @@ def log_action(action: str, username: str = None, details: str = None):
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO logs (action, username, details) VALUES (%s, %s, %s)",
-            (action, username, details)
+            (action, username, details),
         )
         conn.commit()
         conn.close()
@@ -128,9 +152,8 @@ def get_cards_from_service(token):
 
 def check_both_played(game):
     """Check if both players have played their cards this turn."""
-    return (
-        game.get("player1_has_played", False) and 
-        game.get("player2_has_played", False)
+    return game.get("player1_has_played", False) and game.get(
+        "player2_has_played", False
     )
 
 
@@ -180,7 +203,7 @@ def build_history_snapshot(
         round_history = json.loads(game.get("round_history") or "[]")
     except Exception:
         round_history = []
-    
+
     return {
         "game_id": game["game_id"],
         "turns_played": game["turn"],
@@ -219,7 +242,7 @@ def archive_game_history(
         round_history = json.loads(game.get("round_history") or "[]")
     except Exception:
         round_history = []
-    
+
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -284,7 +307,7 @@ def health_check():
 
 @app.route("/api/games", methods=["POST"])
 @jwt_required()
-@require_sanitized_input({'player2_name': 'username'})
+@require_sanitized_input({"player2_name": "username"})
 def create_game():
     """Create a new game with deck selection phase."""
     try:
@@ -297,13 +320,15 @@ def create_game():
         # Sanitize player names
         try:
             player1_name = InputSanitizer.validate_username(current_user)
-            player2_name = InputSanitizer.validate_username(data["player2_name"])
+            player2_name = InputSanitizer.validate_username(
+                data["player2_name"]
+            )
         except ValueError as e:
-            return jsonify({'error': f'Invalid player name: {str(e)}'}), 400
-        
+            return jsonify({"error": f"Invalid player name: {str(e)}"}), 400
+
         # Prevent self-play
         if player1_name == player2_name:
-            return jsonify({'error': 'Cannot create game with yourself'}), 400
+            return jsonify({"error": "Cannot create game with yourself"}), 400
 
         # Create game with empty decks - players will select their decks
         game_id = str(uuid.uuid4())
@@ -324,7 +349,7 @@ def create_game():
             (
                 game_id,
                 1,
-                'pending',  # Initial status - invitation sent but not accepted
+                "deck_selection",  # Initial status - players need to select decks
                 player1_name,
                 json.dumps([]),  # Empty deck initially
                 json.dumps([]),
@@ -342,7 +367,11 @@ def create_game():
         conn.close()
 
         # Log game creation
-        log_action("GAME_CREATED", player1_name, f"Created game {game_id} with {player2_name}")
+        log_action(
+            "GAME_CREATED",
+            player1_name,
+            f"Created game {game_id} with {player2_name}",
+        )
 
         return (
             jsonify(
@@ -350,7 +379,7 @@ def create_game():
                     "game_id": game_id,
                     "player1_name": player1_name,
                     "player2_name": player2_name,
-                    "status": "pending",
+                    "status": "deck_selection",
                     "turn": 1,
                 }
             ),
@@ -367,8 +396,10 @@ def get_game(game_id):
     """Get game state."""
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -518,7 +549,7 @@ def get_game_details(game_id):
 
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
+
         # Get from game_history for completed games
         cursor.execute(
             """
@@ -552,16 +583,25 @@ def get_game_details(game_id):
         except Exception:
             round_history = []
 
-        return jsonify({
-            "game_id": match["game_id"],
-            "player1_name": match["player1_name"],
-            "player2_name": match["player2_name"],
-            "player1_score": match["player1_score"],
-            "player2_score": match["player2_score"],
-            "winner": match["winner"],
-            "archived_at": match["archived_at"].isoformat() if match["archived_at"] else None,
-            "round_history": round_history
-        }), 200
+        return (
+            jsonify(
+                {
+                    "game_id": match["game_id"],
+                    "player1_name": match["player1_name"],
+                    "player2_name": match["player2_name"],
+                    "player1_score": match["player1_score"],
+                    "player2_score": match["player2_score"],
+                    "winner": match["winner"],
+                    "archived_at": (
+                        match["archived_at"].isoformat()
+                        if match["archived_at"]
+                        else None
+                    ),
+                    "round_history": round_history,
+                }
+            ),
+            200,
+        )
 
     except Exception as e:
         return jsonify({"error": f"Failed to get match details: {str(e)}"}), 500
@@ -573,8 +613,10 @@ def get_player_hand(game_id):
     """Get current player's hand."""
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -614,8 +656,10 @@ def draw_hand(game_id):
     """Draw a new hand for the current player - STRICT: Only once per turn."""
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -632,7 +676,7 @@ def draw_hand(game_id):
             conn.close()
             return jsonify({"error": HISTORY_LOCK_MESSAGE}), 409
 
-        if game["game_status"] not in ['active', 'pending', 'deck_selection']:
+        if game["game_status"] not in ["active", "pending", "deck_selection"]:
             conn.close()
             return jsonify({"error": "Game is not active"}), 400
 
@@ -648,10 +692,19 @@ def draw_hand(game_id):
             conn.commit()
 
         # STRICT RULE: Check if player has already drawn this turn
-        has_drawn_field = "player1_has_drawn" if is_player1 else "player2_has_drawn"
+        has_drawn_field = (
+            "player1_has_drawn" if is_player1 else "player2_has_drawn"
+        )
         if game.get(has_drawn_field, False):
             conn.close()
-            return jsonify({"error": "You have already drawn cards this turn. Wait for both players to play."}), 400
+            return (
+                jsonify(
+                    {
+                        "error": "You have already drawn cards this turn. Wait for both players to play."
+                    }
+                ),
+                400,
+            )
 
         # Parse deck
         deck_field = (
@@ -681,23 +734,31 @@ def draw_hand(game_id):
             # Use indices to avoid issues with duplicate cards in deck
             drawn_indices = random.sample(range(len(deck)), 3)
             hand = [deck[i] for i in drawn_indices]
-            remaining_deck = [deck[i] for i in range(len(deck)) if i not in drawn_indices]
+            remaining_deck = [
+                deck[i] for i in range(len(deck)) if i not in drawn_indices
+            ]
 
         # Update database with hand and set has_drawn flag
         cursor = conn.cursor()
         if is_player1:
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE games 
                 SET player1_deck_cards = %s, player1_hand_cards = %s, player1_has_drawn = TRUE
                 WHERE game_id = %s
-            """, (json.dumps(remaining_deck), json.dumps(hand), game_id))
+            """,
+                (json.dumps(remaining_deck), json.dumps(hand), game_id),
+            )
         else:
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE games 
                 SET player2_deck_cards = %s, player2_hand_cards = %s, player2_has_drawn = TRUE
                 WHERE game_id = %s
-            """, (json.dumps(remaining_deck), json.dumps(hand), game_id))
-        
+            """,
+                (json.dumps(remaining_deck), json.dumps(hand), game_id),
+            )
+
         conn.commit()
         conn.close()
 
@@ -719,13 +780,15 @@ def draw_hand(game_id):
 
 @app.route("/api/games/<game_id>/play-card", methods=["POST"])
 @jwt_required()
-@require_sanitized_input({'card_index': 'int'})
+@require_sanitized_input({"card_index": "int"})
 def play_card(game_id):
     """Play a card from hand - STRICT: Must draw first, can only play once per turn, other 2 cards are discarded."""
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
         data = request.get_json()
 
@@ -734,9 +797,11 @@ def play_card(game_id):
 
         # Validate card index
         try:
-            card_index = InputSanitizer.validate_integer(data["card_index"], min_val=0, max_val=20)
+            card_index = InputSanitizer.validate_integer(
+                data["card_index"], min_val=0, max_val=20
+            )
         except ValueError as e:
-            return jsonify({'error': f'Invalid card index: {str(e)}'}), 400
+            return jsonify({"error": f"Invalid card index: {str(e)}"}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -752,7 +817,7 @@ def play_card(game_id):
             conn.close()
             return jsonify({"error": HISTORY_LOCK_MESSAGE}), 409
 
-        if game["game_status"] not in ['active', 'pending', 'deck_selection']:
+        if game["game_status"] not in ["active", "pending", "deck_selection"]:
             conn.close()
             return jsonify({"error": "Game is not active"}), 400
 
@@ -768,16 +833,27 @@ def play_card(game_id):
             conn.commit()
 
         # STRICT RULE 1: Check if player has drawn cards this turn
-        has_drawn_field = "player1_has_drawn" if is_player1 else "player2_has_drawn"
+        has_drawn_field = (
+            "player1_has_drawn" if is_player1 else "player2_has_drawn"
+        )
         if not game.get(has_drawn_field, False):
             conn.close()
             return jsonify({"error": "You must draw cards before playing"}), 400
 
         # STRICT RULE 2: Check if player has already played this turn
-        has_played_field = "player1_has_played" if is_player1 else "player2_has_played"
+        has_played_field = (
+            "player1_has_played" if is_player1 else "player2_has_played"
+        )
         if game.get(has_played_field, False):
             conn.close()
-            return jsonify({"error": "You have already played a card this turn. Wait for the round to resolve."}), 400
+            return (
+                jsonify(
+                    {
+                        "error": "You have already played a card this turn. Wait for the round to resolve."
+                    }
+                ),
+                400,
+            )
 
         # Parse hand
         hand_field = (
@@ -798,27 +874,33 @@ def play_card(game_id):
 
         # Play the card
         played_card = hand[card_index]
-        
+
         # STRICT RULE 3: Discard the other 2 cards (they don't go back to deck)
         # Empty the hand after playing - the 2 unplayed cards are removed from game
 
         # Update database - clear hand and set played card + has_played flag
         cursor = conn.cursor()
         if is_player1:
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE games 
                 SET player1_hand_cards = %s, player1_played_card = %s, player1_has_played = TRUE
                 WHERE game_id = %s
-            """, (json.dumps([]), json.dumps(played_card), game_id))
+            """,
+                (json.dumps([]), json.dumps(played_card), game_id),
+            )
         else:
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE games 
                 SET player2_hand_cards = %s, player2_played_card = %s, player2_has_played = TRUE
                 WHERE game_id = %s
-            """, (json.dumps([]), json.dumps(played_card), game_id))
-        
+            """,
+                (json.dumps([]), json.dumps(played_card), game_id),
+            )
+
         # Don't commit yet - let auto_resolve handle it if both players have played
-        
+
         # Refresh game state to check if both players have played
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
@@ -827,7 +909,7 @@ def play_card(game_id):
         # Check if we should auto-resolve the round
         auto_resolve_result = None
         both_played = check_both_played(updated_game)
-        
+
         if both_played:
             # Both players have played - automatically resolve the round
             auto_resolve_result = auto_resolve_round(updated_game, conn)
@@ -841,7 +923,9 @@ def play_card(game_id):
             "played_card": played_card,
             "remaining_hand": [],  # Hand is always empty after playing
             "both_played": both_played,
-            "discarded_cards": 2 if len(hand) == 3 else (len(hand) - 1)  # Show how many cards were discarded
+            "discarded_cards": (
+                2 if len(hand) == 3 else (len(hand) - 1)
+            ),  # Show how many cards were discarded
         }
 
         if auto_resolve_result:
@@ -856,9 +940,8 @@ def play_card(game_id):
 
 def check_both_played(game):
     """Check if both players have played their cards this turn."""
-    return (
-        game.get("player1_has_played", False) and 
-        game.get("player2_has_played", False)
+    return game.get("player1_has_played", False) and game.get(
+        "player2_has_played", False
     )
 
 
@@ -943,7 +1026,7 @@ def auto_resolve_round(game, conn):
             existing_history = json.loads(game.get("round_history") or "[]")
         except Exception:
             existing_history = []
-        
+
         round_data = {
             "round": game["turn"],
             "player1_card": player1_card_data,
@@ -951,22 +1034,24 @@ def auto_resolve_round(game, conn):
             "round_winner": round_winner,
             "round_tied": round_tied,
             "player1_score_after": new_p1_score,
-            "player2_score_after": new_p2_score
+            "player2_score_after": new_p2_score,
         }
         existing_history.append(round_data)
 
         # Update database - reset played cards, hands, and turn flags for next round
         cursor = conn.cursor()
-        
+
         # Determine game_status based on whether game is over
         if game_over:
-            new_game_status = 'completed'
+            new_game_status = "completed"
         else:
             # If game was pending and player2 just played, it should already be active
             # Keep current status or set to active if somehow still pending
-            current_status = game.get('game_status', 'active')
-            new_game_status = 'active' if current_status == 'pending' else current_status
-        
+            current_status = game.get("game_status", "active")
+            new_game_status = (
+                "active" if current_status == "pending" else current_status
+            )
+
         cursor.execute(
             """
             UPDATE games 
@@ -993,10 +1078,12 @@ def auto_resolve_round(game, conn):
         if game_over:
             # Refresh game object to get the updated round_history
             dict_cursor = conn.cursor(cursor_factory=RealDictCursor)
-            dict_cursor.execute("SELECT * FROM games WHERE game_id = %s", (game["game_id"],))
+            dict_cursor.execute(
+                "SELECT * FROM games WHERE game_id = %s", (game["game_id"],)
+            )
             updated_game = dict_cursor.fetchone()
             dict_cursor.close()
-            
+
             try:
                 archive_game_history(
                     conn,
@@ -1010,6 +1097,7 @@ def auto_resolve_round(game, conn):
             except Exception as e:
                 print(f"Error archiving game history: {e}")
                 import traceback
+
                 traceback.print_exc()
                 # Continue even if archiving fails
 
@@ -1030,6 +1118,7 @@ def auto_resolve_round(game, conn):
     except Exception as e:
         print(f"Error in auto_resolve_round: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
@@ -1040,8 +1129,10 @@ def resolve_round(game_id):
     """Resolve a round after both players have played cards."""
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -1058,7 +1149,7 @@ def resolve_round(game_id):
             conn.close()
             return jsonify({"error": HISTORY_LOCK_MESSAGE}), 409
 
-        if game["game_status"] not in ['active', 'pending', 'deck_selection']:
+        if game["game_status"] not in ["active", "pending", "deck_selection"]:
             conn.close()
             return jsonify({"error": "Game is not active"}), 400
 
@@ -1148,7 +1239,7 @@ def resolve_round(game_id):
             existing_history = json.loads(game.get("round_history") or "[]")
         except Exception:
             existing_history = []
-        
+
         round_data = {
             "round": game["turn"],
             "player1_card": player1_card_data,
@@ -1156,16 +1247,18 @@ def resolve_round(game_id):
             "round_winner": round_winner,
             "round_tied": round_tied,
             "player1_score_after": new_p1_score,
-            "player2_score_after": new_p2_score
+            "player2_score_after": new_p2_score,
         }
         existing_history.append(round_data)
 
         # Update database
         cursor = conn.cursor()
-        
+
         # Determine game_status based on whether game is over
-        new_game_status = 'completed' if game_over else game.get('game_status', 'active')
-        
+        new_game_status = (
+            "completed" if game_over else game.get("game_status", "active")
+        )
+
         cursor.execute(
             """
             UPDATE games 
@@ -1177,16 +1270,25 @@ def resolve_round(game_id):
                 updated_at = CURRENT_TIMESTAMP
             WHERE game_id = %s
         """,
-            (new_p1_score, new_p2_score, new_game_status, winner_name, json.dumps(existing_history), game_id),
+            (
+                new_p1_score,
+                new_p2_score,
+                new_game_status,
+                winner_name,
+                json.dumps(existing_history),
+                game_id,
+            ),
         )
 
         if game_over:
             # Refresh game object to get the updated round_history
             dict_cursor = conn.cursor(cursor_factory=RealDictCursor)
-            dict_cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            dict_cursor.execute(
+                "SELECT * FROM games WHERE game_id = %s", (game_id,)
+            )
             updated_game = dict_cursor.fetchone()
             dict_cursor.close()
-            
+
             archive_game_history(
                 conn,
                 updated_game,  # Use updated game object with round_history
@@ -1228,8 +1330,10 @@ def check_tie_breaker_status(game_id):
     """Check if tie-breaker round is possible."""
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -1254,7 +1358,7 @@ def check_tie_breaker_status(game_id):
             p1_deck = p2_deck = []
 
         is_tied_game = (
-            game["game_status"] == 'completed'
+            game["game_status"] == "completed"
             and game["winner"] is None
             and game["player1_score"] == game["player2_score"]
         )
@@ -1288,8 +1392,10 @@ def tie_breaker_round(game_id):
     """Play a tie-breaker round using remaining cards when game ends in tie."""
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
         data = request.get_json()
 
@@ -1309,7 +1415,7 @@ def tie_breaker_round(game_id):
             return jsonify({"error": "Unauthorized"}), 403
 
         # Verify game ended in a tie
-        if game["game_status"] != 'completed' or game["winner"] is not None:
+        if game["game_status"] != "completed" or game["winner"] is not None:
             conn.close()
             return jsonify({"error": "Game is not in a tie state"}), 400
 
@@ -1357,25 +1463,29 @@ def tie_breaker_round(game_id):
 
         # Update game state
         cursor = conn.cursor()
-        
+
         # Store tie-breaker in history
         try:
             existing_history = json.loads(game.get("round_history") or "[]")
         except Exception:
             existing_history = []
-        
+
         tiebreaker_data = {
             "round": game["turn"],
             "is_tiebreaker": True,
             "player1_card": p1_card,
             "player2_card": p2_card,
-            "round_winner": 1 if tie_breaker_winner == game["player1_name"] else (2 if tie_breaker_winner == game["player2_name"] else None),
+            "round_winner": (
+                1
+                if tie_breaker_winner == game["player1_name"]
+                else (2 if tie_breaker_winner == game["player2_name"] else None)
+            ),
             "round_tied": tie_breaker_tied,
             "player1_score_after": game["player1_score"],
-            "player2_score_after": game["player2_score"]
+            "player2_score_after": game["player2_score"],
         }
         existing_history.append(tiebreaker_data)
-        
+
         if tie_breaker_tied:
             # Still tied after tie-breaker - game remains in tie state
             cursor.execute(
@@ -1384,7 +1494,10 @@ def tie_breaker_round(game_id):
                 SET round_history = %s, updated_at = CURRENT_TIMESTAMP
                 WHERE game_id = %s
             """,
-                (json.dumps(existing_history), game_id,),
+                (
+                    json.dumps(existing_history),
+                    game_id,
+                ),
             )
         else:
             # Tie-breaker resolved - set winner
@@ -1400,10 +1513,12 @@ def tie_breaker_round(game_id):
         if not tie_breaker_tied:
             # Refresh game object to get the updated round_history
             dict_cursor = conn.cursor(cursor_factory=RealDictCursor)
-            dict_cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+            dict_cursor.execute(
+                "SELECT * FROM games WHERE game_id = %s", (game_id,)
+            )
             updated_game = dict_cursor.fetchone()
             dict_cursor.close()
-            
+
             archive_game_history(
                 conn,
                 updated_game,  # Use updated game object with round_history
@@ -1446,8 +1561,10 @@ def accept_invitation(game_id):
     """Accept a pending game invitation and transition to deck selection."""
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -1463,12 +1580,35 @@ def accept_invitation(game_id):
         # Check if user is player2 (the invited player) or player1 (can also accept to start deck selection)
         if current_user not in [game["player1_name"], game["player2_name"]]:
             conn.close()
-            return jsonify({"error": "Only players in this game can accept"}), 403
+            return (
+                jsonify({"error": "Only players in this game can accept"}),
+                403,
+            )
 
-        # Only allow accepting pending invitations
-        if game.get("game_status") != "pending":
+        # Allow accepting pending invitations or games already in deck_selection (idempotent)
+        if game.get("game_status") not in ["pending", "deck_selection"]:
             conn.close()
-            return jsonify({"error": "Can only accept pending invitations"}), 400
+            return (
+                jsonify(
+                    {
+                        "error": "Can only accept pending invitations or games in deck selection"
+                    }
+                ),
+                400,
+            )
+
+        # If already in deck_selection, just return success (idempotent)
+        if game.get("game_status") == "deck_selection":
+            conn.close()
+            return (
+                jsonify(
+                    {
+                        "message": "Game already in deck selection",
+                        "status": "deck_selection",
+                    }
+                ),
+                200,
+            )
 
         # Mark the invitation as accepted and transition to deck_selection
         cursor = conn.cursor()
@@ -1485,9 +1625,21 @@ def accept_invitation(game_id):
         conn.close()
 
         # Log invitation acceptance
-        log_action("GAME_INVITATION_ACCEPTED", current_user, f"Accepted game invitation {game_id}")
+        log_action(
+            "GAME_INVITATION_ACCEPTED",
+            current_user,
+            f"Accepted game invitation {game_id}",
+        )
 
-        return jsonify({"message": "Invitation accepted successfully", "status": "deck_selection"}), 200
+        return (
+            jsonify(
+                {
+                    "message": "Invitation accepted successfully",
+                    "status": "deck_selection",
+                }
+            ),
+            200,
+        )
 
     except Exception as e:
         return jsonify({"error": f"Failed to accept invitation: {str(e)}"}), 500
@@ -1499,8 +1651,10 @@ def ignore_invitation(game_id):
     """Ignore/decline a game invitation."""
     try:
         # Basic input sanitization
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -1516,12 +1670,26 @@ def ignore_invitation(game_id):
         # Check if user is player2 (the invited player)
         if current_user != game["player2_name"]:
             conn.close()
-            return jsonify({"error": "Only the invited player can ignore this invitation"}), 403
+            return (
+                jsonify(
+                    {
+                        "error": "Only the invited player can ignore this invitation"
+                    }
+                ),
+                403,
+            )
 
-        # Only allow ignoring pending invitations
-        if game.get("game_status") != "pending":
+        # Allow ignoring invitations in pending or deck_selection status
+        if game.get("game_status") not in ["pending", "deck_selection"]:
             conn.close()
-            return jsonify({"error": "Can only ignore pending invitations"}), 400
+            return (
+                jsonify(
+                    {
+                        "error": "Can only ignore pending invitations or games in deck selection"
+                    }
+                ),
+                400,
+            )
 
         # Mark the invitation as ignored
         cursor = conn.cursor()
@@ -1538,7 +1706,11 @@ def ignore_invitation(game_id):
         conn.close()
 
         # Log invitation declined
-        log_action("GAME_INVITATION_DECLINED", current_user, f"Declined game invitation {game_id}")
+        log_action(
+            "GAME_INVITATION_DECLINED",
+            current_user,
+            f"Declined game invitation {game_id}",
+        )
 
         return jsonify({"message": "Invitation ignored successfully"}), 200
 
@@ -1552,8 +1724,10 @@ def cancel_invitation(game_id):
     """Cancel a game invitation by the player who created it."""
     try:
         # Basic input sanitization
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -1569,12 +1743,26 @@ def cancel_invitation(game_id):
         # Check if user is player1 (the inviter)
         if current_user != game["player1_name"]:
             conn.close()
-            return jsonify({"error": "Only the game creator can cancel this invitation"}), 403
+            return (
+                jsonify(
+                    {
+                        "error": "Only the game creator can cancel this invitation"
+                    }
+                ),
+                403,
+            )
 
-        # Only allow canceling pending invitations
-        if game.get("game_status") != "pending":
+        # Allow canceling invitations in pending or deck_selection status
+        if game.get("game_status") not in ["pending", "deck_selection"]:
             conn.close()
-            return jsonify({"error": "Can only cancel pending invitations"}), 400
+            return (
+                jsonify(
+                    {
+                        "error": "Can only cancel pending invitations or games in deck selection"
+                    }
+                ),
+                400,
+            )
 
         # Mark the invitation as ignored (same effect as cancelling)
         cursor = conn.cursor()
@@ -1591,7 +1779,11 @@ def cancel_invitation(game_id):
         conn.close()
 
         # Log invitation cancellation
-        log_action("GAME_INVITATION_CANCELLED", current_user, f"Cancelled game invitation {game_id}")
+        log_action(
+            "GAME_INVITATION_CANCELLED",
+            current_user,
+            f"Cancelled game invitation {game_id}",
+        )
 
         return jsonify({"message": "Invitation cancelled successfully"}), 200
 
@@ -1605,8 +1797,10 @@ def end_game(game_id):
     """End a game."""
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -1656,7 +1850,9 @@ def end_game(game_id):
 
         # Refresh game object to get the updated data
         dict_cursor = conn.cursor(cursor_factory=RealDictCursor)
-        dict_cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+        dict_cursor.execute(
+            "SELECT * FROM games WHERE game_id = %s", (game_id,)
+        )
         updated_game = dict_cursor.fetchone()
         dict_cursor.close()
 
@@ -1678,9 +1874,15 @@ def end_game(game_id):
         # Log game ending
         if new_status == "completed":
             winner = game["winner"] or "tie"
-            log_action("GAME_COMPLETED", current_user, f"Game {game_id} completed - Winner: {winner}")
+            log_action(
+                "GAME_COMPLETED",
+                current_user,
+                f"Game {game_id} completed - Winner: {winner}",
+            )
         elif new_status == "abandoned":
-            log_action("GAME_ABANDONED", current_user, f"Game {game_id} abandoned")
+            log_action(
+                "GAME_ABANDONED", current_user, f"Game {game_id} abandoned"
+            )
 
         return jsonify({"message": "Game ended successfully"}), 200
 
@@ -1697,8 +1899,8 @@ def get_user_games(username):
         try:
             username = InputSanitizer.validate_username(username)
         except ValueError as e:
-            return jsonify({'error': f'Invalid username: {str(e)}'}), 400
-            
+            return jsonify({"error": f"Invalid username: {str(e)}"}), 400
+
         current_user = get_jwt_identity()
         include_history = (
             request.args.get("include_history", "false").lower() == "true"
@@ -1809,8 +2011,10 @@ def get_turn_info(game_id):
     """Get detailed turn information including who needs to act next."""
     try:
         # Basic input sanitization - check for dangerous patterns but allow invalid UUIDs for proper 404s
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-            
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -1889,8 +2093,10 @@ def select_deck(game_id):
     """Select deck for a game during deck selection phase."""
     try:
         # Basic input sanitization
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-        
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
         data = request.get_json()
 
@@ -1898,22 +2104,32 @@ def select_deck(game_id):
             return jsonify({"error": "Deck is required"}), 400
 
         deck = data["deck"]
-        
+
         # Validate deck is a list
         if not isinstance(deck, list):
             return jsonify({"error": "Deck must be an array"}), 400
-        
+
         # Validate deck size (should be 22 cards as per frontend DECK_SIZE)
         if len(deck) != 22:
-            return jsonify({"error": f"Deck must contain exactly 22 cards, got {len(deck)}"}), 400
-        
+            return (
+                jsonify(
+                    {
+                        "error": f"Deck must contain exactly 22 cards, got {len(deck)}"
+                    }
+                ),
+                400,
+            )
+
         # Validate each card has a type
         valid_types = ["Rock", "Paper", "Scissors"]
         for card in deck:
             if not isinstance(card, dict) or "type" not in card:
                 return jsonify({"error": "Each card must have a type"}), 400
             if card["type"] not in valid_types:
-                return jsonify({"error": f"Invalid card type: {card['type']}"}), 400
+                return (
+                    jsonify({"error": f"Invalid card type: {card['type']}"}),
+                    400,
+                )
 
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -1933,23 +2149,38 @@ def select_deck(game_id):
         # Check if game is in deck selection phase
         if game["game_status"] != "deck_selection":
             conn.close()
-            return jsonify({"error": "Game is not in deck selection phase"}), 400
+            return (
+                jsonify({"error": "Game is not in deck selection phase"}),
+                400,
+            )
 
         # Get JWT token to call card service
         token = request.headers.get("Authorization", "").replace("Bearer ", "")
-        
+
         # Get all available cards from card service to assign powers
         try:
             headers = {"Authorization": f"Bearer {token}"}
-            response = requests.get(f"{CARD_SERVICE_URL}/api/cards", headers=headers)
+            response = requests.get(
+                f"{CARD_SERVICE_URL}/api/cards", headers=headers
+            )
             if response.status_code == 200:
                 all_cards = response.json()["cards"]
             else:
                 conn.close()
-                return jsonify({"error": "Failed to fetch cards from card service"}), 500
+                return (
+                    jsonify(
+                        {"error": "Failed to fetch cards from card service"}
+                    ),
+                    500,
+                )
         except Exception as e:
             conn.close()
-            return jsonify({"error": f"Failed to connect to card service: {str(e)}"}), 500
+            return (
+                jsonify(
+                    {"error": f"Failed to connect to card service: {str(e)}"}
+                ),
+                500,
+            )
 
         # Group cards by type
         cards_by_type = {"Rock": [], "Paper": [], "Scissors": []}
@@ -1962,28 +2193,38 @@ def select_deck(game_id):
         for card_request in deck:
             card_type = card_request["type"]
             available_cards = cards_by_type.get(card_type, [])
-            
+
             if not available_cards:
                 conn.close()
-                return jsonify({"error": f"No cards available for type: {card_type}"}), 500
-            
+                return (
+                    jsonify(
+                        {"error": f"No cards available for type: {card_type}"}
+                    ),
+                    500,
+                )
+
             # Select a random card of this type
             selected_card = random.choice(available_cards)
-            final_deck.append({
-                "id": selected_card["id"],
-                "type": selected_card["type"],
-                "power": selected_card["power"]
-            })
+            final_deck.append(
+                {
+                    "id": selected_card["id"],
+                    "type": selected_card["type"],
+                    "power": selected_card["power"],
+                }
+            )
 
         # Update the player's deck and mark as selected
         is_player1 = current_user == game["player1_name"]
-        
+
         if is_player1:
             # Check if already selected
             if game.get("player1_deck_selected"):
                 conn.close()
-                return jsonify({"error": "You have already selected your deck"}), 400
-            
+                return (
+                    jsonify({"error": "You have already selected your deck"}),
+                    400,
+                )
+
             cursor.execute(
                 """
                 UPDATE games 
@@ -1991,14 +2232,17 @@ def select_deck(game_id):
                     updated_at = CURRENT_TIMESTAMP
                 WHERE game_id = %s
                 """,
-                (json.dumps(final_deck), game_id)
+                (json.dumps(final_deck), game_id),
             )
         else:
             # Check if already selected
             if game.get("player2_deck_selected"):
                 conn.close()
-                return jsonify({"error": "You have already selected your deck"}), 400
-            
+                return (
+                    jsonify({"error": "You have already selected your deck"}),
+                    400,
+                )
+
             cursor.execute(
                 """
                 UPDATE games 
@@ -2006,17 +2250,20 @@ def select_deck(game_id):
                     updated_at = CURRENT_TIMESTAMP
                 WHERE game_id = %s
                 """,
-                (json.dumps(final_deck), game_id)
+                (json.dumps(final_deck), game_id),
             )
 
         # Check if both players have selected their decks
         cursor.execute(
             "SELECT player1_deck_selected, player2_deck_selected FROM games WHERE game_id = %s",
-            (game_id,)
+            (game_id,),
         )
         deck_status = cursor.fetchone()
 
-        both_selected = deck_status["player1_deck_selected"] and deck_status["player2_deck_selected"]
+        both_selected = (
+            deck_status["player1_deck_selected"]
+            and deck_status["player2_deck_selected"]
+        )
 
         # If both selected, transition to active game
         if both_selected:
@@ -2027,23 +2274,34 @@ def select_deck(game_id):
                     updated_at = CURRENT_TIMESTAMP
                 WHERE game_id = %s
                 """,
-                (game_id,)
+                (game_id,),
             )
 
         conn.commit()
         conn.close()
 
         # Log deck selection
-        log_action("DECK_SELECTED", current_user, f"Selected deck for game {game_id}")
+        log_action(
+            "DECK_SELECTED", current_user, f"Selected deck for game {game_id}"
+        )
         if both_selected:
-            log_action("GAME_STARTED", None, f"Game {game_id} started - Both players selected decks")
+            log_action(
+                "GAME_STARTED",
+                None,
+                f"Game {game_id} started - Both players selected decks",
+            )
 
-        return jsonify({
-            "message": "Deck selected successfully",
-            "deck": final_deck,
-            "both_selected": both_selected,
-            "status": "active" if both_selected else "deck_selection"
-        }), 200
+        return (
+            jsonify(
+                {
+                    "message": "Deck selected successfully",
+                    "deck": final_deck,
+                    "both_selected": both_selected,
+                    "status": "active" if both_selected else "deck_selection",
+                }
+            ),
+            200,
+        )
 
     except Exception as e:
         return jsonify({"error": f"Failed to select deck: {str(e)}"}), 500
@@ -2055,8 +2313,10 @@ def get_game_status(game_id):
     """Get game status to check if both players have selected decks."""
     try:
         # Basic input sanitization
-        game_id = InputSanitizer.sanitize_string(game_id, max_length=100, allow_special=False)
-        
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
         current_user = get_jwt_identity()
 
         conn = get_db_connection()
@@ -2068,7 +2328,7 @@ def get_game_status(game_id):
                    player1_name, player2_name
             FROM games WHERE game_id = %s
             """,
-            (game_id,)
+            (game_id,),
         )
         game = cursor.fetchone()
         conn.close()
@@ -2081,18 +2341,23 @@ def get_game_status(game_id):
             return jsonify({"error": "Unauthorized"}), 403
 
         status = game["game_status"]
-        
+
         # If both players selected their decks, status should be 'active' or 'in_progress'
         if game["player1_deck_selected"] and game["player2_deck_selected"]:
             if status == "deck_selection":
                 status = "in_progress"  # Frontend expects this value
 
-        return jsonify({
-            "status": status if status != "active" else "in_progress",
-            "player1_deck_selected": game["player1_deck_selected"],
-            "player2_deck_selected": game["player2_deck_selected"],
-            "game_id": game_id
-        }), 200
+        return (
+            jsonify(
+                {
+                    "status": status if status != "active" else "in_progress",
+                    "player1_deck_selected": game["player1_deck_selected"],
+                    "player2_deck_selected": game["player2_deck_selected"],
+                    "game_id": game_id,
+                }
+            ),
+            200,
+        )
 
     except Exception as e:
         return jsonify({"error": f"Failed to get game status: {str(e)}"}), 500
@@ -2100,5 +2365,5 @@ def get_game_status(game_id):
 
 if __name__ == "__main__":
     # For development only - debug mode controlled by environment variable
-    debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 't')
+    debug_mode = os.getenv("FLASK_DEBUG", "False").lower() in ("true", "1", "t")
     app.run(host="0.0.0.0", port=5003, debug=debug_mode)

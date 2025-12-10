@@ -984,7 +984,7 @@
 									"    pm.expect(jsonData).to.have.property('game_id');",
 									"    pm.expect(jsonData).to.have.property('player1_name');",
 									"    pm.expect(jsonData).to.have.property('player2_name');",
-									"    pm.expect(jsonData).to.have.property('status', 'pending');",
+									"    pm.expect(jsonData).to.have.property('status', 'deck_selection');",
 									"    ",
 									"    // Store game_id for subsequent tests",
 									"    pm.environment.set('test_game_id', jsonData.game_id);",

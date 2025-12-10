@@ -6,9 +6,17 @@ Tests the complete flow: create game -> select decks -> start game
 import requests
 import json
 import time
+import urllib3
+
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Base URL
-BASE_URL = "http://localhost:8080/api"
+BASE_URL = "https://localhost:8443/api"
+
+# Create a session with SSL verification disabled for self-signed certs
+session = requests.Session()
+session.verify = False
 
 # Test users
 PLAYER1 = {"username": "decktest_p1", "password": "testpass123"}
@@ -17,13 +25,13 @@ PLAYER2 = {"username": "decktest_p2", "password": "testpass123"}
 def register_and_login(player):
     """Register and login a test user."""
     # Try to register
-    requests.post(f"{BASE_URL}/auth/register", json={
+    session.post(f"{BASE_URL}/auth/register", json={
         "username": player["username"],
         "password": player["password"]
     })
     
     # Login
-    response = requests.post(f"{BASE_URL}/auth/login", json={
+    response = session.post(f"{BASE_URL}/auth/login", json={
         "username": player["username"],
         "password": player["password"]
     })
@@ -47,7 +55,7 @@ def test_deck_selection_flow():
     
     # Step 2: Player 1 creates a game
     print("\n2. Player 1 creates a game...")
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/games",
         headers={"Authorization": f"Bearer {token1}"},
         json={"player2_name": PLAYER2["username"]}
@@ -61,7 +69,7 @@ def test_deck_selection_flow():
     
     # Step 3: Check initial game status
     print("\n3. Checking initial game status...")
-    response = requests.get(
+    response = session.get(
         f"{BASE_URL}/games/{game_id}/status",
         headers={"Authorization": f"Bearer {token1}"}
     )
@@ -80,7 +88,7 @@ def test_deck_selection_flow():
         [{"type": "Paper"}] * 7 +
         [{"type": "Scissors"}] * 7
     )
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/games/{game_id}/select-deck",
         headers={"Authorization": f"Bearer {token1}"},
         json={"deck": deck1}
@@ -103,7 +111,7 @@ def test_deck_selection_flow():
     
     # Step 5: Check status after Player 1 selection
     print("\n5. Checking status after Player 1 selection...")
-    response = requests.get(
+    response = session.get(
         f"{BASE_URL}/games/{game_id}/status",
         headers={"Authorization": f"Bearer {token2}"}
     )
@@ -121,7 +129,7 @@ def test_deck_selection_flow():
         [{"type": "Paper"}] * 7 +
         [{"type": "Scissors"}] * 7
     )
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/games/{game_id}/select-deck",
         headers={"Authorization": f"Bearer {token2}"},
         json={"deck": deck2}
@@ -136,7 +144,7 @@ def test_deck_selection_flow():
     
     # Step 7: Verify final game status
     print("\n7. Verifying final game status...")
-    response = requests.get(
+    response = session.get(
         f"{BASE_URL}/games/{game_id}/status",
         headers={"Authorization": f"Bearer {token1}"}
     )
@@ -151,7 +159,7 @@ def test_deck_selection_flow():
     
     # Step 8: Verify game can be retrieved and has correct decks
     print("\n8. Verifying game state...")
-    response = requests.get(
+    response = session.get(
         f"{BASE_URL}/games/{game_id}",
         headers={"Authorization": f"Bearer {token1}"}
     )
@@ -180,7 +188,7 @@ def test_deck_selection_validation():
     token1 = register_and_login(PLAYER1)
     token2 = register_and_login(PLAYER2)
     
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/games",
         headers={"Authorization": f"Bearer {token1}"},
         json={"player2_name": PLAYER2["username"]}
@@ -190,7 +198,7 @@ def test_deck_selection_validation():
     
     # Test 1: Invalid deck size (too few)
     print("\n2. Testing invalid deck size (too few)...")
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/games/{game_id}/select-deck",
         headers={"Authorization": f"Bearer {token1}"},
         json={"deck": [{"type": "Rock"}] * 5}
@@ -200,7 +208,7 @@ def test_deck_selection_validation():
     
     # Test 2: Invalid deck size (too many)
     print("\n3. Testing invalid deck size (too many)...")
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/games/{game_id}/select-deck",
         headers={"Authorization": f"Bearer {token1}"},
         json={"deck": [{"type": "Rock"}] * 15}
@@ -211,7 +219,7 @@ def test_deck_selection_validation():
     # Test 3: Invalid card type
     print("\n4. Testing invalid card type...")
     invalid_deck = [{"type": "InvalidType"}] * 10
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/games/{game_id}/select-deck",
         headers={"Authorization": f"Bearer {token1}"},
         json={"deck": invalid_deck}
@@ -221,7 +229,7 @@ def test_deck_selection_validation():
     
     # Test 4: Missing deck field
     print("\n5. Testing missing deck field...")
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/games/{game_id}/select-deck",
         headers={"Authorization": f"Bearer {token1}"},
         json={}
@@ -232,7 +240,7 @@ def test_deck_selection_validation():
     # Test 5: Valid deck
     print("\n6. Testing valid deck...")
     valid_deck = [{"type": "Rock"}] * 22
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/games/{game_id}/select-deck",
         headers={"Authorization": f"Bearer {token1}"},
         json={"deck": valid_deck}
@@ -242,7 +250,7 @@ def test_deck_selection_validation():
     
     # Test 6: Try to select deck again (should fail)
     print("\n7. Testing duplicate deck selection...")
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/games/{game_id}/select-deck",
         headers={"Authorization": f"Bearer {token1}"},
         json={"deck": valid_deck}

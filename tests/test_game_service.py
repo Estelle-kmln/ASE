@@ -8,9 +8,17 @@ import requests
 import time
 import os
 import psycopg2
+import urllib3
+
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # API Gateway base URL
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8080")
+BASE_URL = os.getenv("BASE_URL", "https://localhost:8443")
+
+# Create a session with SSL verification disabled for self-signed certs
+session = requests.Session()
+session.verify = False
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://gameuser:gamepassword@localhost:5432/battlecards",
@@ -28,7 +36,7 @@ class TestGameServiceSetup(unittest.TestCase):
         # Create player 1
         cls.player1_username = f"gameplayer1_{cls.unique_id}"
         cls.player1_password = "gamepass123"
-        response1 = requests.post(
+        response1 = session.post(
             f"{BASE_URL}/api/auth/register",
             json={
                 "username": cls.player1_username,
@@ -41,7 +49,7 @@ class TestGameServiceSetup(unittest.TestCase):
         # Create player 2
         cls.player2_username = f"gameplayer2_{cls.unique_id}"
         cls.player2_password = "gamepass123"
-        response2 = requests.post(
+        response2 = session.post(
             f"{BASE_URL}/api/auth/register",
             json={
                 "username": cls.player2_username,
@@ -55,7 +63,7 @@ class TestGameServiceSetup(unittest.TestCase):
     def create_active_game(cls):
         """Helper method to create a fully active game with decks selected."""
         # Step 1: Create game
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games",
             headers=cls.player1_headers,
             json={"player2_name": cls.player2_username},
@@ -63,28 +71,44 @@ class TestGameServiceSetup(unittest.TestCase):
         game_id = response.json().get("game_id")
 
         # Step 2: Accept invitation (transitions to deck_selection)
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/accept",
             headers=cls.player1_headers,
         )
 
         # Step 3: Player 1 selects deck
         deck = [
-            {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
-            {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
-            {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
-            {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
-            {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"},
-            {"type": "Scissors"}, {"type": "Scissors"}
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
         ]
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/select-deck",
             headers=cls.player1_headers,
             json={"deck": deck},
         )
 
         # Step 4: Player 2 selects deck (transitions to active)
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/select-deck",
             headers=cls.player2_headers,
             json={"deck": deck},
@@ -98,7 +122,7 @@ class TestGameServiceCreateGame(TestGameServiceSetup):
 
     def test_create_game_success(self):
         """Test successfully creating a new game with valid data."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games",
             headers=self.player1_headers,
             json={"player2_name": self.player2_username},
@@ -117,7 +141,7 @@ class TestGameServiceCreateGame(TestGameServiceSetup):
 
     def test_create_game_missing_player2(self):
         """Test creating game fails without player2_name."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games", headers=self.player1_headers, json={}
         )
 
@@ -128,7 +152,7 @@ class TestGameServiceCreateGame(TestGameServiceSetup):
 
     def test_create_game_no_token(self):
         """Test creating game fails without authentication token."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games",
             json={"player2_name": self.player2_username},
         )
@@ -138,7 +162,7 @@ class TestGameServiceCreateGame(TestGameServiceSetup):
     def test_create_game_invalid_token(self):
         """Test creating game fails with invalid token."""
         invalid_headers = {"Authorization": "Bearer invalid_token_xyz"}
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games",
             headers=invalid_headers,
             json={"player2_name": self.player2_username},
@@ -148,7 +172,7 @@ class TestGameServiceCreateGame(TestGameServiceSetup):
 
     def test_create_game_empty_player2_name(self):
         """Test creating game fails with empty player2_name."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games",
             headers=self.player1_headers,
             json={"player2_name": ""},
@@ -162,7 +186,7 @@ class TestGameServiceGetGame(TestGameServiceSetup):
 
     def setUp(self):
         """Create a game for testing."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games",
             headers=self.player1_headers,
             json={"player2_name": self.player2_username},
@@ -171,7 +195,7 @@ class TestGameServiceGetGame(TestGameServiceSetup):
 
     def test_get_game_success_player1(self):
         """Test player 1 can successfully retrieve game state."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/games/{self.game_id}", headers=self.player1_headers
         )
 
@@ -183,11 +207,13 @@ class TestGameServiceGetGame(TestGameServiceSetup):
         self.assertIn("player1", data)
         self.assertIn("player2", data)
         self.assertEqual(data["game_id"], self.game_id)
-        self.assertIn(data["game_status"], ['pending', 'active', 'deck_selection'])
+        self.assertIn(
+            data["game_status"], ["pending", "active", "deck_selection"]
+        )
 
     def test_get_game_success_player2(self):
         """Test player 2 can successfully retrieve game state."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/games/{self.game_id}", headers=self.player2_headers
         )
 
@@ -198,7 +224,7 @@ class TestGameServiceGetGame(TestGameServiceSetup):
     def test_get_game_not_found(self):
         """Test getting game with non-existent ID returns 404."""
         fake_game_id = "00000000-0000-0000-0000-000000000000"
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/games/{fake_game_id}", headers=self.player1_headers
         )
 
@@ -212,14 +238,14 @@ class TestGameServiceGetGame(TestGameServiceSetup):
         # Create third user
         unique_id = int(time.time() * 1000)
         username = f"nonplayer_{unique_id}"
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": username, "password": "pass123"},
         )
         token = response.json().get("access_token")
         headers = {"Authorization": f"Bearer {token}"}
 
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/games/{self.game_id}", headers=headers
         )
 
@@ -230,7 +256,7 @@ class TestGameServiceGetGame(TestGameServiceSetup):
 
     def test_get_game_no_token(self):
         """Test getting game fails without token."""
-        response = requests.get(f"{BASE_URL}/api/games/{self.game_id}")
+        response = session.get(f"{BASE_URL}/api/games/{self.game_id}")
 
         self.assertEqual(response.status_code, 401)
 
@@ -240,7 +266,7 @@ class TestGameServiceGetHand(TestGameServiceSetup):
 
     def setUp(self):
         """Create a game for testing."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games",
             headers=self.player1_headers,
             json={"player2_name": self.player2_username},
@@ -249,7 +275,7 @@ class TestGameServiceGetHand(TestGameServiceSetup):
 
     def test_get_hand_success(self):
         """Test successfully retrieving player's hand."""
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/games/{self.game_id}/hand",
             headers=self.player1_headers,
         )
@@ -264,7 +290,7 @@ class TestGameServiceGetHand(TestGameServiceSetup):
     def test_get_hand_game_not_found(self):
         """Test getting hand for non-existent game returns 404."""
         fake_game_id = "00000000-0000-0000-0000-000000000000"
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/games/{fake_game_id}/hand",
             headers=self.player1_headers,
         )
@@ -277,14 +303,14 @@ class TestGameServiceGetHand(TestGameServiceSetup):
         """Test non-player cannot view hand."""
         unique_id = int(time.time() * 1000)
         username = f"nonplayer_{unique_id}"
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": username, "password": "pass123"},
         )
         token = response.json().get("access_token")
         headers = {"Authorization": f"Bearer {token}"}
 
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/games/{self.game_id}/hand", headers=headers
         )
 
@@ -292,7 +318,7 @@ class TestGameServiceGetHand(TestGameServiceSetup):
 
     def test_get_hand_no_token(self):
         """Test getting hand fails without token."""
-        response = requests.get(f"{BASE_URL}/api/games/{self.game_id}/hand")
+        response = session.get(f"{BASE_URL}/api/games/{self.game_id}/hand")
 
         self.assertEqual(response.status_code, 401)
 
@@ -306,7 +332,7 @@ class TestGameServiceDrawHand(TestGameServiceSetup):
 
     def test_draw_hand_success(self):
         """Test successfully drawing a hand."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{self.game_id}/draw-hand",
             headers=self.player1_headers,
         )
@@ -327,7 +353,7 @@ class TestGameServiceDrawHand(TestGameServiceSetup):
     def test_draw_hand_game_not_found(self):
         """Test drawing hand for non-existent game returns 404."""
         fake_game_id = "00000000-0000-0000-0000-000000000000"
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{fake_game_id}/draw-hand",
             headers=self.player1_headers,
         )
@@ -340,14 +366,14 @@ class TestGameServiceDrawHand(TestGameServiceSetup):
         """Test non-player cannot draw hand."""
         unique_id = int(time.time() * 1000)
         username = f"nonplayer_{unique_id}"
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/auth/register",
             json={"username": username, "password": "pass123"},
         )
         token = response.json().get("access_token")
         headers = {"Authorization": f"Bearer {token}"}
 
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{self.game_id}/draw-hand", headers=headers
         )
 
@@ -355,7 +381,7 @@ class TestGameServiceDrawHand(TestGameServiceSetup):
 
     def test_draw_hand_no_token(self):
         """Test drawing hand fails without token."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{self.game_id}/draw-hand"
         )
 
@@ -370,14 +396,14 @@ class TestGameServicePlayCard(TestGameServiceSetup):
         self.game_id = self.create_active_game()
 
         # Draw hand for player 1
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{self.game_id}/draw-hand",
             headers=self.player1_headers,
         )
 
     def test_play_card_success(self):
         """Test successfully playing a card from hand."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{self.game_id}/play-card",
             headers=self.player1_headers,
             json={"card_index": 0},
@@ -391,7 +417,7 @@ class TestGameServicePlayCard(TestGameServiceSetup):
 
     def test_play_card_missing_index(self):
         """Test playing card fails without card_index."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{self.game_id}/play-card",
             headers=self.player1_headers,
             json={},
@@ -404,7 +430,7 @@ class TestGameServicePlayCard(TestGameServiceSetup):
 
     def test_play_card_invalid_index(self):
         """Test playing card fails with invalid index."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{self.game_id}/play-card",
             headers=self.player1_headers,
             json={"card_index": 999},
@@ -417,7 +443,7 @@ class TestGameServicePlayCard(TestGameServiceSetup):
 
     def test_play_card_negative_index(self):
         """Test playing card fails with negative index."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{self.game_id}/play-card",
             headers=self.player1_headers,
             json={"card_index": -1},
@@ -430,7 +456,7 @@ class TestGameServicePlayCard(TestGameServiceSetup):
     def test_play_card_game_not_found(self):
         """Test playing card for non-existent game returns 404."""
         fake_game_id = "00000000-0000-0000-0000-000000000000"
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{fake_game_id}/play-card",
             headers=self.player1_headers,
             json={"card_index": 0},
@@ -440,7 +466,7 @@ class TestGameServicePlayCard(TestGameServiceSetup):
 
     def test_play_card_no_token(self):
         """Test playing card fails without token."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{self.game_id}/play-card",
             json={"card_index": 0},
         )
@@ -453,7 +479,7 @@ class TestGameServiceResolveRound(TestGameServiceSetup):
 
     def setUp(self):
         """Create a game where both players have played cards."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games",
             headers=self.player1_headers,
             json={"player2_name": self.player2_username},
@@ -461,20 +487,20 @@ class TestGameServiceResolveRound(TestGameServiceSetup):
         self.game_id = response.json().get("game_id")
 
         # Draw and play cards for both players
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{self.game_id}/draw-hand",
             headers=self.player1_headers,
         )
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{self.game_id}/draw-hand",
             headers=self.player2_headers,
         )
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{self.game_id}/play-card",
             headers=self.player1_headers,
             json={"card_index": 0},
         )
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{self.game_id}/play-card",
             headers=self.player2_headers,
             json={"card_index": 0},
@@ -482,7 +508,7 @@ class TestGameServiceResolveRound(TestGameServiceSetup):
 
     def test_resolve_round_success(self):
         """Test successfully resolving a round."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{self.game_id}/resolve-round",
             headers=self.player1_headers,
         )
@@ -499,7 +525,7 @@ class TestGameServiceResolveRound(TestGameServiceSetup):
     def test_resolve_round_game_not_found(self):
         """Test resolving round for non-existent game returns 404."""
         fake_game_id = "00000000-0000-0000-0000-000000000000"
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{fake_game_id}/resolve-round",
             headers=self.player1_headers,
         )
@@ -508,7 +534,7 @@ class TestGameServiceResolveRound(TestGameServiceSetup):
 
     def test_resolve_round_no_token(self):
         """Test resolving round fails without token."""
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{self.game_id}/resolve-round"
         )
 
@@ -517,14 +543,14 @@ class TestGameServiceResolveRound(TestGameServiceSetup):
     def test_resolve_round_cards_not_played(self):
         """Test resolving round fails when cards not played."""
         # Create new game without playing cards
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games",
             headers=self.player1_headers,
             json={"player2_name": self.player2_username},
         )
         new_game_id = response.json().get("game_id")
 
-        response = requests.post(
+        response = session.post(
             f"{BASE_URL}/api/games/{new_game_id}/resolve-round",
             headers=self.player1_headers,
         )
@@ -544,29 +570,29 @@ class TestGameHistoryEndpoints(TestGameServiceSetup):
 
         # Play one round to generate history
         # Player 1 draws and plays
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/draw-hand",
             headers=self.player1_headers,
         )
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/play-card",
             headers=self.player1_headers,
             json={"card_index": 0},
         )
 
         # Player 2 draws and plays (this auto-resolves the round)
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/draw-hand",
             headers=self.player2_headers,
         )
-        requests.post(
+        session.post(
             f"{BASE_URL}/api/games/{game_id}/play-card",
             headers=self.player2_headers,
             json={"card_index": 0},
         )
 
         # End the game to archive it
-        end_response = requests.post(
+        end_response = session.post(
             f"{BASE_URL}/api/games/{game_id}/end", headers=self.player1_headers
         )
         self.assertEqual(end_response.status_code, 200)
@@ -586,7 +612,7 @@ class TestGameHistoryEndpoints(TestGameServiceSetup):
         """Completed games expose decrypted history snapshots."""
         game_id = self._create_archived_game()
 
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/games/{game_id}/history",
             headers=self.player1_headers,
         )
@@ -601,7 +627,7 @@ class TestGameHistoryEndpoints(TestGameServiceSetup):
         """User games endpoint can embed decrypted history."""
         game_id = self._create_archived_game()
 
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/games/user/{self.player1_username}?include_history=true",
             headers=self.player1_headers,
         )
@@ -621,7 +647,7 @@ class TestGameHistoryEndpoints(TestGameServiceSetup):
         game_id = self._create_archived_game()
         self._tamper_history_integrity(game_id)
 
-        response = requests.get(
+        response = session.get(
             f"{BASE_URL}/api/games/{game_id}/history",
             headers=self.player1_headers,
         )

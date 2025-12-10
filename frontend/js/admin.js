@@ -28,7 +28,7 @@ async function checkAdminAccess() {
             return;
         }
 
-        const response = await fetch("http://localhost:8080/api/auth/profile", {
+        const response = await fetch("https://localhost:8443/api/auth/profile", {
             method: "GET",
             headers: {
                 Authorization: `Bearer ${token}`,
@@ -113,8 +113,8 @@ async function loadUsers() {
         const token = localStorage.getItem("token");
         
         let url = searchQuery
-            ? `http://localhost:8080/api/admin/users/search?query=${encodeURIComponent(searchQuery)}&page=${currentPage - 1}&size=${pageSize}`
-            : `http://localhost:8080/api/admin/users?page=${currentPage - 1}&size=${pageSize}`;
+            ? `https://localhost:8443/api/admin/users/search?query=${encodeURIComponent(searchQuery)}&page=${currentPage - 1}&size=${pageSize}`
+            : `https://localhost:8443/api/admin/users?page=${currentPage - 1}&size=${pageSize}`;
 
         const response = await fetch(url, {
             method: "GET",
@@ -267,7 +267,7 @@ async function loadLogs() {
         logsList.innerHTML = '<div class="loading-spinner">Loading logs...</div>';
         
         const token = localStorage.getItem("token");
-        const response = await fetch("http://localhost:8080/api/logs/list", {
+        const response = await fetch("https://localhost:8443/api/logs/list", {
             method: "GET",
             headers: {
                 Authorization: `Bearer ${token}`,

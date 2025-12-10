@@ -1,5 +1,5 @@
 // Configuration
-const GAME_API_URL = 'http://localhost:8080/api/games';
+const GAME_API_URL = 'https://localhost:8443/api/games';
 const DECK_SIZE = 22;
 
 // State

@@ -1,6 +1,6 @@
 // Configuration
-const LEADERBOARD_API_URL = 'http://localhost:8080/api/leaderboard';
-const GAME_API_URL = 'http://localhost:8080/api/games';
+const LEADERBOARD_API_URL = 'https://localhost:8443/api/leaderboard';
+const GAME_API_URL = 'https://localhost:8443/api/games';
 const ITEMS_PER_PAGE = 10;
 
 // State

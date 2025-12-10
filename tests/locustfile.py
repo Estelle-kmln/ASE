@@ -7,18 +7,27 @@ This file contains performance test scenarios for all microservices:
 - Game Service (port 5003)
 - Leaderboard Service (port 5004)
 
-Run with: locust -f locustfile.py --host=http://localhost
+Run with: locust -f locustfile.py --host=https://localhost:8443
 """
 
 import random
 import string
+import urllib3
 from locust import HttpUser, task, between
+
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class AuthServiceUser(HttpUser):
     """Test user for Auth Service endpoints"""
-    host = "http://localhost:8080"
+    host = "https://localhost:8443"
     wait_time = between(1, 3)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Disable SSL verification for self-signed certificates
+        self.client.verify = False
     
     def on_start(self):
         """Register and login a new user before starting tests"""
@@ -93,8 +102,13 @@ class AuthServiceUser(HttpUser):
 
 class CardServiceUser(HttpUser):
     """Test user for Card Service endpoints"""
-    host = "http://localhost:8080"
+    host = "https://localhost:8443"
     wait_time = between(1, 3)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Disable SSL verification for self-signed certificates
+        self.client.verify = False
     
     def on_start(self):
         """Get authentication token"""
@@ -205,8 +219,13 @@ class CardServiceUser(HttpUser):
 
 class GameServiceUser(HttpUser):
     """Test user for Game Service endpoints"""
-    host = "http://localhost:8080"
+    host = "https://localhost:8443"
     wait_time = between(2, 5)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Disable SSL verification for self-signed certificates
+        self.client.verify = False
     
     def on_start(self):
         """Get authentication token and create an active game with deck selection"""
@@ -396,8 +415,13 @@ class GameServiceUser(HttpUser):
 
 class LeaderboardServiceUser(HttpUser):
     """Test user for Leaderboard Service endpoints"""
-    host = "http://localhost:8080"
+    host = "https://localhost:8443"
     wait_time = between(1, 3)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Disable SSL verification for self-signed certificates
+        self.client.verify = False
     
     def on_start(self):
         """Get authentication token"""
@@ -497,8 +521,13 @@ class LeaderboardServiceUser(HttpUser):
 
 class CombinedUser(HttpUser):
     """Combined user that tests all services in a realistic workflow"""
-    host = "http://localhost:8080"
+    host = "https://localhost:8443"
     wait_time = between(2, 5)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Disable SSL verification for self-signed certificates
+        self.client.verify = False
     
     def on_start(self):
         """Set up user for complete game flow"""

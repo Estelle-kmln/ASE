@@ -5,12 +5,20 @@ Tests the complete flow: create game, play to completion, verify leaderboard.
 
 import requests
 import time
+import urllib3
 
-BASE_URL = "http://localhost:8080"
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+BASE_URL = "https://localhost:8443"
+
+# Create a session with SSL verification disabled for self-signed certs
+session = requests.Session()
+session.verify = False
 
 def register_user(username, password):
     """Register a new user and return the token."""
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/api/auth/register",
         json={"username": username, "password": password}
     )
@@ -20,7 +28,7 @@ def register_user(username, password):
 
 def create_game(token, player2_name):
     """Create a game invitation."""
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/api/games",
         headers={"Authorization": f"Bearer {token}"},
         json={"player2_name": player2_name}
@@ -31,7 +39,7 @@ def create_game(token, player2_name):
 
 def draw_hand(token, game_id):
     """Draw a hand of cards."""
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/api/games/{game_id}/draw-hand",
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -41,7 +49,7 @@ def draw_hand(token, game_id):
 
 def play_card(token, game_id, card_index):
     """Play a card."""
-    response = requests.post(
+    response = session.post(
         f"{BASE_URL}/api/games/{game_id}/play-card",
         headers={"Authorization": f"Bearer {token}"},
         json={"card_index": card_index}
@@ -50,7 +58,7 @@ def play_card(token, game_id, card_index):
 
 def get_game_state(token, game_id):
     """Get the current game state."""
-    response = requests.get(
+    response = session.get(
         f"{BASE_URL}/api/games/{game_id}",
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -60,7 +68,7 @@ def get_game_state(token, game_id):
 
 def get_leaderboard(token):
     """Get the leaderboard."""
-    response = requests.get(
+    response = session.get(
         f"{BASE_URL}/api/leaderboard",
         headers={"Authorization": f"Bearer {token}"}
     )
@@ -68,7 +76,7 @@ def get_leaderboard(token):
 
 def get_player_stats(token, username):
     """Get player statistics."""
-    response = requests.get(
+    response = session.get(
         f"{BASE_URL}/api/leaderboard/player/{username}",
         headers={"Authorization": f"Bearer {token}"}
     )
