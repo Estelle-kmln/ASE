@@ -314,11 +314,61 @@ function handleConcurrentSession(data) {
             <strong>Device:</strong> ${device}<br>
             <strong>IP Address:</strong> ${ipAddress}<br>
             <strong>Started:</strong> ${createdAt}<br><br>
-            Please logout from your other device first, or use the profile page to manage your sessions.
+            <button id="force-logout-btn" class="btn" style="margin-top: 1rem; background: #e74c3c;">
+                Force Logout All Sessions
+            </button>
+            <p style="font-size: 0.9em; color: #ccc; margin-top: 0.5rem;">
+                This will end all active sessions and allow you to login.
+            </p>
         </div>
     `;
     
     showAlert(message, 'error');
+    
+    // Add event listener for force logout button
+    setTimeout(() => {
+        const forceLogoutBtn = document.getElementById('force-logout-btn');
+        if (forceLogoutBtn) {
+            forceLogoutBtn.addEventListener('click', async () => {
+                await forceLogoutAllSessions();
+            });
+        }
+    }, 100);
+}
+
+async function forceLogoutAllSessions() {
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    
+    if (!username || !password) {
+        showAlert('Please enter your username and password first', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/force-logout`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ username, password }),
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showAlert('All sessions terminated successfully. You can now login.', 'success');
+            // Clear the alert after 2 seconds and allow user to login again
+            setTimeout(() => {
+                clearAlert();
+            }, 2000);
+        } else {
+            showAlert(data.error || 'Failed to terminate sessions', 'error');
+        }
+    } catch (error) {
+        console.error('Force logout error:', error);
+        showAlert('An error occurred. Please try again.', 'error');
+    }
 }
 
 // Check if user is already logged in

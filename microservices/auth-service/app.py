@@ -369,6 +369,76 @@ def register():
         return jsonify({"error": f"Registration failed: {str(e)}"}), 500
 
 
+@app.route("/api/auth/force-logout", methods=["POST"])
+def force_logout():
+    """Force logout all sessions for a user after password verification."""
+    try:
+        log_action("FORCE_LOGOUT_ATTEMPT", None, "Force logout endpoint called")
+        data = request.get_json()
+        
+        log_action("FORCE_LOGOUT_DEBUG", None, f"Data received: {data is not None}")
+
+        if not data:
+            log_action("FORCE_LOGOUT_ERROR", None, "No request body provided")
+            return jsonify({"error": "Request body is required"}), 400
+
+        # Validate required fields
+        if not data.get("username") or not data.get("password"):
+            log_action("FORCE_LOGOUT_ERROR", None, "Missing username or password")
+            return jsonify({"error": "Username and password are required"}), 400
+
+        # Sanitize and validate inputs
+        try:
+            username = InputSanitizer.validate_username(data["username"])
+            password = InputSanitizer.validate_password(data["password"])
+            log_action("FORCE_LOGOUT_DEBUG", username, "Input validation passed")
+        except ValueError as e:
+            log_action("FORCE_LOGOUT_ERROR", None, f"Validation error: {str(e)}")
+            return jsonify({"error": str(e)}), 400
+
+        # Get user and verify password
+        log_action("FORCE_LOGOUT_DEBUG", username, "Getting user from database")
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            """SELECT id, username, password 
+               FROM users WHERE username = %s""",
+            (username,),
+        )
+        user = cursor.fetchone()
+
+        if not user:
+            conn.close()
+            log_action("FORCE_LOGOUT_FAILED", username, "User not found")
+            return jsonify({"error": "Invalid username or password"}), 401
+
+        log_action("FORCE_LOGOUT_DEBUG", username, "User found, verifying password")
+        # Verify password
+        if not bcrypt.checkpw(password.encode("utf-8"), user["password"].encode("utf-8")):
+            conn.close()
+            log_action("FORCE_LOGOUT_FAILED", username, "Invalid password")
+            return jsonify({"error": "Invalid username or password"}), 401
+
+        conn.close()
+
+        log_action("FORCE_LOGOUT_DEBUG", username, "Password verified, revoking tokens")
+        # Revoke all sessions
+        success = revoke_all_user_tokens(user["id"])
+        
+        if success:
+            log_action("FORCE_LOGOUT", username, "All sessions forcefully terminated")
+            return jsonify({"message": "All sessions have been terminated. You can now login again."}), 200
+        else:
+            log_action("FORCE_LOGOUT_ERROR", username, "Failed to revoke tokens")
+            return jsonify({"error": "Failed to terminate sessions"}), 500
+
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        log_action("FORCE_LOGOUT_EXCEPTION", None, f"Exception: {str(e)} - {error_details}")
+        return jsonify({"error": "An error occurred during force logout"}), 500
+
+
 @app.route("/api/auth/login", methods=["POST"])
 @require_sanitized_input({"username": "username", "password": "password"})
 def login():

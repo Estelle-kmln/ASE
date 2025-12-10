@@ -174,13 +174,14 @@ async function loadUserGames() {
         const pendingGames = games.filter(game => {
             const isPlayer1 = game.player1_name && game.player1_name.toLowerCase() === currentUsername;
             const isPlayer2 = game.player2_name && game.player2_name.toLowerCase() === currentUsername;
-            return game.game_status === 'pending' && (isPlayer1 || isPlayer2);
+            return (game.game_status === 'pending' || game.game_status === 'deck_selection') && (isPlayer1 || isPlayer2);
         });
         
-        const activeGames = games.filter(game => 
-            (game.game_status === 'active' || game.game_status === 'deck_selection') && 
-            (game.player1_id || game.player2_id)
-        );
+        const activeGames = games.filter(game => {
+            const isPlayer1 = game.player1_name && game.player1_name.toLowerCase() === currentUsername;
+            const isPlayer2 = game.player2_name && game.player2_name.toLowerCase() === currentUsername;
+            return game.game_status === 'active' && (isPlayer1 || isPlayer2);
+        });
         
         console.log('Pending games:', pendingGames);
         console.log('Active games:', activeGames);

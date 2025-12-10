@@ -349,7 +349,7 @@ def create_game():
             (
                 game_id,
                 1,
-                "deck_selection",  # Initial status - players need to select decks
+                "pending",  # Initial status - invitation sent, waiting for acceptance
                 player1_name,
                 json.dumps([]),  # Empty deck initially
                 json.dumps([]),
@@ -379,7 +379,7 @@ def create_game():
                     "game_id": game_id,
                     "player1_name": player1_name,
                     "player2_name": player2_name,
-                    "status": "deck_selection",
+                    "status": "pending",
                     "turn": 1,
                 }
             ),
