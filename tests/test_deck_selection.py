@@ -19,27 +19,49 @@ session = requests.Session()
 session.verify = False
 
 # Test users
-PLAYER1 = {"username": "decktest_p1", "password": "testpass123"}
-PLAYER2 = {"username": "decktest_p2", "password": "testpass123"}
+PLAYER1 = {"username": "decktest_p1", "password": "TestPass123!"}
+PLAYER2 = {"username": "decktest_p2", "password": "TestPass123!"}
 
 def register_and_login(player):
     """Register and login a test user."""
+    # Use separate sessions to avoid concurrent session conflicts
+    reg_session = requests.Session()
+    reg_session.verify = False
+    
     # Try to register
-    session.post(f"{BASE_URL}/auth/register", json={
+    reg_response = reg_session.post(f"{BASE_URL}/auth/register", json={
         "username": player["username"],
         "password": player["password"]
     })
     
-    # Login
-    response = session.post(f"{BASE_URL}/auth/login", json={
-        "username": player["username"],
-        "password": player["password"]
-    })
+    # If registration was successful, use the token from registration
+    if reg_response.status_code == 201:
+        return reg_response.json()["access_token"]
     
-    if response.status_code == 200:
-        return response.json()["access_token"]
-    else:
-        raise Exception(f"Login failed: {response.text}")
+    # If user already exists (409), force logout and try again
+    if reg_response.status_code == 409:
+        # Force logout any existing sessions
+        logout_session = requests.Session()
+        logout_session.verify = False
+        logout_response = logout_session.post(f"{BASE_URL}/auth/force-logout", json={
+            "username": player["username"],
+            "password": player["password"]
+        })
+        
+        # Now try to login with a fresh session
+        login_session = requests.Session()
+        login_session.verify = False
+        response = login_session.post(f"{BASE_URL}/auth/login", json={
+            "username": player["username"],
+            "password": player["password"]
+        })
+        
+        if response.status_code == 200:
+            return response.json()["access_token"]
+        else:
+            raise Exception(f"Login failed: {response.text}")
+    
+    raise Exception(f"Registration failed: {reg_response.text}")
 
 def test_deck_selection_flow():
     """Test the complete deck selection flow."""
@@ -65,7 +87,8 @@ def test_deck_selection_flow():
     game_id = game_data["game_id"]
     print(f"✓ Game created: {game_id}")
     print(f"  Status: {game_data['status']}")
-    assert game_data["status"] == "deck_selection", "Expected deck_selection status"
+    # Game starts as "pending" until player 2 accepts
+    assert game_data["status"] == "pending", "Expected pending status for new game"
     
     # Step 3: Check initial game status
     print("\n3. Checking initial game status...")

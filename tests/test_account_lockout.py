@@ -23,9 +23,9 @@ def test_account_lockout():
     print("="*70 + "\n")
     
     # Generate unique username for this test
-    test_username = f"lockout_test_{int(time.time())}"
-    test_password = "correct_password123"
-    wrong_password = "wrong_password123"
+    test_username = f"reset_test_{int(time.time())}"
+    test_password = "CorrectPass123!"
+    wrong_password = "WrongPass123!"
     
     all_tests_passed = True
     

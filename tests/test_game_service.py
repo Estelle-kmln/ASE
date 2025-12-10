@@ -35,7 +35,7 @@ class TestGameServiceSetup(unittest.TestCase):
 
         # Create player 1
         cls.player1_username = f"gameplayer1_{cls.unique_id}"
-        cls.player1_password = "gamepass123"
+        cls.player1_password = "GamePass123!"
         response1 = session.post(
             f"{BASE_URL}/api/auth/register",
             json={
@@ -48,7 +48,7 @@ class TestGameServiceSetup(unittest.TestCase):
 
         # Create player 2
         cls.player2_username = f"gameplayer2_{cls.unique_id}"
-        cls.player2_password = "gamepass123"
+        cls.player2_password = "GamePass123!"
         response2 = session.post(
             f"{BASE_URL}/api/auth/register",
             json={

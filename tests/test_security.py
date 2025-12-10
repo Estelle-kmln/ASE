@@ -85,7 +85,7 @@ class TestInputSanitizer(unittest.TestCase):
     def test_password_validation(self):
         """Test password validation."""
         # Valid passwords
-        valid_passwords = ["password123", "P@ssw0rd!", "complex_password_2024"]
+        valid_passwords = ["Password123!", "P@ssw0rd!", "Complex_Pass2024!"]
         for password in valid_passwords:
             result = InputSanitizer.validate_password(password)
             self.assertEqual(result, password)

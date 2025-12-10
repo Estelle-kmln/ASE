@@ -190,30 +190,30 @@ class InputSanitizer:
         if len(password) > 128:
             raise ValueError("Password is too long")
         
-        # Check that password only contains allowed characters
-        # Allowed: letters, numbers, and specific special characters
-        allowed_pattern = r'^[a-zA-Z0-9!@$%^&*()_+={}\\[\\]:;,.?/<>-]+$'
-        if not re.match(allowed_pattern, password):
-            raise ValueError("Password contains invalid characters. Only letters, numbers, and these special characters are allowed: !@$%^&*()_+={}[]:;,.?/<>-")
+        # Ensure it's valid UTF-8 first
+        try:
+            password.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError("Password contains invalid characters")
+        
+        # Check for dangerous SQL patterns (keywords) - do this before character check
+        sql_keywords = r"\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|SCRIPT|TABLE|FROM|WHERE)\b"
+        if re.search(sql_keywords, password, re.IGNORECASE):
+            raise ValueError("Password contains invalid patterns")
         
         # Check for at least one number
         if not re.search(r'\d', password):
             raise ValueError("Password must contain at least one number")
         
         # Check for at least one special character from the allowed list
-        if not re.search(r'[!@$%^&*()_+={}\\[\\]:;,.?/<>-]', password):
+        if not re.search(r'[!@$%^&*()_+={}[\]:;,.?/<>-]', password):
             raise ValueError("Password must contain at least one special character (!@$%^&*()_+={}[]:;,.?/<>-)")
         
-        # Check for dangerous SQL patterns (keywords)
-        sql_keywords = r"\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION|SCRIPT|TABLE|FROM|WHERE)\b"
-        if re.search(sql_keywords, password, re.IGNORECASE):
-            raise ValueError("Password contains invalid patterns")
-        
-        # Ensure it's valid UTF-8
-        try:
-            password.encode("utf-8")
-        except UnicodeEncodeError:
-            raise ValueError("Password contains invalid characters")
+        # Check that password only contains allowed characters (do this LAST)
+        # Allowed: letters, numbers, and specific special characters
+        allowed_pattern = r'^[a-zA-Z0-9!@$%^&*()_+={}[\]:;,.?/<>-]+$'
+        if not re.match(allowed_pattern, password):
+            raise ValueError("Password contains invalid characters. Only letters, numbers, and these special characters are allowed: !@$%^&*()_+={}[]:;,.?/<>-")
 
         return password
 

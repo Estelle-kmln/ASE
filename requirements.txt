@@ -28,3 +28,7 @@ python-dotenv==1.2.1
 
 # Performance Testing
 locust==2.42.6
+
+# Testing
+pytest==8.4.2
+pytest-order==1.3.0
