@@ -87,6 +87,7 @@ DATABASE_URL = os.getenv(
     "postgresql://gameuser:gamepassword@localhost:5432/battlecards",
 )
 CARD_SERVICE_URL = os.getenv("CARD_SERVICE_URL", "http://localhost:5002")
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:5001")
 
 
 def get_db_connection():
@@ -330,10 +331,24 @@ def create_game():
         if player1_name == player2_name:
             return jsonify({"error": "Cannot create game with yourself"}), 400
 
+        # Verify that player2 exists in the database
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute(
+            "SELECT id, username FROM users WHERE username = %s",
+            (player2_name,)
+        )
+        player2_user = cursor.fetchone()
+        
+        if not player2_user:
+            conn.close()
+            return jsonify({"error": f"User '{player2_name}' could not be found"}), 404
+
         # Create game with empty decks - players will select their decks
         game_id = str(uuid.uuid4())
 
-        conn = get_db_connection()
+        # Reuse the connection and create a new cursor for the insert
         cursor = conn.cursor()
 
         cursor.execute(
