@@ -14,7 +14,7 @@ This document provides comprehensive documentation for the Battle Card Game micr
 
 ### **Service Overview**
 
-The Battle Card Game consists of 6 microservices running on different ports:
+The Battle Card Game consists of 5 microservices running on different ports:
 
 | Service | Gateway Path | Purpose | Status |
 |---------|--------------|---------|--------|
@@ -22,7 +22,6 @@ The Battle Card Game consists of 6 microservices running on different ports:
 | **🃏 Card Service** | /api/cards | Card collection and deck management | ✅ Active |
 | **🎯 Game Service** | /api/games | Game logic and battle mechanics | ✅ Active |
 | **🏆 Leaderboard Service** | /api/leaderboard | Rankings and statistics | ✅ Active |
-| **🗄️ Database Manager** | Internal (common module) | Centralized connection pooling and transaction management | ✅ Active |
 | **🌐 Nginx Gateway** | 8443 (HTTPS), 8080 (HTTP redirects) | API Gateway and reverse proxy | ✅ Active |
 | **🗄️ PostgreSQL Database** | 5432 | Data persistence | ✅ Active |
 
@@ -1031,8 +1030,8 @@ All services are operational and healthy:
 - ✅ **Card Service**: Accessible at /api/cards  
 - ✅ **Game Service**: Accessible at /api/games
 - ✅ **Leaderboard Service**: Accessible at /api/leaderboard
-- ✅ **Database Manager**: Connection pooling active (1-10 connections), all services using unit_of_work() pattern
 - ✅ **Database**: PostgreSQL initialized with 39 cards
+- ℹ️ **Database Manager**: Internal shared module (common/db_manager.py) providing connection pooling to all services
 
 ### **Database Schema**
 The system uses the following main tables:
