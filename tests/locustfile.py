@@ -36,29 +36,52 @@ class AuthServiceUser(HttpUser):
         self.token = None
         
         # Register
-        response = self.client.post(
+        with self.client.post(
             "/api/auth/register",
             json={
                 "username": self.username,
                 "password": self.password
             },
+            catch_response=True,
             name="/api/auth/register"
-        )
+        ) as response:
+            if response.status_code == 201:
+                response.success()
+                self.token = response.json().get("access_token")
+            elif response.status_code == 409:
+                # User already exists, this is expected in load testing
+                response.success()
+            else:
+                response.failure(f"Unexpected status code: {response.status_code}")
         
-        if response.status_code == 201:
-            self.token = response.json().get("access_token")
-        else:
-            # If registration fails, try to login
-            response = self.client.post(
+        # If registration didn't return a token, try to login
+        if not self.token:
+            with self.client.post(
                 "/api/auth/login",
                 json={
                     "username": self.username,
                     "password": self.password
                 },
+                catch_response=True,
                 name="/api/auth/login"
-            )
-            if response.status_code == 200:
-                self.token = response.json().get("access_token")
+            ) as response:
+                if response.status_code == 200:
+                    response.success()
+                    self.token = response.json().get("access_token")
+                elif response.status_code == 409:
+                    # Concurrent session detected - expected in load testing, use new unique user
+                    response.success()
+                    self.username = f"testuser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=12))}"
+                    # Try registering with new username
+                    reg_response = self.client.post(
+                        "/api/auth/register",
+                        json={"username": self.username, "password": self.password},
+                        name="/api/auth/register"
+                    )
+                    if reg_response.status_code == 201:
+                        self.token = reg_response.json().get("access_token")
+                else:
+                    response.failure(f"Login failed: {response.status_code}")
     
     @task(3)
     def login(self):
@@ -233,64 +256,83 @@ class GameServiceUser(HttpUser):
         self.game_id = None
         self.player2_name = f"opponent_{''.join(random.choices(string.ascii_lowercase + string.digits, k=6))}"
         
-        # Create a game
-        if self.token:
-            response = self.client.post(
-                "/api/games",
-                headers={"Authorization": f"Bearer {self.token}"},
-                json={"player2_name": self.player2_name},
-                name="/api/games [create]"
-            )
+        # Create a game only if we have a valid token
+        if not self.token:
+            return
+        
+        with self.client.post(
+            "/api/games",
+            headers={"Authorization": f"Bearer {self.token}"},
+            json={"player2_name": self.player2_name},
+            catch_response=True,
+            name="/api/games [create]"
+        ) as response:
             if response.status_code == 201:
+                response.success()
                 self.game_id = response.json().get("game_id")
-                
-                # Accept invitation (transitions to deck_selection)
-                self.client.post(
-                    f"/api/games/{self.game_id}/accept",
-                    headers={"Authorization": f"Bearer {self.token}"},
-                    name="/api/games/[id]/accept [setup]"
-                )
-                
-                # Select deck for player 1 (transitions to active when both select)
-                deck = [
-                    {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
-                    {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
-                    {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
-                    {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
-                    {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"},
-                    {"type": "Scissors"}, {"type": "Scissors"}
-                ]
-                
-                # Player 1 selects deck
-                self.client.post(
+            elif response.status_code == 404:
+                # Endpoint not found - mark as failure
+                response.failure("Game endpoint not found")
+                return
+            elif response.status_code == 401:
+                # Invalid token - mark as failure
+                response.failure("Invalid authentication token")
+                return
+            else:
+                response.failure(f"Unexpected status: {response.status_code}")
+                return
+        
+        # Only continue if game was created
+        if self.game_id:
+            response = self.client.post(
+                f"/api/games/{self.game_id}/accept",
+                headers={"Authorization": f"Bearer {self.token}"},
+                name="/api/games/[id]/accept [setup]"
+            )
+            if response.status_code != 200:
+                self.game_id = None
+                return
+            
+            # Select deck for player 1 (transitions to active when both select)
+            deck = [
+                {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
+                {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"}, {"type": "Rock"},
+                {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
+                {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"}, {"type": "Paper"},
+                {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"}, {"type": "Scissors"},
+                {"type": "Scissors"}, {"type": "Scissors"}
+            ]
+            
+            # Player 1 selects deck
+            self.client.post(
+                f"/api/games/{self.game_id}/select-deck",
+                headers={"Authorization": f"Bearer {self.token}"},
+                json={"deck": deck},
+                name="/api/games/[id]/select-deck [setup p1]"
+            )
+            
+            # Get player 2 token and select deck
+            player2_token = self.get_auth_token_for_player2()
+            if player2_token:
+                response = self.client.post(
                     f"/api/games/{self.game_id}/select-deck",
-                    headers={"Authorization": f"Bearer {self.token}"},
+                    headers={"Authorization": f"Bearer {player2_token}"},
                     json={"deck": deck},
-                    name="/api/games/[id]/select-deck [setup p1]"
+                    name="/api/games/[id]/select-deck [setup p2]"
                 )
-                
-                # Get player 2 token and select deck
-                player2_token = self.get_auth_token_for_player2()
-                if player2_token:
-                    response = self.client.post(
-                        f"/api/games/{self.game_id}/select-deck",
-                        headers={"Authorization": f"Bearer {player2_token}"},
-                        json={"deck": deck},
-                        name="/api/games/[id]/select-deck [setup p2]"
+                # Verify game is now active
+                if response.status_code == 200:
+                    state_response = self.client.get(
+                        f"/api/games/{self.game_id}",
+                        headers={"Authorization": f"Bearer {self.token}"},
+                        name="/api/games/[id] [verify active]"
                     )
-                    # Verify game is now active
-                    if response.status_code == 200:
-                        state_response = self.client.get(
-                            f"/api/games/{self.game_id}",
-                            headers={"Authorization": f"Bearer {self.token}"},
-                            name="/api/games/[id] [verify active]"
-                        )
-                        if state_response.status_code == 200:
-                            game_state = state_response.json().get("status")
-                            if game_state != "active":
-                                self.game_id = None  # Mark game as invalid
-                else:
-                    self.game_id = None  # No player2 token means game can't be activated
+                    if state_response.status_code == 200:
+                        game_state = state_response.json().get("status")
+                        if game_state != "active":
+                            self.game_id = None  # Mark game as invalid
+            else:
+                self.game_id = None  # No player2 token means game can't be activated
     
     def get_auth_token_for_player2(self):
         """Get auth token for player 2 (the opponent)"""
@@ -346,6 +388,17 @@ class GameServiceUser(HttpUser):
             if response.status_code == 200:
                 response.success()
                 return response.json().get("access_token")
+            elif response.status_code == 409:
+                # Concurrent session - try with a new unique user
+                response.success()
+                username = f"player_{''.join(random.choices(string.ascii_lowercase + string.digits, k=12))}"
+                reg_resp = self.client.post(
+                    "/api/auth/register",
+                    json={"username": username, "password": password},
+                    name="/api/auth/register [for game service]"
+                )
+                if reg_resp.status_code == 201:
+                    return reg_resp.json().get("access_token")
         
         return None
     
@@ -538,23 +591,40 @@ class CombinedUser(HttpUser):
         self.game_id = None
         
         # Register
-        response = self.client.post(
+        with self.client.post(
             "/api/auth/register",
             json={"username": self.username, "password": self.password},
+            catch_response=True,
             name="/api/auth/register [combined]"
-        )
+        ) as response:
+            if response.status_code == 201:
+                response.success()
+                self.token = response.json().get("access_token")
+            elif response.status_code == 409:
+                response.success()
         
-        if response.status_code == 201:
-            self.token = response.json().get("access_token")
-        else:
-            # Try login
-            response = self.client.post(
+        # Try login if no token yet
+        if not self.token:
+            with self.client.post(
                 "/api/auth/login",
                 json={"username": self.username, "password": self.password},
+                catch_response=True,
                 name="/api/auth/login [combined]"
-            )
-            if response.status_code == 200:
-                self.token = response.json().get("access_token")
+            ) as response:
+                if response.status_code == 200:
+                    response.success()
+                    self.token = response.json().get("access_token")
+                elif response.status_code == 409:
+                    # Concurrent session - create new unique user
+                    response.success()
+                    self.username = f"user_{''.join(random.choices(string.ascii_lowercase + string.digits, k=12))}"
+                    reg_resp = self.client.post(
+                        "/api/auth/register",
+                        json={"username": self.username, "password": self.password},
+                        name="/api/auth/register [combined]"
+                    )
+                    if reg_resp.status_code == 201:
+                        self.token = reg_resp.json().get("access_token")
     
     @task(10)
     def complete_game_workflow(self):
@@ -579,12 +649,22 @@ class CombinedUser(HttpUser):
         
         # 3. Create game
         player2 = f"opponent_{''.join(random.choices(string.ascii_lowercase + string.digits, k=6))}"
-        game_response = self.client.post(
+        with self.client.post(
             "/api/games",
             headers={"Authorization": f"Bearer {self.token}"},
             json={"player2_name": player2},
+            catch_response=True,
             name="/api/games [create combined]"
-        )
+        ) as game_response:
+            if game_response.status_code == 201:
+                game_response.success()
+            elif game_response.status_code in [401, 404]:
+                # Auth issue or endpoint not found - skip this workflow
+                game_response.failure(f"Cannot create game: {game_response.status_code}")
+                return
+            else:
+                game_response.failure(f"Unexpected status: {game_response.status_code}")
+                return
         
         if game_response.status_code == 201:
             game_id = game_response.json().get("game_id")
@@ -708,6 +788,8 @@ class CombinedUser(HttpUser):
             if response.status_code == 201:
                 response.success()
                 return response.json().get("access_token")
+            elif response.status_code == 409:
+                response.success()
         
         # If registration fails (user exists), try login
         with self.client.post(
@@ -719,6 +801,17 @@ class CombinedUser(HttpUser):
             if response.status_code == 200:
                 response.success()
                 return response.json().get("access_token")
+            elif response.status_code == 409:
+                # Concurrent session - try new unique username
+                response.success()
+                new_player = f"opponent_{''.join(random.choices(string.ascii_lowercase + string.digits, k=12))}"
+                reg_resp = self.client.post(
+                    "/api/auth/register",
+                    json={"username": new_player, "password": "TestPass123!"},
+                    name="/api/auth/register [player2 combined]"
+                )
+                if reg_resp.status_code == 201:
+                    return reg_resp.json().get("access_token")
         
         return None
 
