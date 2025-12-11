@@ -152,6 +152,17 @@ def get_active_sessions(user_id: int) -> list:
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # First, clean up expired tokens
+        cursor.execute(
+            """UPDATE refresh_tokens 
+               SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP 
+               WHERE user_id = %s AND revoked = FALSE AND expires_at <= CURRENT_TIMESTAMP""",
+            (user_id,)
+        )
+        conn.commit()
+        
+        # Now get active sessions
         cursor.execute(
             """SELECT id, device_info, ip_address, created_at, last_used_at 
                FROM refresh_tokens 
@@ -161,6 +172,8 @@ def get_active_sessions(user_id: int) -> list:
         )
         sessions = cursor.fetchall()
         conn.close()
+        
+        print(f"Active sessions for user {user_id}: {len(sessions)}")
         return sessions
     except Exception as e:
         print(f"Failed to get active sessions: {e}")
@@ -250,9 +263,11 @@ def revoke_refresh_token(refresh_token: str) -> bool:
             "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE token = %s",
             (refresh_token,)
         )
+        rows_affected = cursor.rowcount
         conn.commit()
         conn.close()
-        return True
+        print(f"Revoked refresh token - rows affected: {rows_affected}")
+        return rows_affected > 0
     except Exception as e:
         print(f"Failed to revoke refresh token: {e}")
         return False
@@ -267,8 +282,10 @@ def revoke_all_user_tokens(user_id: int) -> bool:
             "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE user_id = %s AND revoked = FALSE",
             (user_id,)
         )
+        rows_affected = cursor.rowcount
         conn.commit()
         conn.close()
+        print(f"Revoked all tokens for user {user_id} - rows affected: {rows_affected}")
         return True
     except Exception as e:
         print(f"Failed to revoke user tokens: {e}")
@@ -861,28 +878,33 @@ def logout():
     """Logout user and revoke refresh token."""
     try:
         current_user = get_jwt_identity()
-        data = request.get_json()
+        data = request.get_json() or {}
         
-        if data and data.get("refresh_token"):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
+        user = cursor.fetchone()
+        conn.close()
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        user_id = user[0]
+        
+        if data.get("refresh_token"):
             # Revoke specific refresh token
             refresh_token = data["refresh_token"]
-            revoke_refresh_token(refresh_token)
-            log_action("USER_LOGOUT", current_user, "User logged out - refresh token revoked")
+            success = revoke_refresh_token(refresh_token)
+            log_action("USER_LOGOUT", current_user, f"User logged out - specific token revoked (success: {success})")
         else:
             # Revoke all refresh tokens for this user
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
-            user = cursor.fetchone()
-            conn.close()
-            
-            if user:
-                revoke_all_user_tokens(user[0])
-                log_action("USER_LOGOUT", current_user, "User logged out - all refresh tokens revoked")
+            success = revoke_all_user_tokens(user_id)
+            log_action("USER_LOGOUT", current_user, f"User logged out - all tokens revoked (success: {success})")
         
         return jsonify({"message": "Logged out successfully"}), 200
         
     except Exception as e:
+        log_action("LOGOUT_ERROR", current_user if 'current_user' in locals() else None, f"Logout failed: {str(e)}")
         return jsonify({"error": f"Logout failed: {str(e)}"}), 500
 
 

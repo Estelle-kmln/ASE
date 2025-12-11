@@ -4,8 +4,8 @@
  * that automatically handles token expiration and refresh
  */
 
-const TOKEN_REFRESH_API = 'http://localhost:8080/api/auth/refresh';
-const LOGOUT_API = 'http://localhost:8080/api/auth/logout';
+const TOKEN_REFRESH_API = 'https://localhost:8443/api/auth/refresh';
+const LOGOUT_API = 'https://localhost:8443/api/auth/logout';
 
 // Token refresh state
 let isRefreshing = false;
@@ -125,18 +125,28 @@ async function logout() {
         
         if (token && refreshToken) {
             // Try to revoke the refresh token on the server
-            await fetch(LOGOUT_API, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    refresh_token: refreshToken
-                })
-            }).catch(() => {
-                // Ignore errors - we'll clear tokens locally anyway
-            });
+            try {
+                const response = await fetch(LOGOUT_API, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        refresh_token: refreshToken
+                    })
+                });
+                
+                const data = await response.json();
+                console.log('Logout response:', data);
+                
+                if (!response.ok) {
+                    console.error('Logout failed on server:', data);
+                }
+            } catch (error) {
+                console.error('Logout request failed:', error);
+                // Continue anyway - we'll clear tokens locally
+            }
         }
     } finally {
         // Always clear local tokens
