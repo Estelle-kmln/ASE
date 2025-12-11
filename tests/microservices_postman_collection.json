@@ -1,1967 +1,1788 @@
 {
-	"info": {
-		"_postman_id": "battle-cards-api-tests",
-		"name": "Battle Cards - API Endpoint Tests",
-		"description": "Comprehensive API endpoint testing for Battle Cards microservices. Each endpoint includes tests for valid input (200 OK) and invalid input (error responses). Can be used for both unit testing and integration testing against the gateway.",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-	},
-	"auth": {
-		"type": "bearer",
-		"bearer": [
-			{
-				"key": "token",
-				"value": "{{auth_token}}",
-				"type": "string"
-			}
-		]
-	},
-	"item": [
-		{
-			"name": "Auth Service",
-			"item": [
-				{
-					"name": "Health Check",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains health status\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('status', 'healthy');",
-									"    pm.expect(jsonData).to.have.property('service', 'auth-service');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{auth_service_url}}/health",
-							"host": ["{{auth_service_url}}"],
-							"path": ["health"]
-						}
-					}
-				},
-				{
-					"name": "Register User - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 201\", function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"pm.test(\"Response contains success message and token\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('message');",
-									"    pm.expect(jsonData).to.have.property('access_token');",
-									"    pm.expect(jsonData).to.have.property('user');",
-									"    pm.expect(jsonData.user).to.have.property('username');",
-									"    ",
-									"    // Store the token and credentials for subsequent requests",
-									"    pm.environment.set('auth_token', jsonData.access_token);",
-									"    pm.environment.set('test_username', jsonData.user.username);",
-									"    pm.environment.set('test_password', 'testpass123');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"username\": \"testuser{{$randomInt}}\",\n    \"password\": \"testpass123\"\n}"
-						},
-						"event": [
-							{
-								"listen": "prerequest",
-								"script": {
-									"exec": [
-										"// Store password for login test",
-										"pm.environment.set('test_password', 'testpass123');"
-									],
-									"type": "text/javascript"
-								}
-							}
-						],
-						"url": {
-							"raw": "{{auth_service_url}}/api/auth/register",
-							"host": ["{{auth_service_url}}"],
-							"path": ["api", "auth", "register"]
-						}
-					}
-				},
-				{
-					"name": "Register User - Invalid (Short Username)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 400\", function () {",
-									"    pm.response.to.have.status(400);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error');",
-									"    pm.expect(jsonData.error).to.contain('at least 3 characters');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"username\": \"ab\",\n    \"password\": \"testpass123\"\n}"
-						},
-						"url": {
-							"raw": "{{auth_service_url}}/api/auth/register",
-							"host": ["{{auth_service_url}}"],
-							"path": ["api", "auth", "register"]
-						}
-					}
-				},
-				{
-					"name": "Register User - Invalid (Missing Password)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 400\", function () {",
-									"    pm.response.to.have.status(400);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"username\": \"validuser123\"\n}"
-						},
-						"url": {
-							"raw": "{{auth_service_url}}/api/auth/register",
-							"host": ["{{auth_service_url}}"],
-							"path": ["api", "auth", "register"]
-						}
-					}
-				},
-				{
-					"name": "Register User 2 - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 201\", function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"pm.test(\"Response contains success message and token\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('message');",
-									"    pm.expect(jsonData).to.have.property('access_token');",
-									"    pm.expect(jsonData).to.have.property('user');",
-									"    pm.expect(jsonData.user).to.have.property('username');",
-									"    ",
-									"    // Store player 2's token and credentials",
-									"    pm.environment.set('auth_token_player2', jsonData.access_token);",
-									"    pm.environment.set('test_username_player2', jsonData.user.username);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"username\": \"testuser2{{$randomInt}}\",\n    \"password\": \"testpass123\"\n}"
-						},
-						"url": {
-							"raw": "{{auth_service_url}}/api/auth/register",
-							"host": ["{{auth_service_url}}"],
-							"path": ["api", "auth", "register"]
-						}
-					}
-				},
-				{
-					"name": "Login - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains login success and token\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('message', 'Login successful');",
-									"    pm.expect(jsonData).to.have.property('access_token');",
-									"    pm.expect(jsonData).to.have.property('user');",
-									"    ",
-									"    // Store the token for subsequent requests",
-									"    pm.environment.set('auth_token', jsonData.access_token);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"username\": \"{{test_username}}\",\n    \"password\": \"{{test_password}}\"\n}"
-						},
-						"url": {
-							"raw": "{{auth_service_url}}/api/auth/login",
-							"host": ["{{auth_service_url}}"],
-							"path": ["api", "auth", "login"]
-						}
-					}
-				},
-				{
-					"name": "Login - Invalid (Wrong Password)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 401\", function () {",
-									"    pm.response.to.have.status(401);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error');",
-									"    pm.expect(jsonData.error).to.contain('Invalid username or password');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"username\": \"{{test_username}}\",\n    \"password\": \"wrongpassword\"\n}"
-						},
-						"url": {
-							"raw": "{{auth_service_url}}/api/auth/login",
-							"host": ["{{auth_service_url}}"],
-							"path": ["api", "auth", "login"]
-						}
-					}
-				},
-				{
-					"name": "Get Profile - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains user profile\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('user');",
-									"    pm.expect(jsonData.user).to.have.property('id');",
-									"    pm.expect(jsonData.user).to.have.property('username');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{auth_service_url}}/api/auth/profile",
-							"host": ["{{auth_service_url}}"],
-							"path": ["api", "auth", "profile"]
-						}
-					}
-				},
-				{
-					"name": "Get Profile - Invalid (No Token)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 401\", function () {",
-									"    pm.expect(pm.response.code).to.equal(401);",
-									"});",
-									"",
-									"pm.test(\"Response indicates authentication error\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{auth_service_url}}/api/auth/profile",
-							"host": ["{{auth_service_url}}"],
-							"path": ["api", "auth", "profile"]
-						}
-					}
-				},
-				{
-					"name": "Update Profile - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains success message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('message', 'Profile updated successfully');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"password\": \"newpassword123\"\n}"
-						},
-						"url": {
-							"raw": "{{auth_service_url}}/api/auth/profile",
-							"host": ["{{auth_service_url}}"],
-							"path": ["api", "auth", "profile"]
-						}
-					}
-				},
-				{
-					"name": "Update Profile - Invalid (Short Password)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 400\", function () {",
-									"    pm.response.to.have.status(400);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error');",
-									"    pm.expect(jsonData.error).to.contain('at least 4 characters');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"password\": \"123\"\n}"
-						},
-						"url": {
-							"raw": "{{auth_service_url}}/api/auth/profile",
-							"host": ["{{auth_service_url}}"],
-							"path": ["api", "auth", "profile"]
-						}
-					}
-				},
-				{
-					"name": "Validate Token - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response indicates valid token\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('valid', true);",
-									"    pm.expect(jsonData).to.have.property('username');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{auth_service_url}}/api/auth/validate",
-							"host": ["{{auth_service_url}}"],
-							"path": ["api", "auth", "validate"]
-						}
-					}
-				},
-				{
-					"name": "Validate Token - Invalid (No Token)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 401\", function () {",
-									"    pm.expect(pm.response.code).to.equal(401);",
-									"});",
-									"",
-									"pm.test(\"Response indicates authentication error\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{auth_service_url}}/api/auth/validate",
-							"host": ["{{auth_service_url}}"],
-							"path": ["api", "auth", "validate"]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "Card Service",
-			"item": [
-				{
-					"name": "Health Check",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains health status\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('status', 'healthy');",
-									"    pm.expect(jsonData).to.have.property('service', 'card-service');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{card_service_url}}/health",
-							"host": ["{{card_service_url}}"],
-							"path": ["health"]
-						}
-					}
-				},
-				{
-					"name": "Get All Cards - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains cards array\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('cards');",
-									"    pm.expect(jsonData.cards).to.be.an('array');",
-									"    if (jsonData.cards.length > 0) {",
-									"        pm.expect(jsonData.cards[0]).to.have.property('id');",
-									"        pm.expect(jsonData.cards[0]).to.have.property('type');",
-									"        pm.expect(jsonData.cards[0]).to.have.property('power');",
-									"    }",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{card_service_url}}/api/cards",
-							"host": ["{{card_service_url}}"],
-							"path": ["api", "cards"]
-						}
-					}
-				},
-				{
-					"name": "Get All Cards - Invalid (No Authentication)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 401\", function () {",
-									"    pm.expect(pm.response.code).to.equal(401);",
-									"});",
-									"",
-									"pm.test(\"Response indicates authentication error\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{card_service_url}}/api/cards",
-							"host": ["{{card_service_url}}"],
-							"path": ["api", "cards"]
-						}
-					}
-				},
-				{
-					"name": "Get Cards by Type - Valid (Rock)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains filtered cards\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('cards');",
-									"    pm.expect(jsonData).to.have.property('type', 'rock');",
-									"    pm.expect(jsonData.cards).to.be.an('array');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{card_service_url}}/api/cards/by-type/rock",
-							"host": ["{{card_service_url}}"],
-							"path": ["api", "cards", "by-type", "rock"]
-						}
-					}
-				},
-				{
-					"name": "Get Cards by Type - Invalid (Invalid Type)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 400\", function () {",
-									"    pm.response.to.have.status(400);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error');",
-									"    pm.expect(jsonData.error).to.contain('Invalid card type');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{card_service_url}}/api/cards/by-type/invalidtype",
-							"host": ["{{card_service_url}}"],
-							"path": ["api", "cards", "by-type", "invalidtype"]
-						}
-					}
-				},
-				{
-					"name": "Get Card by ID - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains card details\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('card');",
-									"    pm.expect(jsonData.card).to.have.property('id');",
-									"    pm.expect(jsonData.card).to.have.property('type');",
-									"    pm.expect(jsonData.card).to.have.property('power');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{card_service_url}}/api/cards/1",
-							"host": ["{{card_service_url}}"],
-							"path": ["api", "cards", "1"]
-						}
-					}
-				},
-				{
-					"name": "Get Card by ID - Invalid (Non-existent ID)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 404\", function () {",
-									"    pm.response.to.have.status(404);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error', 'Card not found');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{card_service_url}}/api/cards/99999",
-							"host": ["{{card_service_url}}"],
-							"path": ["api", "cards", "99999"]
-						}
-					}
-				},
-				{
-					"name": "Create Random Deck - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains deck with cards\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('deck');",
-									"    pm.expect(jsonData).to.have.property('size');",
-									"    pm.expect(jsonData.deck).to.be.an('array');",
-									"    pm.expect(jsonData.size).to.equal(22);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"size\": 22\n}"
-						},
-						"url": {
-							"raw": "{{card_service_url}}/api/cards/random-deck",
-							"host": ["{{card_service_url}}"],
-							"path": ["api", "cards", "random-deck"]
-						}
-					}
-				},
-				{
-					"name": "Create Random Deck - Invalid (Size Too Large)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 400\", function () {",
-									"    pm.response.to.have.status(400);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error');",
-									"    pm.expect(jsonData.error).to.contain('between 1 and 50');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"size\": 100\n}"
-						},
-						"url": {
-							"raw": "{{card_service_url}}/api/cards/random-deck",
-							"host": ["{{card_service_url}}"],
-							"path": ["api", "cards", "random-deck"]
-						}
-					}
-				},
-				{
-					"name": "Get Card Statistics - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains statistics\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('total_cards');",
-									"    pm.expect(jsonData).to.have.property('type_distribution');",
-									"    pm.expect(jsonData).to.have.property('power_distribution');",
-									"    pm.expect(jsonData).to.have.property('available_types');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{card_service_url}}/api/cards/statistics",
-							"host": ["{{card_service_url}}"],
-							"path": ["api", "cards", "statistics"]
-						}
-					}
-				},
-				{
-					"name": "Get Card Types - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains types and powers\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('types');",
-									"    pm.expect(jsonData).to.have.property('powers');",
-									"    pm.expect(jsonData.types).to.be.an('array');",
-									"    pm.expect(jsonData.powers).to.be.an('array');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{card_service_url}}/api/cards/types",
-							"host": ["{{card_service_url}}"],
-							"path": ["api", "cards", "types"]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "Game Service",
-			"item": [
-				{
-					"name": "Health Check",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains health status\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('status', 'healthy');",
-									"    pm.expect(jsonData).to.have.property('service', 'game-service');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/health",
-							"host": ["{{game_service_url}}"],
-							"path": ["health"]
-						}
-					}
-				},
-				{
-					"name": "Create Game - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 201\", function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"pm.test(\"Response contains game details\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('game_id');",
-									"    pm.expect(jsonData).to.have.property('player1_name');",
-									"    pm.expect(jsonData).to.have.property('player2_name');",
-									"    pm.expect(jsonData).to.have.property('status', 'deck_selection');",
-									"    ",
-									"    // Store game_id for subsequent tests",
-									"    pm.environment.set('test_game_id', jsonData.game_id);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"player2_name\": \"{{test_username_player2}}\"\n}"
-						},
-						"url": {
-							"raw": "{{game_service_url}}/api/games",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games"]
-						}
-					}
-				},
-				{
-					"name": "Create Game - Invalid (Missing Player2 Name)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 400\", function () {",
-									"    pm.response.to.have.status(400);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error');",
-									"    pm.expect(jsonData.error).to.contain('Player 2 name is required');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{}"
-						},
-						"url": {
-							"raw": "{{game_service_url}}/api/games",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games"]
-						}
-					}
-				},
-				{
-					"name": "Get Game - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains game state\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('game_id');",
-									"    pm.expect(jsonData).to.have.property('turn');",
-									"    pm.expect(jsonData).to.have.property('game_status');",
-									"    pm.expect(jsonData).to.have.property('player1');",
-									"    pm.expect(jsonData).to.have.property('player2');",
-									"    pm.expect(jsonData.player1).to.have.property('name');",
-									"    pm.expect(jsonData.player1).to.have.property('score');",
-									"    pm.expect(jsonData.player2).to.have.property('name');",
-									"    pm.expect(jsonData.player2).to.have.property('score');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}"]
-						}
-					}
-				},
-				{
-					"name": "Get Game - Invalid (Non-existent ID)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 404\", function () {",
-									"    pm.response.to.have.status(404);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error', 'Game not found');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/invalid-game-id-123",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "invalid-game-id-123"]
-						}
-					}
-				},
-				{
-					"name": "Accept Invitation - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains acceptance confirmation\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('message');",
-									"    pm.expect(jsonData).to.have.property('status', 'deck_selection');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/accept",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}", "accept"]
-						}
-					}
-				},
-				{
-					"name": "Select Deck - Player 1",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains deck selection confirmation\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('message');",
-									"    pm.expect(jsonData).to.have.property('deck');",
-									"    pm.expect(jsonData).to.have.property('both_selected');",
-									"    pm.expect(jsonData.deck).to.be.an('array');",
-									"    pm.expect(jsonData.deck).to.have.lengthOf(22);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"deck\": [\n        {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"},\n        {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"},\n        {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"},\n        {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"},\n        {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"},\n        {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}\n    ]\n}"
-						},
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/select-deck",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}", "select-deck"]
-						}
-					}
-				},
-				{
-					"name": "Select Deck - Player 2",
-					"event": [
-						{
-							"listen": "prerequest",
-							"script": {
-								"exec": [
-									"// Temporarily switch to player 2's token",
-									"pm.environment.set('temp_token', pm.environment.get('auth_token'));",
-									"pm.environment.set('auth_token', pm.environment.get('auth_token_player2'));"
-								],
-								"type": "text/javascript"
-							}
-						},
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response shows both players selected and game is active\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('message');",
-									"    pm.expect(jsonData).to.have.property('both_selected', true);",
-									"    pm.expect(jsonData).to.have.property('status', 'active');",
-									"    pm.expect(jsonData.deck).to.have.lengthOf(22);",
-									"});",
-									"",
-									"// Restore player 1's token",
-									"pm.environment.set('auth_token', pm.environment.get('temp_token'));"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"deck\": [\n        {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"},\n        {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"},\n        {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"},\n        {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"},\n        {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"},\n        {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}\n    ]\n}"
-						},
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/select-deck",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}", "select-deck"]
-						}
-					}
-				},
-				{
-					"name": "Get Player Hand - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains hand information\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('hand');",
-									"    pm.expect(jsonData).to.have.property('player');",
-									"    pm.expect(jsonData.hand).to.be.an('array');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/hand",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}", "hand"]
-						}
-					}
-				},
-				{
-					"name": "Draw Hand - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains drawn hand\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('hand');",
-									"    pm.expect(jsonData).to.have.property('deck_size');",
-									"    pm.expect(jsonData).to.have.property('is_final_hand');",
-									"    pm.expect(jsonData).to.have.property('cards_drawn');",
-									"    pm.expect(jsonData.hand).to.be.an('array');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/draw-hand",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}", "draw-hand"]
-						}
-					}
-				},
-				{
-					"name": "Draw Hand - Invalid (Non-existent Game)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 404\", function () {",
-									"    pm.response.to.have.status(404);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error', 'Game not found');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/invalid-game/draw-hand",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "invalid-game", "draw-hand"]
-						}
-					}
-				},
-				{
-					"name": "Play Card - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains played card info\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('played_card');",
-									"    pm.expect(jsonData).to.have.property('both_played');",
-									"    pm.expect(jsonData).to.have.property('remaining_hand');",
-									"    pm.expect(jsonData).to.have.property('discarded_cards');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"card_index\": 0\n}"
-						},
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/play-card",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}", "play-card"]
-						}
-					}
-				},
-				{
-					"name": "Play Card - Invalid (Invalid Index)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 400\", function () {",
-									"    pm.response.to.have.status(400);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"card_index\": 999\n}"
-						},
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/play-card",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}", "play-card"]
-						}
-					}
-				},
-				{
-					"name": "Get User Games - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains games list\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('games');",
-									"    pm.expect(jsonData.games).to.be.an('array');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/user/{{test_username}}",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "user", "{{test_username}}"]
-						}
-					}
-				},
-				{
-					"name": "Get User Games - Invalid (Unauthorized User)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 403\", function () {",
-									"    pm.response.to.have.status(403);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error', 'Unauthorized');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/user/otheruser",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "user", "otheruser"]
-						}
-					}
-				},
-				{
-					"name": "Get Turn Info - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains turn information\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('turn_status');",
-									"    pm.expect(jsonData).to.have.property('deck_status');",
-									"    pm.expect(jsonData).to.have.property('scores');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/turn-info",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}", "turn-info"]
-						}
-					}
-				},
-				{
-					"name": "Get Tie Breaker Status - Invalid (No Game)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 404\", function () {",
-									"    pm.response.to.have.status(404);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error', 'Game not found');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/invalid-game/tie-breaker-status",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "invalid-game", "tie-breaker-status"]
-						}
-					}
-				},
-				{
-					"name": "Play Tie Breaker - Invalid (No Tie State)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 400\", function () {",
-									"    pm.response.to.have.status(400);",
-									"});",
-									"",
-									"pm.test(\"Response contains error message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{}"
-						},
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/tie-breaker",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}", "tie-breaker"]
-						}
-					}
-				},
-				{
-					"name": "End Game - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains success message\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('message', 'Game ended successfully');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [],
-						"url": {
-							"raw": "{{game_service_url}}/api/games/{{test_game_id}}/end",
-							"host": ["{{game_service_url}}"],
-							"path": ["api", "games", "{{test_game_id}}", "end"]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "Leaderboard Service",
-			"item": [
-				{
-					"name": "Health Check",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains health status\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('status', 'healthy');",
-									"    pm.expect(jsonData).to.have.property('service', 'leaderboard-service');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{leaderboard_service_url}}/health",
-							"host": ["{{leaderboard_service_url}}"],
-							"path": ["health"]
-						}
-					}
-				},
-				{
-					"name": "Get Leaderboard - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains leaderboard\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('leaderboard');",
-									"    pm.expect(jsonData).to.have.property('total_players');",
-									"    pm.expect(jsonData.leaderboard).to.be.an('array');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{leaderboard_service_url}}/api/leaderboard",
-							"host": ["{{leaderboard_service_url}}"],
-							"path": ["api", "leaderboard"]
-						}
-					}
-				},
-				{
-					"name": "Get Leaderboard - Invalid (No Auth)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 401\", function () {",
-									"    pm.expect(pm.response.code).to.equal(401);",
-									"});",
-									"",
-									"pm.test(\"Response indicates authentication error\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('error');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{leaderboard_service_url}}/api/leaderboard",
-							"host": ["{{leaderboard_service_url}}"],
-							"path": ["api", "leaderboard"]
-						}
-					}
-				},
-				{
-					"name": "Get Player Stats - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains player stats\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('player');",
-									"    pm.expect(jsonData).to.have.property('wins');",
-									"    pm.expect(jsonData).to.have.property('losses');",
-									"    pm.expect(jsonData).to.have.property('total_games');",
-									"    pm.expect(jsonData).to.have.property('win_percentage');",
-									"    pm.expect(jsonData).to.have.property('recent_games');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{leaderboard_service_url}}/api/leaderboard/player/{{test_username}}",
-							"host": ["{{leaderboard_service_url}}"],
-							"path": ["api", "leaderboard", "player", "{{test_username}}"]
-						}
-					}
-				},
-				{
-					"name": "Get Recent Games - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains recent games\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('recent_games');",
-									"    pm.expect(jsonData).to.have.property('total_games');",
-									"    pm.expect(jsonData.recent_games).to.be.an('array');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{leaderboard_service_url}}/api/leaderboard/recent-games?limit=5",
-							"host": ["{{leaderboard_service_url}}"],
-							"path": ["api", "leaderboard", "recent-games"],
-							"query": [
-								{
-									"key": "limit",
-									"value": "5"
-								}
-							]
-						}
-					}
-				},
-				{
-					"name": "Get Recent Games - Invalid (Limit Too Large)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Limit is capped at 50\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('recent_games');",
-									"    pm.expect(jsonData.recent_games.length).to.be.at.most(50);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{leaderboard_service_url}}/api/leaderboard/recent-games?limit=1000",
-							"host": ["{{leaderboard_service_url}}"],
-							"path": ["api", "leaderboard", "recent-games"],
-							"query": [
-								{
-									"key": "limit",
-									"value": "1000"
-								}
-							]
-						}
-					}
-				},
-				{
-					"name": "Get Top Players - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains top players data\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('top_by_wins');",
-									"    pm.expect(jsonData).to.have.property('top_by_win_percentage');",
-									"    pm.expect(jsonData).to.have.property('most_active');",
-									"    pm.expect(jsonData.top_by_wins).to.be.an('array');",
-									"    pm.expect(jsonData.top_by_win_percentage).to.be.an('array');",
-									"    pm.expect(jsonData.most_active).to.be.an('array');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{leaderboard_service_url}}/api/leaderboard/top-players",
-							"host": ["{{leaderboard_service_url}}"],
-							"path": ["api", "leaderboard", "top-players"]
-						}
-					}
-				},
-				{
-					"name": "Get Global Statistics - Valid",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response contains global statistics\", function () {",
-									"    var jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('total_completed_games');",
-									"    pm.expect(jsonData).to.have.property('unique_players');",
-									"    pm.expect(jsonData).to.have.property('games_with_winner');",
-									"    pm.expect(jsonData).to.have.property('tied_games');",
-									"    pm.expect(jsonData).to.have.property('average_game_turns');",
-									"    pm.expect(jsonData).to.have.property('games_last_week');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{leaderboard_service_url}}/api/leaderboard/statistics",
-							"host": ["{{leaderboard_service_url}}"],
-							"path": ["api", "leaderboard", "statistics"]
-						}
-					}
-				}
-			]
-		}
-	],
-	"event": [
-		{
-			"listen": "prerequest",
-			"script": {
-				"type": "text/javascript",
-				"exec": [
-					""
-				]
-			}
-		},
-		{
-			"listen": "test",
-			"script": {
-				"type": "text/javascript",
-				"exec": [
-					""
-				]
-			}
-		}
-	],
-	"variable": [
-		{
-			"key": "auth_service_url",
-			"value": "http://localhost:5001",
-			"type": "string"
-		},
-		{
-			"key": "card_service_url", 
-			"value": "http://localhost:5002",
-			"type": "string"
-		},
-		{
-			"key": "game_service_url",
-			"value": "http://localhost:5003",
-			"type": "string"
-		},
-		{
-			"key": "leaderboard_service_url",
-			"value": "http://localhost:5004",
-			"type": "string"
-		},
-		{
-			"key": "gateway_url",
-			"value": "http://localhost:80",
-			"type": "string"
-		},
-		{
-			"key": "auth_token",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "test_game_id",
-			"value": "",
-			"type": "string"
-		}
-	]
+  "info": {
+    "_postman_id": "battle-cards-api-tests",
+    "name": "Battle Cards - API Endpoint Tests",
+    "description": "Comprehensive API endpoint testing for Battle Cards microservices. Each endpoint includes tests for valid input (200 OK) and invalid input (error responses). Can be used for both unit testing and integration testing against the gateway.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{auth_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth Service",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains health status\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('status', 'healthy');",
+                  "    pm.expect(jsonData).to.have.property('service', 'auth-service');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{auth_service_url}}/api/auth/health"
+          }
+        },
+        {
+          "name": "Register User - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains success message and token\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData).to.have.property('access_token');",
+                  "    pm.expect(jsonData).to.have.property('user');",
+                  "    pm.expect(jsonData.user).to.have.property('username');",
+                  "    ",
+                  "    // Store the token and credentials for subsequent requests",
+                  "    pm.environment.set('auth_token', jsonData.access_token);",
+                  "    pm.environment.set('test_username', jsonData.user.username);",
+                  "    pm.environment.set('test_password', 'TestPass123!');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"testuser{{$randomInt}}\",\n    \"password\": \"TestPass123!\"\n}"
+            },
+            "event": [
+              {
+                "listen": "prerequest",
+                "script": {
+                  "exec": [
+                    "// Store password for login test",
+                    "pm.environment.set('test_password', 'TestPass123!');"
+                  ],
+                  "type": "text/javascript"
+                }
+              }
+            ],
+            "url": "{{auth_service_url}}/api/auth/register"
+          }
+        },
+        {
+          "name": "Logout After Registration",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Logout successful\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message', 'Logged out successfully');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{auth_service_url}}/api/auth/logout"
+          }
+        },
+        {
+          "name": "Register User - Invalid (Short Username)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.contain('at least 3 characters');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"ab\",\n    \"password\": \"TestPass123!\"\n}"
+            },
+            "url": "{{auth_service_url}}/api/auth/register"
+          }
+        },
+        {
+          "name": "Register User - Invalid (Missing Password)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"validuser123\"\n}"
+            },
+            "url": "{{auth_service_url}}/api/auth/register"
+          }
+        },
+        {
+          "name": "Register User 2 - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains success message and token\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData).to.have.property('access_token');",
+                  "    pm.expect(jsonData).to.have.property('user');",
+                  "    pm.expect(jsonData.user).to.have.property('username');",
+                  "    ",
+                  "    // Store player 2's token and credentials",
+                  "    pm.environment.set('auth_token_player2', jsonData.access_token);",
+                  "    pm.environment.set('test_username_player2', jsonData.user.username);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"testuser2{{$randomInt}}\",\n    \"password\": \"TestPass123!\"\n}"
+            },
+            "url": "{{auth_service_url}}/api/auth/register"
+          }
+        },
+        {
+          "name": "Login - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains login success and token\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message', 'Login successful');",
+                  "    pm.expect(jsonData).to.have.property('access_token');",
+                  "    pm.expect(jsonData).to.have.property('refresh_token');",
+                  "    ",
+                  "    // Store the auth token for subsequent tests",
+                  "    pm.environment.set('auth_token', jsonData.access_token);",
+                  "    pm.environment.set('refresh_token', jsonData.refresh_token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"{{test_username}}\",\n    \"password\": \"{{test_password}}\"\n}"
+            },
+            "url": "{{auth_service_url}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Login - Invalid (Wrong Password)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.contain('Invalid username or password');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"{{test_username}}\",\n    \"password\": \"WrongPass123!\"\n}"
+            },
+            "url": "{{auth_service_url}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Get Profile - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains user profile\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('user');",
+                  "    pm.expect(jsonData.user).to.have.property('id');",
+                  "    pm.expect(jsonData.user).to.have.property('username');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{auth_service_url}}/api/auth/profile"
+          }
+        },
+        {
+          "name": "Get Profile - Invalid (No Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.expect(pm.response.code).to.equal(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Response indicates authentication error\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{auth_service_url}}/api/auth/profile"
+          }
+        },
+        {
+          "name": "Update Profile - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains success message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message', 'Profile updated successfully');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"password\": \"NewPass123!\"\n}"
+            },
+            "url": "{{auth_service_url}}/api/auth/profile"
+          }
+        },
+        {
+          "name": "Update Profile - Invalid (Short Password)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.contain('at least 8 characters');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"password\": \"123\"\n}"
+            },
+            "url": "{{auth_service_url}}/api/auth/profile"
+          }
+        },
+        {
+          "name": "Validate Token - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response indicates valid token\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('valid', true);",
+                  "    pm.expect(jsonData).to.have.property('username');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{auth_service_url}}/api/auth/validate"
+          }
+        },
+        {
+          "name": "Validate Token - Invalid (No Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.expect(pm.response.code).to.equal(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Response indicates authentication error\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "url": "{{auth_service_url}}/api/auth/validate"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Card Service",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains health status\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('status', 'healthy');",
+                  "    pm.expect(jsonData).to.have.property('service', 'card-service');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{card_service_url}}/api/cards/health"
+          }
+        },
+        {
+          "name": "Get All Cards - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains cards array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('cards');",
+                  "    pm.expect(jsonData.cards).to.be.an('array');",
+                  "    if (jsonData.cards.length > 0) {",
+                  "        pm.expect(jsonData.cards[0]).to.have.property('id');",
+                  "        pm.expect(jsonData.cards[0]).to.have.property('type');",
+                  "        pm.expect(jsonData.cards[0]).to.have.property('power');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{card_service_url}}/api/cards"
+          }
+        },
+        {
+          "name": "Get All Cards - Invalid (No Authentication)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.expect(pm.response.code).to.equal(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Response indicates authentication error\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{card_service_url}}/api/cards"
+          }
+        },
+        {
+          "name": "Get Cards by Type - Valid (Rock)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains filtered cards\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('cards');",
+                  "    pm.expect(jsonData).to.have.property('type', 'rock');",
+                  "    pm.expect(jsonData.cards).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{card_service_url}}/api/cards/by-type/rock"
+          }
+        },
+        {
+          "name": "Get Cards by Type - Invalid (Invalid Type)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.contain('Invalid card type');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{card_service_url}}/api/cards/by-type/invalidtype"
+          }
+        },
+        {
+          "name": "Get Card by ID - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains card details\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('card');",
+                  "    pm.expect(jsonData.card).to.have.property('id');",
+                  "    pm.expect(jsonData.card).to.have.property('type');",
+                  "    pm.expect(jsonData.card).to.have.property('power');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{card_service_url}}/api/cards/1"
+          }
+        },
+        {
+          "name": "Get Card by ID - Invalid (Non-existent ID)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error', 'Card not found');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{card_service_url}}/api/cards/99999"
+          }
+        },
+        {
+          "name": "Create Random Deck - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains deck with cards\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('deck');",
+                  "    pm.expect(jsonData).to.have.property('size');",
+                  "    pm.expect(jsonData.deck).to.be.an('array');",
+                  "    pm.expect(jsonData.size).to.equal(22);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"size\": 22\n}"
+            },
+            "url": "{{card_service_url}}/api/cards/random-deck"
+          }
+        },
+        {
+          "name": "Create Random Deck - Invalid (Size Too Large)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.contain('between 1 and 50');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"size\": 100\n}"
+            },
+            "url": "{{card_service_url}}/api/cards/random-deck"
+          }
+        },
+        {
+          "name": "Get Card Statistics - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains statistics\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('total_cards');",
+                  "    pm.expect(jsonData).to.have.property('type_distribution');",
+                  "    pm.expect(jsonData).to.have.property('power_distribution');",
+                  "    pm.expect(jsonData).to.have.property('available_types');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{card_service_url}}/api/cards/statistics"
+          }
+        },
+        {
+          "name": "Get Card Types - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains types and powers\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('types');",
+                  "    pm.expect(jsonData).to.have.property('powers');",
+                  "    pm.expect(jsonData.types).to.be.an('array');",
+                  "    pm.expect(jsonData.powers).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{card_service_url}}/api/cards/types"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Game Service",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains health status\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('status', 'healthy');",
+                  "    pm.expect(jsonData).to.have.property('service', 'game-service');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{game_service_url}}/api/games/health"
+          }
+        },
+        {
+          "name": "Create Game - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains game details\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('game_id');",
+                  "    pm.expect(jsonData).to.have.property('player1_name');",
+                  "    pm.expect(jsonData).to.have.property('player2_name');",
+                  "    pm.expect(jsonData).to.have.property('status', 'pending');",
+                  "    ",
+                  "    // Store game_id for subsequent tests",
+                  "    pm.environment.set('test_game_id', jsonData.game_id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"player2_name\": \"{{test_username_player2}}\"\n}"
+            },
+            "url": "{{game_service_url}}/api/games"
+          }
+        },
+        {
+          "name": "Create Game - Invalid (Missing Player2 Name)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.error).to.contain('Player 2 name is required');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{game_service_url}}/api/games"
+          }
+        },
+        {
+          "name": "Get Game - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains game state\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('game_id');",
+                  "    pm.expect(jsonData).to.have.property('turn');",
+                  "    pm.expect(jsonData).to.have.property('game_status');",
+                  "    pm.expect(jsonData).to.have.property('player1');",
+                  "    pm.expect(jsonData).to.have.property('player2');",
+                  "    pm.expect(jsonData.player1).to.have.property('name');",
+                  "    pm.expect(jsonData.player1).to.have.property('score');",
+                  "    pm.expect(jsonData.player2).to.have.property('name');",
+                  "    pm.expect(jsonData.player2).to.have.property('score');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{game_service_url}}/api/games/{{test_game_id}}"
+          }
+        },
+        {
+          "name": "Get Game - Invalid (Non-existent ID)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error', 'Game not found');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{game_service_url}}/api/games/invalid-game-id-123"
+          }
+        },
+        {
+          "name": "Accept Invitation - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains acceptance confirmation\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData).to.have.property('status', 'deck_selection');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{game_service_url}}/api/games/{{test_game_id}}/accept"
+          }
+        },
+        {
+          "name": "Select Deck - Player 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains deck selection confirmation\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData).to.have.property('deck');",
+                  "    pm.expect(jsonData).to.have.property('both_selected');",
+                  "    pm.expect(jsonData.deck).to.be.an('array');",
+                  "    pm.expect(jsonData.deck).to.have.lengthOf(22);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"deck\": [\n        {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"},\n        {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"},\n        {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"},\n        {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"},\n        {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"},\n        {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}\n    ]\n}"
+            },
+            "url": "{{game_service_url}}/api/games/{{test_game_id}}/select-deck"
+          }
+        },
+        {
+          "name": "Select Deck - Player 2",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Temporarily switch to player 2's token",
+                  "pm.environment.set('temp_token', pm.environment.get('auth_token'));",
+                  "pm.environment.set('auth_token', pm.environment.get('auth_token_player2'));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response shows both players selected and game is active\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData).to.have.property('both_selected', true);",
+                  "    pm.expect(jsonData).to.have.property('status', 'active');",
+                  "    pm.expect(jsonData.deck).to.have.lengthOf(22);",
+                  "});",
+                  "",
+                  "// Restore player 1's token",
+                  "pm.environment.set('auth_token', pm.environment.get('temp_token'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"deck\": [\n        {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"},\n        {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"}, {\"type\": \"Rock\"},\n        {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"},\n        {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"}, {\"type\": \"Paper\"},\n        {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"},\n        {\"type\": \"Scissors\"}, {\"type\": \"Scissors\"}\n    ]\n}"
+            },
+            "url": "{{game_service_url}}/api/games/{{test_game_id}}/select-deck"
+          }
+        },
+        {
+          "name": "Get Player Hand - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains hand information\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('hand');",
+                  "    pm.expect(jsonData).to.have.property('player');",
+                  "    pm.expect(jsonData.hand).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{game_service_url}}/api/games/{{test_game_id}}/hand"
+          }
+        },
+        {
+          "name": "Draw Hand - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains drawn hand\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('hand');",
+                  "    pm.expect(jsonData).to.have.property('deck_size');",
+                  "    pm.expect(jsonData).to.have.property('is_final_hand');",
+                  "    pm.expect(jsonData).to.have.property('cards_drawn');",
+                  "    pm.expect(jsonData.hand).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{game_service_url}}/api/games/{{test_game_id}}/draw-hand"
+          }
+        },
+        {
+          "name": "Draw Hand - Invalid (Non-existent Game)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error', 'Game not found');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{game_service_url}}/api/games/invalid-game/draw-hand"
+          }
+        },
+        {
+          "name": "Play Card - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains played card info\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('played_card');",
+                  "    pm.expect(jsonData).to.have.property('both_played');",
+                  "    pm.expect(jsonData).to.have.property('remaining_hand');",
+                  "    pm.expect(jsonData).to.have.property('discarded_cards');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"card_index\": 0\n}"
+            },
+            "url": "{{game_service_url}}/api/games/{{test_game_id}}/play-card"
+          }
+        },
+        {
+          "name": "Play Card - Invalid (Invalid Index)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"card_index\": 999\n}"
+            },
+            "url": "{{game_service_url}}/api/games/{{test_game_id}}/play-card"
+          }
+        },
+        {
+          "name": "Get User Games - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains games list\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('games');",
+                  "    pm.expect(jsonData.games).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{game_service_url}}/api/games/user/{{test_username}}"
+          }
+        },
+        {
+          "name": "Get User Games - Invalid (Unauthorized User)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 403\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error', 'Unauthorized');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{game_service_url}}/api/games/user/otheruser"
+          }
+        },
+        {
+          "name": "Get Turn Info - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains turn information\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('turn_status');",
+                  "    pm.expect(jsonData).to.have.property('deck_status');",
+                  "    pm.expect(jsonData).to.have.property('scores');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{game_service_url}}/api/games/{{test_game_id}}/turn-info"
+          }
+        },
+        {
+          "name": "Get Tie Breaker Status - Invalid (No Game)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error', 'Game not found');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{game_service_url}}/api/games/invalid-game/tie-breaker-status"
+          }
+        },
+        {
+          "name": "Play Tie Breaker - Invalid (No Tie State)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains error message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": "{{game_service_url}}/api/games/{{test_game_id}}/tie-breaker"
+          }
+        },
+        {
+          "name": "End Game - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains success message\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message', 'Game ended successfully');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{game_service_url}}/api/games/{{test_game_id}}/end"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Leaderboard Service",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains health status\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('status', 'healthy');",
+                  "    pm.expect(jsonData).to.have.property('service', 'leaderboard-service');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{leaderboard_service_url}}/api/leaderboard/health"
+          }
+        },
+        {
+          "name": "Get Leaderboard - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains leaderboard\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('leaderboard');",
+                  "    pm.expect(jsonData).to.have.property('total_players');",
+                  "    pm.expect(jsonData.leaderboard).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{leaderboard_service_url}}/api/leaderboard"
+          }
+        },
+        {
+          "name": "Get Leaderboard - Invalid (No Auth)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.expect(pm.response.code).to.equal(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Response indicates authentication error\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{leaderboard_service_url}}/api/leaderboard"
+          }
+        },
+        {
+          "name": "Get Player Stats - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains player stats\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('player');",
+                  "    pm.expect(jsonData).to.have.property('wins');",
+                  "    pm.expect(jsonData).to.have.property('losses');",
+                  "    pm.expect(jsonData).to.have.property('total_games');",
+                  "    pm.expect(jsonData).to.have.property('win_percentage');",
+                  "    pm.expect(jsonData).to.have.property('recent_games');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{leaderboard_service_url}}/api/leaderboard/player/{{test_username}}"
+          }
+        },
+        {
+          "name": "Get Recent Games - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains recent games\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('recent_games');",
+                  "    pm.expect(jsonData).to.have.property('total_games');",
+                  "    pm.expect(jsonData.recent_games).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{leaderboard_service_url}}/api/leaderboard/recent-games?limit=5"
+          }
+        },
+        {
+          "name": "Get Recent Games - Invalid (Limit Too Large)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Limit is capped at 50\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('recent_games');",
+                  "    pm.expect(jsonData.recent_games.length).to.be.at.most(50);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{leaderboard_service_url}}/api/leaderboard/recent-games?limit=1000"
+          }
+        },
+        {
+          "name": "Get Top Players - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains top players data\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('top_by_wins');",
+                  "    pm.expect(jsonData).to.have.property('top_by_win_percentage');",
+                  "    pm.expect(jsonData).to.have.property('most_active');",
+                  "    pm.expect(jsonData.top_by_wins).to.be.an('array');",
+                  "    pm.expect(jsonData.top_by_win_percentage).to.be.an('array');",
+                  "    pm.expect(jsonData.most_active).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{leaderboard_service_url}}/api/leaderboard/top-players"
+          }
+        },
+        {
+          "name": "Get Global Statistics - Valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains global statistics\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('total_completed_games');",
+                  "    pm.expect(jsonData).to.have.property('unique_players');",
+                  "    pm.expect(jsonData).to.have.property('games_with_winner');",
+                  "    pm.expect(jsonData).to.have.property('tied_games');",
+                  "    pm.expect(jsonData).to.have.property('average_game_turns');",
+                  "    pm.expect(jsonData).to.have.property('games_last_week');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{leaderboard_service_url}}/api/leaderboard/statistics"
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "auth_service_url",
+      "value": "http://localhost:5001",
+      "type": "string"
+    },
+    {
+      "key": "card_service_url",
+      "value": "http://localhost:5002",
+      "type": "string"
+    },
+    {
+      "key": "game_service_url",
+      "value": "http://localhost:5003",
+      "type": "string"
+    },
+    {
+      "key": "leaderboard_service_url",
+      "value": "http://localhost:5004",
+      "type": "string"
+    },
+    {
+      "key": "gateway_url",
+      "value": "http://localhost:80",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "test_game_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
 }
+
