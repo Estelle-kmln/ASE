@@ -671,15 +671,55 @@ def update_profile():
             return jsonify({"error": "No data provided"}), 400
 
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Check if user exists
+        # Check if user exists and get user data
         cursor.execute(
-            "SELECT COUNT(*) FROM users WHERE username = %s", (current_user,)
+            "SELECT id, username, created_at, is_admin FROM users WHERE username = %s", (current_user,)
         )
-        if cursor.fetchone()[0] == 0:
+        user = cursor.fetchone()
+        if not user:
             conn.close()
             return jsonify({"error": "User not found"}), 404
+
+        # Track if any updates were made
+        updates_made = []
+        
+        # Update username if provided and different from current
+        if "username" in data and data["username"] and data["username"] != current_user:
+            new_username = data["username"]
+            
+            # Validate username
+            try:
+                new_username = InputSanitizer.validate_username(new_username)
+            except ValueError as e:
+                conn.close()
+                return jsonify({"error": str(e)}), 400
+            
+            # Check if new username already exists
+            cursor.execute(
+                "SELECT COUNT(*) FROM users WHERE username = %s AND username != %s",
+                (new_username, current_user),
+            )
+            if cursor.fetchone()["count"] > 0:
+                conn.close()
+                return jsonify({"error": "Username already exists"}), 400
+            
+            # Update username
+            cursor.execute(
+                "UPDATE users SET username = %s WHERE username = %s",
+                (new_username, current_user),
+            )
+            updates_made.append(f"username changed from '{current_user}' to '{new_username}'")
+            
+            # Update the current_user variable for subsequent operations
+            old_username = current_user
+            current_user = new_username
+            
+            # Log username change
+            log_action(
+                "USERNAME_CHANGED", new_username, f"Username changed from '{old_username}' to '{new_username}'"
+            )
 
         # Update password if provided
         if "password" in data and data["password"]:
@@ -696,15 +736,52 @@ def update_profile():
                 "UPDATE users SET password = %s WHERE username = %s",
                 (hashed_password, current_user),
             )
+            updates_made.append("password")
             # Log password change
             log_action(
                 "PASSWORD_CHANGED", current_user, "User changed their password"
             )
 
         conn.commit()
+        
+        # Fetch updated user data to return
+        cursor.execute(
+            "SELECT id, username, created_at, is_admin FROM users WHERE username = %s",
+            (current_user,)
+        )
+        updated_user = cursor.fetchone()
+        user_id = updated_user['id']
         conn.close()
 
-        return jsonify({"message": "Profile updated successfully"}), 200
+        # Generate new tokens if username was changed
+        response_data = {
+            "message": "Profile updated successfully",
+            "user": dict(updated_user)
+        }
+        
+        if "username" in data and data["username"] and data["username"] != get_jwt_identity():
+            # Username was changed, generate new tokens
+            access_token = create_access_token(identity=current_user)
+            refresh_token = create_refresh_token(identity=current_user)
+            
+            # Store new refresh token in database
+            refresh_expires = app.config["JWT_REFRESH_TOKEN_EXPIRES"]
+            store_refresh_token(user_id, refresh_token, refresh_expires)
+            
+            # OAuth2-style metadata
+            jwt_expires = app.config["JWT_ACCESS_TOKEN_EXPIRES"]
+            expires_in = (
+                int(jwt_expires.total_seconds())
+                if hasattr(jwt_expires, "total_seconds")
+                else int(jwt_expires)
+            )
+            
+            response_data["access_token"] = access_token
+            response_data["refresh_token"] = refresh_token
+            response_data["token_type"] = "bearer"
+            response_data["expires_in"] = expires_in
+
+        return jsonify(response_data), 200
 
     except Exception as e:
         return jsonify({"error": f"Failed to update profile: {str(e)}"}), 500

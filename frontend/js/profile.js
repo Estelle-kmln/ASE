@@ -185,17 +185,10 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
     clearAlert();
     
     const username = document.getElementById('username').value;
-    const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
-    const confirmPassword = document.getElementById('confirm-password').value;
     
-    // Validate passwords if they're being changed
-    if (password || confirmPassword) {
-        if (password !== confirmPassword) {
-            showAlert('Passwords do not match!', 'error');
-            return;
-        }
-        
+    // Only validate password if it's not the placeholder value and not empty
+    if (password && password !== '••••••••') {
         // Validate password strength
         const passwordError = validatePassword(password);
         if (passwordError) {
@@ -205,11 +198,11 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
     }
     
     const updateData = {
-        username,
-        email
+        username
     };
     
-    if (password) {
+    // Only include password if it's being changed
+    if (password && password !== '••••••••') {
         updateData.password = password;
     }
     
@@ -236,13 +229,30 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
         if (response.ok) {
             showAlert('Profile updated successfully!', 'success');
             
-            // Update localStorage
+            // Update localStorage with new user data
             localStorage.setItem('user', JSON.stringify(data.user));
             currentUser = data.user;
             
-            // Exit edit mode
+            // If new tokens were provided (username was changed), update them
+            if (data.access_token) {
+                localStorage.setItem('token', data.access_token);
+                localStorage.setItem('refresh_token', data.refresh_token);
+                
+                // Update token expiry
+                const expiryTime = Date.now() + (data.expires_in * 1000);
+                localStorage.setItem('token_expiry', expiryTime.toString());
+                
+                showAlert('Profile updated! New login tokens generated.', 'success');
+            }
+            
+            // Exit edit mode and reload
             setTimeout(() => {
                 toggleEdit();
+                // Update the user info display with new username
+                const userInfoElement = document.getElementById('user-info');
+                if (userInfoElement && currentUser) {
+                    userInfoElement.textContent = currentUser.username;
+                }
             }, 1500);
         } else {
             showAlert(data.error || 'Failed to update profile', 'error');
