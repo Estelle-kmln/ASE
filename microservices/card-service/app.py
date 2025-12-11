@@ -58,8 +58,7 @@ def expired_token_callback(jwt_header, jwt_payload):
 
 # Database configuration
 DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://gameuser:gamepassword@localhost:5432/battlecards",
+    "CARDS_DB_URL"
 )
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:5001")
 

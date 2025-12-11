@@ -19,6 +19,25 @@ services:
       retries: 5
     networks:
       - battlecards-network
+# Cards database
+  postgresql-cards:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: cards_db
+      POSTGRES_USER: gameuser
+      POSTGRES_PASSWORD: gamepassword
+    volumes:
+      - ./database/cards:/docker-entrypoint-initdb.d
+      - postgres_cards_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gameuser -d cards_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - battlecards-network
 
   # Auth Service
   auth-service:
@@ -45,13 +64,13 @@ services:
     build:
       context: ./card-service
     environment:
-      - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
+      - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql-cards:5432/cards_db
       - JWT_SECRET_KEY=your-super-secret-key-change-in-production
       - AUTH_SERVICE_URL=http://auth-service:5001
     ports:
       - "5002:5002"
     depends_on:
-      postgresql:
+      postgresql-cards:
         condition: service_healthy
       auth-service:
         condition: service_healthy
@@ -152,6 +171,7 @@ services:
 
 volumes:
   postgres_data:
+  postgres_cards_data:
 
 networks:
   battlecards-network:
