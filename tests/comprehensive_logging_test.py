@@ -21,35 +21,56 @@ session.verify = False
 
 @pytest.fixture(scope="class")
 def test_user():
-    """Create a test user for the test class."""
+    """Create a test user for the test class and return username and token."""
     username = f"logtest_{int(time.time())}"
-    # Register the user
+    # Register the user (returns token directly, avoiding concurrent session issues)
     resp = session.post(
         f"{BASE_URL}/api/auth/register",
-        json={"username": username, "password": "TestPass123"},
+        json={"username": username, "password": "TestPass123!"},
     )
-    return username
+    if resp.status_code == 201:
+        token = resp.json().get("access_token")
+        return {"username": username, "token": token}
+    return {"username": username, "token": None}
 
 
 @pytest.fixture(scope="class")
 def user_token(test_user):
-    """Get authentication token for the test user."""
-    resp = session.post(
-        f"{BASE_URL}/api/auth/login",
-        json={"username": test_user, "password": "TestPass123"},
-    )
-    if resp.status_code == 200:
-        return resp.json()["access_token"]
-    return None
+    """Get authentication token for the test user from registration."""
+    # Use the token from registration to avoid concurrent session conflicts
+    return test_user.get("token")
 
 
 @pytest.fixture(scope="class")
 def admin_token():
     """Get admin authentication token."""
-    resp = session.post(
+    # Use fresh session to avoid concurrent session conflicts
+    admin_session = requests.Session()
+    admin_session.verify = False
+    
+    # Try to login first
+    resp = admin_session.post(
         f"{BASE_URL}/api/auth/login",
         json={"username": "admin", "password": "Admin123!"},
     )
+    
+    # If we get 409 (concurrent session), force logout and try again
+    if resp.status_code == 409:
+        logout_session = requests.Session()
+        logout_session.verify = False
+        logout_session.post(
+            f"{BASE_URL}/api/auth/force-logout",
+            json={"username": "admin", "password": "Admin123!"},
+        )
+        
+        # Try login again with fresh session
+        admin_session = requests.Session()
+        admin_session.verify = False
+        resp = admin_session.post(
+            f"{BASE_URL}/api/auth/login",
+            json={"username": "admin", "password": "Admin123!"},
+        )
+    
     if resp.status_code == 200:
         return resp.json().get("access_token", "")
     return None
@@ -62,7 +83,7 @@ class TestComprehensiveLogging:
     def test_user_registration(self, test_user):
         """Test that user registration is logged."""
         print("\n1. Testing user registration...")
-        print(f"   Registered {test_user}: 201")
+        print(f"   Registered {test_user['username']}: 201")
         assert test_user is not None, "User should be created"
 
     @pytest.mark.order(2)
@@ -71,7 +92,7 @@ class TestComprehensiveLogging:
         print("\n2. Testing duplicate registration (should fail)...")
         resp = session.post(
             f"{BASE_URL}/api/auth/register",
-            json={"username": test_user, "password": "TestPass123"},
+            json={"username": test_user['username'], "password": "TestPass123!"},
         )
         print(f"   Duplicate registration attempt: {resp.status_code}")
         assert resp.status_code == 409, "Duplicate registration should fail"
@@ -80,9 +101,12 @@ class TestComprehensiveLogging:
     def test_failed_login(self, test_user):
         """Test that failed login attempts are logged."""
         print("\n3. Testing failed login...")
-        resp = session.post(
+        # Use fresh session to avoid concurrent session conflicts
+        login_session = requests.Session()
+        login_session.verify = False
+        resp = login_session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"username": test_user, "password": "WrongPassword"},
+            json={"username": test_user['username'], "password": "WrongPassword123!"},
         )
         print(f"   Failed login: {resp.status_code}")
         assert resp.status_code == 401, "Failed login should return 401"
@@ -112,7 +136,7 @@ class TestComprehensiveLogging:
         resp = session.put(
             f"{BASE_URL}/api/auth/profile",
             headers={"Authorization": f"Bearer {user_token}"},
-            json={"password": "NewTestPass123"},
+            json={"password": "NewTestPass123!"},
         )
         print(f"   Password changed: {resp.status_code}")
         assert resp.status_code == 200, "Password change should succeed"
@@ -141,10 +165,12 @@ class TestComprehensiveLogging:
     def test_game_creation(self, test_user):
         """Test that game creation is logged."""
         print("\n8. Testing game creation...")
-        # Re-login with new password to get valid token
-        resp = session.post(
+        # Use fresh session to re-login with new password to get valid token
+        login_session = requests.Session()
+        login_session.verify = False
+        resp = login_session.post(
             f"{BASE_URL}/api/auth/login",
-            json={"username": test_user, "password": "NewTestPass123"},
+            json={"username": test_user['username'], "password": "NewTestPass123!"},
         )
         if resp.status_code == 200:
             token = resp.json()["access_token"]
@@ -212,8 +238,8 @@ class TestComprehensiveLogging:
 
         for log in logs[:15]:
             timestamp = log["timestamp"][:19] if log["timestamp"] else "N/A"
-            action = log["action"]
-            user = log.get("username", "N/A")
+            action = log["action"] or "N/A"
+            user = log.get("username") or "N/A"
             details = log.get("details", "")
             print(f"{timestamp} | {action:30s} | {user:20s}")
             if details:

@@ -28,7 +28,7 @@ class TestLeaderboardServiceSetup(unittest.TestCase):
         """Set up authentication token for all leaderboard service tests."""
         cls.unique_id = int(time.time() * 1000)
         cls.test_username = f"lbuser_{cls.unique_id}"
-        cls.test_password = "lbpass123"
+        cls.test_password = "LbPass123!"
         
         # Register and get token
         response = session.post(

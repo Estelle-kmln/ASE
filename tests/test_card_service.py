@@ -28,7 +28,7 @@ class TestCardServiceSetup(unittest.TestCase):
         """Set up authentication token for all card service tests."""
         cls.unique_id = int(time.time() * 1000)
         cls.test_username = f"carduser_{cls.unique_id}"
-        cls.test_password = "cardpass123"
+        cls.test_password = "CardPass123!"
 
         # Register and get token
         response = session.post(

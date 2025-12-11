@@ -1,6 +1,6 @@
 # 🔒 **Security Implementation Guide**
 
-This document covers the complete security implementation for the Battle Card Game microservices, including protection against injection attacks and testing procedures.
+This document covers the complete security implementation for the Battle Card Game microservices, including protection against injection attacks, account lockout mechanisms, and testing procedures.
 
 ---
 
@@ -11,6 +11,7 @@ This document covers the complete security implementation for the Battle Card Ga
 4. [Testing & Validation](#-testing--validation)
 5. [Integration Guide](#-integration-guide)
 6. [Technical Details](#-technical-details)
+7. [Account Lockout](ACCOUNT_LOCKOUT.md) - Detailed documentation
 
 ---
 
@@ -24,6 +25,9 @@ python tests/quick_security_test.py
 # 2. Full configuration check  
 python scripts/check_security.py
 
+# 3. Test account lockout protection
+python tests/test_account_lockout.py
+
 # Expected result: All tests pass ✅
 ```
 
@@ -35,6 +39,7 @@ Your application now blocks:
 - ✅ Path Traversal attacks (`../../etc/passwd`)
 - ✅ Buffer overflows (length limits)
 - ✅ Integer overflows (bounds checking)
+- ✅ Brute-force attacks (account lockout after 3 failed attempts)
 
 ---
 
@@ -46,11 +51,12 @@ Your application now blocks:
 | **Input Sanitizer** | `microservices/utils/input_sanitizer.py` | Core validation & sanitization |
 | **Security Middleware** | Built-in | Automatic request processing |
 | **Validation Decorators** | Built-in | Easy route protection |
+| **Account Lockout** | `auth-service/app.py` | Brute-force protection |
 
 ### **Microservice Protection Status**
 | Service | Status | Protected Against |
 |---------|--------|-------------------|
-| **Auth Service** | ✅ **SECURED** | Username/password injection, JWT issuing |
+| **Auth Service** | ✅ **SECURED** | Username/password injection, JWT issuing, brute-force attacks |
 | **Game Service** | ✅ **SECURED** | Game ID validation, player name sanitization, JWT-based access control |
 | **Card Service** | ✅ **SECURED** | Card type validation, ID bounds checking, JWT-based access control |
 | **Leaderboard Service** | ✅ **SECURED** | Query parameter sanitization, JWT-based access control |
@@ -62,6 +68,7 @@ Your application now blocks:
 ### **Overview**
 - The platform uses **JWT bearer tokens** for authentication and authorization.
 - Tokens are issued by the **Auth Service** and consumed by all other microservices.
+- **Account lockout protection**: Accounts are locked for 15 minutes after 3 failed login attempts.
 - The flow is compatible with common **OAuth2-style** patterns:
   - Tokens are returned from login/register endpoints as a bearer token with expiry metadata.
   - Clients send the token in the `Authorization` header on every protected request.

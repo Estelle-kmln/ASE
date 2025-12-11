@@ -87,6 +87,7 @@ DATABASE_URL = os.getenv(
     "postgresql://gameuser:gamepassword@localhost:5432/battlecards",
 )
 CARD_SERVICE_URL = os.getenv("CARD_SERVICE_URL", "http://localhost:5002")
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:5001")
 
 
 def get_db_connection():
@@ -300,6 +301,7 @@ def mark_game_as_active(conn, game_id):
 
 
 @app.route("/health", methods=["GET"])
+@app.route("/api/games/health", methods=["GET"])
 def health_check():
     """Health check endpoint."""
     return jsonify({"status": "healthy", "service": "game-service"}), 200
@@ -330,10 +332,24 @@ def create_game():
         if player1_name == player2_name:
             return jsonify({"error": "Cannot create game with yourself"}), 400
 
+        # Verify that player2 exists in the database
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute(
+            "SELECT id, username FROM users WHERE username = %s",
+            (player2_name,)
+        )
+        player2_user = cursor.fetchone()
+        
+        if not player2_user:
+            conn.close()
+            return jsonify({"error": f"User '{player2_name}' could not be found"}), 404
+
         # Create game with empty decks - players will select their decks
         game_id = str(uuid.uuid4())
 
-        conn = get_db_connection()
+        # Reuse the connection and create a new cursor for the insert
         cursor = conn.cursor()
 
         cursor.execute(
@@ -349,7 +365,7 @@ def create_game():
             (
                 game_id,
                 1,
-                "deck_selection",  # Initial status - players need to select decks
+                "pending",  # Initial status - invitation sent, waiting for acceptance
                 player1_name,
                 json.dumps([]),  # Empty deck initially
                 json.dumps([]),
@@ -379,7 +395,7 @@ def create_game():
                     "game_id": game_id,
                     "player1_name": player1_name,
                     "player2_name": player2_name,
-                    "status": "deck_selection",
+                    "status": "pending",
                     "turn": 1,
                 }
             ),
@@ -1597,14 +1613,14 @@ def accept_invitation(game_id):
                 400,
             )
 
-        # If already in deck_selection, just return success (idempotent)
-        if game.get("game_status") == "deck_selection":
+        # If already in deck_selection or active, just return success (idempotent)
+        if game.get("game_status") in ["deck_selection", "active"]:
             conn.close()
             return (
                 jsonify(
                     {
-                        "message": "Game already in deck selection",
-                        "status": "deck_selection",
+                        "message": "Game already accepted",
+                        "status": game.get("game_status"),
                     }
                 ),
                 200,
@@ -2146,8 +2162,8 @@ def select_deck(game_id):
             conn.close()
             return jsonify({"error": "Unauthorized"}), 403
 
-        # Check if game is in deck selection phase
-        if game["game_status"] != "deck_selection":
+        # Check if game is in deck selection phase (pending or deck_selection)
+        if game["game_status"] not in ["pending", "deck_selection"]:
             conn.close()
             return (
                 jsonify({"error": "Game is not in deck selection phase"}),
@@ -2265,12 +2281,25 @@ def select_deck(game_id):
             and deck_status["player2_deck_selected"]
         )
 
+        # Determine new status based on deck selection
         # If both selected, transition to active game
+        # If only one selected, ensure status is at least 'deck_selection'
         if both_selected:
             cursor.execute(
                 """
                 UPDATE games 
                 SET game_status = 'active',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE game_id = %s
+                """,
+                (game_id,),
+            )
+        elif game["game_status"] == "pending":
+            # First player selected, move to deck_selection
+            cursor.execute(
+                """
+                UPDATE games 
+                SET game_status = 'deck_selection',
                     updated_at = CURRENT_TIMESTAMP
                 WHERE game_id = %s
                 """,
@@ -2291,13 +2320,21 @@ def select_deck(game_id):
                 f"Game {game_id} started - Both players selected decks",
             )
 
+        # Determine response status
+        if both_selected:
+            response_status = "active"
+        elif game["game_status"] == "pending":
+            response_status = "deck_selection"  # Just transitioned
+        else:
+            response_status = "deck_selection"  # Was already in deck_selection
+
         return (
             jsonify(
                 {
                     "message": "Deck selected successfully",
                     "deck": final_deck,
                     "both_selected": both_selected,
-                    "status": "active" if both_selected else "deck_selection",
+                    "status": response_status,
                 }
             ),
             200,

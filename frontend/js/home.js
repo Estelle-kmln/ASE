@@ -37,6 +37,11 @@ let pollInterval = null;
         return;
     }
     console.log('Auth check passed');
+    
+    // Initialize token management if available
+    if (window.TokenManagement) {
+        window.TokenManagement.initializeTokenManagement();
+    }
 })();
 
 // Initialize
@@ -62,13 +67,20 @@ function displayUserInfo() {
 
 async function checkAdminStatus() {
     try {
-        const token = localStorage.getItem('token');
-        const response = await fetch('https://localhost:8443/api/auth/profile', {
+        const fetchFunc = window.TokenManagement ? window.TokenManagement.authenticatedFetch : fetch;
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        
+        // Add auth header if not using authenticatedFetch
+        if (!window.TokenManagement) {
+            const token = localStorage.getItem('token');
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const response = await fetchFunc('https://localhost:8443/api/auth/profile', {
             method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
+            headers: headers
         });
 
         if (response.ok) {
@@ -80,6 +92,11 @@ async function checkAdminStatus() {
             } else {
                 console.log('User is not admin');
             }
+        } else if (response.status === 401 || response.status === 404) {
+            // Token expired, invalid, or user no longer exists
+            console.error('Unauthorized or user not found - clearing session');
+            localStorage.clear();
+            window.location.href = 'login.html';
         } else {
             console.error('Admin check failed:', response.status);
         }
@@ -112,13 +129,19 @@ function navigateTo(page) {
 }
 
 function logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    window.location.href = 'login.html';
+    if (window.TokenManagement) {
+        window.TokenManagement.logout();
+    } else {
+        // Fallback
+        localStorage.removeItem('token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('token_expiry');
+        localStorage.removeItem('user');
+        window.location.href = 'login.html';
+    }
 }
 
 async function loadUserGames() {
-    const token = localStorage.getItem('token');
     if (!currentUser || !currentUser.username) {
         console.log('No current user found:', currentUser);
         return;
@@ -127,10 +150,17 @@ async function loadUserGames() {
     console.log('Loading games for user:', currentUser.username);
     
     try {
-        const response = await fetch(`${GAME_API_URL}/user/${currentUser.username}`, {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
+        const fetchFunc = window.TokenManagement ? window.TokenManagement.authenticatedFetch : fetch;
+        const headers = {};
+        
+        // Add auth header if not using authenticatedFetch
+        if (!window.TokenManagement) {
+            const token = localStorage.getItem('token');
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const response = await fetchFunc(`${GAME_API_URL}/user/${currentUser.username}`, {
+            headers: headers
         });
         
         if (!response.ok) {
@@ -149,13 +179,14 @@ async function loadUserGames() {
         const pendingGames = games.filter(game => {
             const isPlayer1 = game.player1_name && game.player1_name.toLowerCase() === currentUsername;
             const isPlayer2 = game.player2_name && game.player2_name.toLowerCase() === currentUsername;
-            return game.game_status === 'pending' && (isPlayer1 || isPlayer2);
+            return (game.game_status === 'pending' || game.game_status === 'deck_selection') && (isPlayer1 || isPlayer2);
         });
         
-        const activeGames = games.filter(game => 
-            (game.game_status === 'active' || game.game_status === 'deck_selection') && 
-            (game.player1_id || game.player2_id)
-        );
+        const activeGames = games.filter(game => {
+            const isPlayer1 = game.player1_name && game.player1_name.toLowerCase() === currentUsername;
+            const isPlayer2 = game.player2_name && game.player2_name.toLowerCase() === currentUsername;
+            return game.game_status === 'active' && (isPlayer1 || isPlayer2);
+        });
         
         console.log('Pending games:', pendingGames);
         console.log('Active games:', activeGames);

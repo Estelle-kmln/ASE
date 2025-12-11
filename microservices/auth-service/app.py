@@ -10,8 +10,10 @@ from flask import Flask, request, jsonify
 from flask_jwt_extended import (
     JWTManager,
     create_access_token,
+    create_refresh_token,
     jwt_required,
     get_jwt_identity,
+    get_jwt,
 )
 from flask_cors import CORS
 import psycopg2
@@ -35,7 +37,8 @@ app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = os.getenv(
     "JWT_SECRET_KEY", "your-secret-key-change-in-production"
 )
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=5)  # Short-lived access tokens
+app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=30)  # Long-lived refresh tokens
 
 # Initialize extensions
 jwt = JWTManager(app)
@@ -102,6 +105,176 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
 
 
+def get_device_info() -> dict:
+    """Extract device information from request headers."""
+    user_agent = request.headers.get('User-Agent', 'Unknown')
+    ip_address = request.headers.get('X-Forwarded-For', request.remote_addr)
+    
+    # Parse user agent for simple device info
+    device_info = 'Unknown Device'
+    if 'Mobile' in user_agent:
+        if 'iPhone' in user_agent or 'iPad' in user_agent:
+            device_info = 'iOS Device'
+        elif 'Android' in user_agent:
+            device_info = 'Android Device'
+        else:
+            device_info = 'Mobile Device'
+    elif 'Windows' in user_agent:
+        if 'Edge' in user_agent:
+            device_info = 'Edge on Windows'
+        elif 'Chrome' in user_agent:
+            device_info = 'Chrome on Windows'
+        elif 'Firefox' in user_agent:
+            device_info = 'Firefox on Windows'
+        else:
+            device_info = 'Windows Device'
+    elif 'Macintosh' in user_agent or 'Mac OS' in user_agent:
+        if 'Safari' in user_agent and 'Chrome' not in user_agent:
+            device_info = 'Safari on Mac'
+        elif 'Chrome' in user_agent:
+            device_info = 'Chrome on Mac'
+        elif 'Firefox' in user_agent:
+            device_info = 'Firefox on Mac'
+        else:
+            device_info = 'Mac Device'
+    elif 'Linux' in user_agent:
+        device_info = 'Linux Device'
+    
+    return {
+        'device_info': device_info,
+        'ip_address': ip_address,
+        'user_agent': user_agent
+    }
+
+
+def get_active_sessions(user_id: int) -> list:
+    """Get all active (non-revoked, non-expired) sessions for a user."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            """SELECT id, device_info, ip_address, created_at, last_used_at 
+               FROM refresh_tokens 
+               WHERE user_id = %s AND revoked = FALSE AND expires_at > CURRENT_TIMESTAMP
+               ORDER BY created_at DESC""",
+            (user_id,)
+        )
+        sessions = cursor.fetchall()
+        conn.close()
+        return sessions
+    except Exception as e:
+        print(f"Failed to get active sessions: {e}")
+        return []
+
+
+def check_concurrent_session(user_id: int) -> bool:
+    """Check if user has an active session (strict mode)."""
+    sessions = get_active_sessions(user_id)
+    return len(sessions) > 0
+
+
+def store_refresh_token(user_id: int, refresh_token: str, expires_delta: timedelta, device_data: dict = None) -> bool:
+    """Store a refresh token in the database with device tracking."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        expires_at = datetime.now() + expires_delta
+        
+        # Get device info if not provided
+        if device_data is None:
+            device_data = get_device_info()
+        
+        cursor.execute(
+            """INSERT INTO refresh_tokens 
+               (user_id, token, expires_at, device_info, ip_address, user_agent, last_used_at) 
+               VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)""",
+            (user_id, refresh_token, expires_at, 
+             device_data.get('device_info', 'Unknown'),
+             device_data.get('ip_address', 'Unknown'),
+             device_data.get('user_agent', 'Unknown'))
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Failed to store refresh token: {e}")
+        return False
+
+
+def validate_refresh_token(refresh_token: str) -> dict:
+    """Validate a refresh token and return user info if valid."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            """SELECT rt.id, rt.user_id, rt.expires_at, rt.revoked, u.username 
+               FROM refresh_tokens rt
+               JOIN users u ON rt.user_id = u.id
+               WHERE rt.token = %s""",
+            (refresh_token,)
+        )
+        token_data = cursor.fetchone()
+        
+        if not token_data:
+            conn.close()
+            return None
+        
+        if token_data["revoked"]:
+            conn.close()
+            return None
+        
+        if token_data["expires_at"] < datetime.now():
+            conn.close()
+            return None
+        
+        # Update last_used_at timestamp
+        cursor.execute(
+            "UPDATE refresh_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (token_data["id"],)
+        )
+        conn.commit()
+        conn.close()
+        
+        return token_data
+    except Exception as e:
+        print(f"Failed to validate refresh token: {e}")
+        return None
+
+
+def revoke_refresh_token(refresh_token: str) -> bool:
+    """Revoke a refresh token."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE token = %s",
+            (refresh_token,)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Failed to revoke refresh token: {e}")
+        return False
+
+
+def revoke_all_user_tokens(user_id: int) -> bool:
+    """Revoke all refresh tokens for a user."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE user_id = %s AND revoked = FALSE",
+            (user_id,)
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Failed to revoke user tokens: {e}")
+        return False
+
+
 @app.route("/health", methods=["GET"])
 @app.route("/api/auth/health", methods=["GET"])
 def health_check():
@@ -162,8 +335,14 @@ def register():
             f"New user registered with ID: {user_id}",
         )
 
-        # Create access token (JWT bearer token)
+        # Create access token and refresh token
         access_token = create_access_token(identity=username)
+        refresh_token = create_refresh_token(identity=username)
+        
+        # Store refresh token in database
+        refresh_expires = app.config["JWT_REFRESH_TOKEN_EXPIRES"]
+        store_refresh_token(user_id, refresh_token, refresh_expires)
+        
         # OAuth2-style metadata (support timedelta or numeric seconds)
         jwt_expires = app.config["JWT_ACCESS_TOKEN_EXPIRES"]
         expires_in = (
@@ -177,6 +356,7 @@ def register():
                 {
                     "message": "User registered successfully",
                     "access_token": access_token,
+                    "refresh_token": refresh_token,
                     "token_type": "bearer",
                     "expires_in": expires_in,
                     "user": {"id": user_id, "username": username},
@@ -187,6 +367,76 @@ def register():
 
     except Exception as e:
         return jsonify({"error": f"Registration failed: {str(e)}"}), 500
+
+
+@app.route("/api/auth/force-logout", methods=["POST"])
+def force_logout():
+    """Force logout all sessions for a user after password verification."""
+    try:
+        log_action("FORCE_LOGOUT_ATTEMPT", None, "Force logout endpoint called")
+        data = request.get_json()
+        
+        log_action("FORCE_LOGOUT_DEBUG", None, f"Data received: {data is not None}")
+
+        if not data:
+            log_action("FORCE_LOGOUT_ERROR", None, "No request body provided")
+            return jsonify({"error": "Request body is required"}), 400
+
+        # Validate required fields
+        if not data.get("username") or not data.get("password"):
+            log_action("FORCE_LOGOUT_ERROR", None, "Missing username or password")
+            return jsonify({"error": "Username and password are required"}), 400
+
+        # Sanitize and validate inputs
+        try:
+            username = InputSanitizer.validate_username(data["username"])
+            password = InputSanitizer.validate_password(data["password"])
+            log_action("FORCE_LOGOUT_DEBUG", username, "Input validation passed")
+        except ValueError as e:
+            log_action("FORCE_LOGOUT_ERROR", None, f"Validation error: {str(e)}")
+            return jsonify({"error": str(e)}), 400
+
+        # Get user and verify password
+        log_action("FORCE_LOGOUT_DEBUG", username, "Getting user from database")
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            """SELECT id, username, password 
+               FROM users WHERE username = %s""",
+            (username,),
+        )
+        user = cursor.fetchone()
+
+        if not user:
+            conn.close()
+            log_action("FORCE_LOGOUT_FAILED", username, "User not found")
+            return jsonify({"error": "Invalid username or password"}), 401
+
+        log_action("FORCE_LOGOUT_DEBUG", username, "User found, verifying password")
+        # Verify password
+        if not bcrypt.checkpw(password.encode("utf-8"), user["password"].encode("utf-8")):
+            conn.close()
+            log_action("FORCE_LOGOUT_FAILED", username, "Invalid password")
+            return jsonify({"error": "Invalid username or password"}), 401
+
+        conn.close()
+
+        log_action("FORCE_LOGOUT_DEBUG", username, "Password verified, revoking tokens")
+        # Revoke all sessions
+        success = revoke_all_user_tokens(user["id"])
+        
+        if success:
+            log_action("FORCE_LOGOUT", username, "All sessions forcefully terminated")
+            return jsonify({"message": "All sessions have been terminated. You can now login again."}), 200
+        else:
+            log_action("FORCE_LOGOUT_ERROR", username, "Failed to revoke tokens")
+            return jsonify({"error": "Failed to terminate sessions"}), 500
+
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        log_action("FORCE_LOGOUT_EXCEPTION", None, f"Exception: {str(e)} - {error_details}")
+        return jsonify({"error": "An error occurred during force logout"}), 500
 
 
 @app.route("/api/auth/login", methods=["POST"])
@@ -213,24 +463,133 @@ def login():
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Get user from database
+        # Get user from database with lockout information
         cursor.execute(
-            "SELECT id, username, password FROM users WHERE username = %s",
+            """SELECT id, username, password, failed_login_attempts, 
+                      account_locked_until, last_failed_login 
+               FROM users WHERE username = %s""",
             (username,),
         )
         user = cursor.fetchone()
-        conn.close()
 
-        if not user or not verify_password(password, user["password"]):
-            # Log failed login attempt
-            log_action("LOGIN_FAILED", username, "Invalid username or password")
+        if not user:
+            conn.close()
+            # Log failed login attempt (user not found)
+            log_action("LOGIN_FAILED", username, "User not found")
             return jsonify({"error": "Invalid username or password"}), 401
 
-        # Log successful login
-        log_action("USER_LOGIN", username, "User logged in successfully")
+        # Check if account is locked
+        if user.get("account_locked_until"):
+            if user["account_locked_until"] > datetime.now():
+                # Account is still locked
+                locked_until = user["account_locked_until"].isoformat()
+                remaining_seconds = int((user["account_locked_until"] - datetime.now()).total_seconds())
+                conn.close()
+                log_action("LOGIN_BLOCKED", username, f"Account locked until {locked_until}")
+                return jsonify({
+                    "error": "Account is temporarily locked due to multiple failed login attempts",
+                    "locked_until": locked_until,
+                    "retry_after": remaining_seconds
+                }), 423  # 423 Locked status code
+            else:
+                # Lock period expired, reset the lockout
+                cursor.execute(
+                    """UPDATE users 
+                       SET failed_login_attempts = 0, 
+                           account_locked_until = NULL 
+                       WHERE username = %s""",
+                    (username,)
+                )
+                conn.commit()
 
-        # Create access token (JWT bearer token)
+        # Verify password
+        if not verify_password(password, user["password"]):
+            # Increment failed login attempts
+            failed_attempts = (user.get("failed_login_attempts") or 0) + 1
+            
+            # Lock account after 3 failed attempts (15 minutes lockout)
+            if failed_attempts >= 3:
+                lockout_duration = timedelta(minutes=15)
+                locked_until = datetime.now() + lockout_duration
+                cursor.execute(
+                    """UPDATE users 
+                       SET failed_login_attempts = %s, 
+                           account_locked_until = %s,
+                           last_failed_login = CURRENT_TIMESTAMP
+                       WHERE username = %s""",
+                    (failed_attempts, locked_until, username)
+                )
+                conn.commit()
+                conn.close()
+                log_action("ACCOUNT_LOCKED", username, 
+                          f"Account locked after {failed_attempts} failed attempts until {locked_until.isoformat()}")
+                return jsonify({
+                    "error": "Account locked due to multiple failed login attempts",
+                    "locked_until": locked_until.isoformat(),
+                    "retry_after": int(lockout_duration.total_seconds())
+                }), 423
+            else:
+                # Update failed attempts count
+                cursor.execute(
+                    """UPDATE users 
+                       SET failed_login_attempts = %s,
+                           last_failed_login = CURRENT_TIMESTAMP
+                       WHERE username = %s""",
+                    (failed_attempts, username)
+                )
+                conn.commit()
+                conn.close()
+                log_action("LOGIN_FAILED", username, 
+                          f"Invalid password - attempt {failed_attempts} of 3")
+                return jsonify({
+                    "error": "Invalid username or password",
+                    "remaining_attempts": 3 - failed_attempts
+                }), 401
+
+        # Successful login - reset failed attempts
+        cursor.execute(
+            """UPDATE users 
+               SET failed_login_attempts = 0, 
+                   account_locked_until = NULL,
+                   last_failed_login = NULL
+               WHERE username = %s""",
+            (username,)
+        )
+        conn.commit()
+
+        # STRICT MODE: Check for concurrent sessions
+        if check_concurrent_session(user["id"]):
+            # Get active session info for the error message
+            active_sessions = get_active_sessions(user["id"])
+            session_info = active_sessions[0] if active_sessions else {}
+            
+            conn.close()
+            log_action("LOGIN_REJECTED", username, 
+                      f"Concurrent session detected - active session from {session_info.get('device_info', 'Unknown Device')}")
+            
+            return jsonify({
+                "error": "Another session is already active",
+                "message": "You already have an active session. Please logout from your other device first.",
+                "active_session": {
+                    "device": session_info.get('device_info', 'Unknown Device'),
+                    "ip_address": session_info.get('ip_address', 'Unknown'),
+                    "created_at": session_info.get('created_at').isoformat() if session_info.get('created_at') else None
+                }
+            }), 409  # 409 Conflict
+        
+        conn.close()
+
+        # Log successful login
+        log_action("USER_LOGIN", username, f"User logged in successfully from {get_device_info()['device_info']}")
+
+        # Create access token and refresh token
         access_token = create_access_token(identity=username)
+        refresh_token = create_refresh_token(identity=username)
+        
+        # Store refresh token in database with device tracking
+        refresh_expires = app.config["JWT_REFRESH_TOKEN_EXPIRES"]
+        store_refresh_token(user["id"], refresh_token, refresh_expires)
+        
         # OAuth2-style metadata (support timedelta or numeric seconds)
         jwt_expires = app.config["JWT_ACCESS_TOKEN_EXPIRES"]
         expires_in = (
@@ -244,6 +603,7 @@ def login():
                 {
                     "message": "Login successful",
                     "access_token": access_token,
+                    "refresh_token": refresh_token,
                     "token_type": "bearer",
                     "expires_in": expires_in,
                     "user": {"id": user["id"], "username": user["username"]},
@@ -373,6 +733,197 @@ def validate_token():
 
     except Exception as e:
         return jsonify({"error": f"Token validation failed: {str(e)}"}), 500
+
+
+@app.route("/api/auth/refresh", methods=["POST"])
+def refresh():
+    """Refresh access token using refresh token."""
+    try:
+        data = request.get_json()
+        
+        if not data or not data.get("refresh_token"):
+            return jsonify({"error": "Refresh token is required"}), 400
+        
+        refresh_token = data["refresh_token"]
+        
+        # Validate refresh token
+        token_data = validate_refresh_token(refresh_token)
+        
+        if not token_data:
+            log_action("TOKEN_REFRESH_FAILED", None, "Invalid or expired refresh token")
+            return jsonify({"error": "Invalid or expired refresh token"}), 401
+        
+        username = token_data["username"]
+        
+        # Create new access token
+        access_token = create_access_token(identity=username)
+        
+        # Log token refresh
+        log_action("TOKEN_REFRESHED", username, "Access token refreshed successfully")
+        
+        jwt_expires = app.config["JWT_ACCESS_TOKEN_EXPIRES"]
+        expires_in = (
+            int(jwt_expires.total_seconds())
+            if hasattr(jwt_expires, "total_seconds")
+            else int(jwt_expires)
+        )
+        
+        return jsonify({
+            "access_token": access_token,
+            "token_type": "bearer",
+            "expires_in": expires_in
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Token refresh failed: {str(e)}"}), 500
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+@jwt_required()
+def logout():
+    """Logout user and revoke refresh token."""
+    try:
+        current_user = get_jwt_identity()
+        data = request.get_json()
+        
+        if data and data.get("refresh_token"):
+            # Revoke specific refresh token
+            refresh_token = data["refresh_token"]
+            revoke_refresh_token(refresh_token)
+            log_action("USER_LOGOUT", current_user, "User logged out - refresh token revoked")
+        else:
+            # Revoke all refresh tokens for this user
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
+            user = cursor.fetchone()
+            conn.close()
+            
+            if user:
+                revoke_all_user_tokens(user[0])
+                log_action("USER_LOGOUT", current_user, "User logged out - all refresh tokens revoked")
+        
+        return jsonify({"message": "Logged out successfully"}), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Logout failed: {str(e)}"}), 500
+
+
+@app.route("/api/auth/sessions", methods=["GET"])
+@jwt_required()
+def get_sessions():
+    """Get all active sessions for the current user."""
+    try:
+        current_user = get_jwt_identity()
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
+        user = cursor.fetchone()
+        conn.close()
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        sessions = get_active_sessions(user["id"])
+        
+        # Format sessions for response
+        formatted_sessions = []
+        for session in sessions:
+            formatted_sessions.append({
+                "id": session["id"],
+                "device": session.get("device_info", "Unknown Device"),
+                "ip_address": session.get("ip_address", "Unknown"),
+                "created_at": session["created_at"].isoformat() if session.get("created_at") else None,
+                "last_used_at": session["last_used_at"].isoformat() if session.get("last_used_at") else None
+            })
+        
+        return jsonify({
+            "sessions": formatted_sessions,
+            "total": len(formatted_sessions)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to get sessions: {str(e)}"}), 500
+
+
+@app.route("/api/auth/sessions/<int:session_id>", methods=["DELETE"])
+@jwt_required()
+def revoke_session(session_id):
+    """Revoke a specific session by ID."""
+    try:
+        current_user = get_jwt_identity()
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get user ID
+        cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
+        user = cursor.fetchone()
+        
+        if not user:
+            conn.close()
+            return jsonify({"error": "User not found"}), 404
+        
+        # Verify the session belongs to this user
+        cursor.execute(
+            "SELECT id, user_id FROM refresh_tokens WHERE id = %s",
+            (session_id,)
+        )
+        session = cursor.fetchone()
+        
+        if not session:
+            conn.close()
+            return jsonify({"error": "Session not found"}), 404
+        
+        if session["user_id"] != user["id"]:
+            conn.close()
+            log_action("UNAUTHORIZED_SESSION_REVOKE", current_user, 
+                      f"Attempted to revoke session {session_id} belonging to another user")
+            return jsonify({"error": "Unauthorized"}), 403
+        
+        # Revoke the session
+        cursor.execute(
+            "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (session_id,)
+        )
+        conn.commit()
+        conn.close()
+        
+        log_action("SESSION_REVOKED", current_user, f"User revoked session {session_id}")
+        
+        return jsonify({"message": "Session revoked successfully"}), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to revoke session: {str(e)}"}), 500
+
+
+@app.route("/api/auth/sessions/revoke-all", methods=["POST"])
+@jwt_required()
+def revoke_all_sessions():
+    """Revoke all sessions for the current user (except the current one if specified)."""
+    try:
+        current_user = get_jwt_identity()
+        data = request.get_json() or {}
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
+        user = cursor.fetchone()
+        conn.close()
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        # Revoke all tokens
+        revoke_all_user_tokens(user["id"])
+        
+        log_action("ALL_SESSIONS_REVOKED", current_user, "User revoked all sessions")
+        
+        return jsonify({"message": "All sessions revoked successfully"}), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to revoke all sessions: {str(e)}"}), 500
 
 
 # Admin-only endpoints

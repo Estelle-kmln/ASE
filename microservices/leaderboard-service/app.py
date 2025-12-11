@@ -53,6 +53,7 @@ def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 
 @app.route('/health', methods=['GET'])
+@app.route('/api/leaderboard/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
     return jsonify({'status': 'healthy', 'service': 'leaderboard-service'}), 200

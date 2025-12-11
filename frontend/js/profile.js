@@ -60,27 +60,39 @@ function navigateTo(page) {
 }
 
 function logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    window.location.href = 'login.html';
+    if (window.TokenManagement) {
+        window.TokenManagement.logout();
+    } else {
+        // Fallback
+        localStorage.removeItem('token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('token_expiry');
+        localStorage.removeItem('user');
+        window.location.href = 'login.html';
+    }
 }
 
 async function loadProfile() {
-    const token = localStorage.getItem('token');
-    
-    if (!token) {
-        console.error('No token found');
-        localStorage.clear();
-        window.location.href = 'login.html';
-        return;
-    }
-    
     try {
-        const response = await fetch(`${AUTH_API_URL}/profile`, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
+        const fetchFunc = window.TokenManagement ? window.TokenManagement.authenticatedFetch : fetch;
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        
+        // Add auth header if not using authenticatedFetch
+        if (!window.TokenManagement) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                console.error('No token found');
+                localStorage.clear();
+                window.location.href = 'login.html';
+                return;
             }
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const response = await fetchFunc(`${AUTH_API_URL}/profile`, {
+            headers: headers
         });
         
         const data = await response.json();
@@ -97,10 +109,10 @@ async function loadProfile() {
             // Update localStorage with latest data
             currentUser = userData;
             localStorage.setItem('user', JSON.stringify(userData));
-        } else if (response.status === 401) {
-            // Token expired or invalid
-            console.error('Unauthorized - token may be expired');
-            showAlert('Session expired. Please login again.', 'error');
+        } else if (response.status === 401 || response.status === 404 || (data.error && data.error === 'User not found')) {
+            // Token expired, invalid, or user no longer exists
+            console.error('Unauthorized or user not found - clearing session');
+            showAlert('Session expired or user not found. Please login again.', 'error');
             setTimeout(() => {
                 localStorage.clear();
                 window.location.href = 'login.html';
@@ -144,6 +156,30 @@ function toggleEdit() {
     }
 }
 
+function validatePassword(password) {
+    // Check minimum length (8 characters)
+    if (password.length < 8) {
+        return 'Password must be at least 8 characters long';
+    }
+    
+    // Check for at least one number
+    if (!/\d/.test(password)) {
+        return 'Password must contain at least one number';
+    }
+    
+    // Check for at least one special character from allowed list
+    if (!/[!@$%^&*()_+=\[\]{}:;,.?/<>-]/.test(password)) {
+        return 'Password must contain at least one special character (!@$%^&*()_+={}[]:;,.?/<>-)';
+    }
+    
+    // Check that password only contains allowed characters
+    if (!/^[a-zA-Z0-9!@$%^&*()_+=\[\]{}:;,.?/<>-]+$/.test(password)) {
+        return 'Password contains invalid characters. Only letters, numbers, and these special characters are allowed: !@$%^&*()_+={}[]:;,.?/<>-';
+    }
+    
+    return null; // Password is valid
+}
+
 document.getElementById('profile-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     clearAlert();
@@ -159,13 +195,15 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
             showAlert('Passwords do not match!', 'error');
             return;
         }
-        if (password.length < 6) {
-            showAlert('Password must be at least 6 characters long', 'error');
+        
+        // Validate password strength
+        const passwordError = validatePassword(password);
+        if (passwordError) {
+            showAlert(passwordError, 'error');
             return;
         }
     }
     
-    const token = localStorage.getItem('token');
     const updateData = {
         username,
         email
@@ -176,12 +214,20 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
     }
     
     try {
-        const response = await fetch(`${AUTH_API_URL}/profile`, {
+        const fetchFunc = window.TokenManagement ? window.TokenManagement.authenticatedFetch : fetch;
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        
+        // Add auth header if not using authenticatedFetch
+        if (!window.TokenManagement) {
+            const token = localStorage.getItem('token');
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const response = await fetchFunc(`${AUTH_API_URL}/profile`, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
+            headers: headers,
             body: JSON.stringify(updateData)
         });
         
