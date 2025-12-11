@@ -52,18 +52,6 @@ class AuthServiceUser(HttpUser):
             else:
                 response.failure(f"Registration failed: {response.status_code}")
     
-    @task(3)
-    def login(self):
-        """Test login endpoint"""
-        self.client.post(
-            "/api/auth/login",
-            json={
-                "username": self.username,
-                "password": self.password
-            },
-            name="/api/auth/login"
-        )
-    
     @task(2)
     def get_profile(self):
         """Test get profile endpoint"""
@@ -74,7 +62,7 @@ class AuthServiceUser(HttpUser):
                 name="/api/auth/profile"
             )
     
-    @task(1)
+    @task(2)
     def validate_token(self):
         """Test token validation"""
         if self.token:
