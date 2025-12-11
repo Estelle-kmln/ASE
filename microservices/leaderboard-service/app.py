@@ -582,6 +582,175 @@ def get_global_statistics():
     except Exception as e:
         return jsonify({'error': f'Failed to get statistics: {str(e)}'}), 500
 
+@app.route('/api/leaderboard/rankings', methods=['GET'])
+@jwt_required()
+def get_rankings():
+    """Get the global leaderboard rankings based on total score."""
+    try:
+        # Validate and sanitize limit parameter
+        limit_param = request.args.get('limit', '100')
+        try:
+            limit = InputSanitizer.validate_integer(limit_param, min_val=1, max_val=500)
+        except ValueError:
+            limit = 100  # Default to 100 if invalid
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Calculate total score (sum of all scores) for each player
+        # Only include users who have show_on_leaderboard = TRUE
+        cursor.execute("""
+            WITH player_scores AS (
+                -- Player 1 scores
+                SELECT 
+                    g.player1_name as player, 
+                    SUM(g.player1_score) as total_score,
+                    COUNT(*) as games_played
+                FROM games g
+                INNER JOIN users u ON g.player1_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player1_name
+                
+                UNION ALL
+                
+                -- Player 2 scores
+                SELECT 
+                    g.player2_name as player, 
+                    SUM(g.player2_score) as total_score,
+                    COUNT(*) as games_played
+                FROM games g
+                INNER JOIN users u ON g.player2_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player2_name
+            )
+            SELECT 
+                player,
+                SUM(total_score) as total_score,
+                SUM(games_played) as total_games
+            FROM player_scores
+            WHERE player IS NOT NULL
+            GROUP BY player
+            ORDER BY total_score DESC, total_games DESC
+            LIMIT %s
+        """, (limit,))
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        rankings = []
+        for i, player in enumerate(results, 1):
+            rankings.append({
+                'rank': i,
+                'username': player['player'],
+                'total_score': player['total_score'],
+                'games_played': player['total_games']
+            })
+        
+        return jsonify({
+            'rankings': rankings,
+            'total_players': len(rankings)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get rankings: {str(e)}'}), 500
+
+@app.route('/api/leaderboard/visibility', methods=['PUT'])
+@jwt_required()
+def update_visibility():
+    """Update the authenticated user's leaderboard visibility preference."""
+    try:
+        # Get username from JWT token
+        from flask_jwt_extended import get_jwt_identity
+        username = get_jwt_identity()
+        
+        if not username:
+            return jsonify({'error': 'Unable to identify user'}), 401
+        
+        # Validate and sanitize username
+        try:
+            username = InputSanitizer.validate_username(username)
+        except ValueError as e:
+            return jsonify({'error': f'Invalid username: {str(e)}'}), 400
+        
+        # Get the visibility preference from request body
+        data = request.get_json()
+        if data is None or 'show_on_leaderboard' not in data:
+            return jsonify({'error': 'Missing show_on_leaderboard parameter'}), 400
+        
+        show_on_leaderboard = data.get('show_on_leaderboard')
+        
+        # Validate boolean value
+        if not isinstance(show_on_leaderboard, bool):
+            return jsonify({'error': 'show_on_leaderboard must be a boolean'}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Update user's visibility preference
+        cursor.execute("""
+            UPDATE users 
+            SET show_on_leaderboard = %s 
+            WHERE username = %s
+        """, (show_on_leaderboard, username))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'error': 'User not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'message': 'Visibility preference updated successfully',
+            'show_on_leaderboard': show_on_leaderboard
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to update visibility: {str(e)}'}), 500
+
+@app.route('/api/leaderboard/visibility', methods=['GET'])
+@jwt_required()
+def get_visibility():
+    """Get the authenticated user's leaderboard visibility preference."""
+    try:
+        # Get username from JWT token
+        from flask_jwt_extended import get_jwt_identity
+        username = get_jwt_identity()
+        
+        if not username:
+            return jsonify({'error': 'Unable to identify user'}), 401
+        
+        # Validate and sanitize username
+        try:
+            username = InputSanitizer.validate_username(username)
+        except ValueError as e:
+            return jsonify({'error': f'Invalid username: {str(e)}'}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get user's visibility preference
+        cursor.execute("""
+            SELECT show_on_leaderboard 
+            FROM users 
+            WHERE username = %s
+        """, (username,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            return jsonify({'error': 'User not found'}), 404
+        
+        return jsonify({
+            'show_on_leaderboard': result['show_on_leaderboard']
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get visibility: {str(e)}'}), 500
+
 if __name__ == '__main__':
     # For development only - debug mode controlled by environment variable
     debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 't')

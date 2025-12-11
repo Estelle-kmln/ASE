@@ -1553,3 +1553,110 @@ body {
     font-weight: 600;
 }
 
+/* Leaderboard Styles */
+.privacy-controls {
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    box-shadow: var(--shadow);
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--primary-color);
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+    cursor: pointer;
+}
+
+.privacy-note {
+    margin-top: 0.5rem;
+    margin-left: 30px;
+    color: #7f8c8d;
+    font-size: 0.9rem;
+}
+
+.medal {
+    font-size: 1.5rem;
+    margin-right: 0.5rem;
+}
+
+.gold-medal {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.silver-medal {
+    animation: pulse 2s ease-in-out infinite 0.2s;
+}
+
+.bronze-medal {
+    animation: pulse 2s ease-in-out infinite 0.4s;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+.current-user-row {
+    background-color: #e3f2fd !important;
+    font-weight: 600;
+}
+
+.you-label {
+    color: var(--secondary-color);
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.no-data-message {
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 10px;
+    padding: 2rem;
+    text-align: center;
+    color: #7f8c8d;
+    font-size: 1.1rem;
+    margin-top: 2rem;
+}
+
+.no-data-message p {
+    margin: 0;
+}
+
+/* Notification animations */
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+
