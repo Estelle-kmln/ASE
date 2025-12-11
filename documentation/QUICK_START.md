@@ -66,7 +66,7 @@ https://localhost:8443
 
 You'll see the login page as the default entry point.
 
-**Note**: HTTP requests to `http://localhost:8080` will automatically redirect to HTTPS on port 8443. 
+**Note**: HTTP requests to `http://localhost:8080` will automatically redirect to HTTPS on port 8443. #TODO, eiter fix or remove this?
 
 ## First Time Setup
 
@@ -118,7 +118,7 @@ You'll see the login page as the default entry point.
 Click the menu button in the top-right to access:
 - **Profile** - View/edit your account details and manage sessions
 - **Game history** - View your game history and rankings
-- **Game Statistics** - Coming soon!
+- **Game Statistics** - Coming soon! #TODO
 - **Game Rules** - Learn how to play
 - **Admin Panel** - View logs and monitor system (admin only)
 - **Logout** - Sign out (invalidates current session)
