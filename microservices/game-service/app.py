@@ -301,6 +301,7 @@ def mark_game_as_active(conn, game_id):
 
 
 @app.route("/health", methods=["GET"])
+@app.route("/api/games/health", methods=["GET"])
 def health_check():
     """Health check endpoint."""
     return jsonify({"status": "healthy", "service": "game-service"}), 200
