@@ -125,6 +125,31 @@
         </div>
     </div>
     
+    <!-- Tiebreaker Decision Modal -->
+    <div class="modal" id="tiebreaker-modal">
+        <div class="modal-content tiebreaker-modal">
+            <div class="victory-icon">🤝</div>
+            <h2 style="color: #f39c12;">Game is Tied!</h2>
+            <p style="font-size: 1.2rem; margin: 20px 0; color: #2c3e50;">
+                The game ended in a tie after 7 rounds.
+            </p>
+            <p style="font-size: 1.4rem; margin: 20px 0; font-weight: bold; color: #e74c3c;">
+                Do you want to take your chance and play your last card?
+            </p>
+            <p style="font-size: 1rem; margin: 20px 0; color: #7f8c8d;">
+                If both players agree, you'll each play your 22nd card to determine the winner!
+            </p>
+            <div style="display: flex; gap: 20px; justify-content: center; margin-top: 30px;">
+                <button class="btn" onclick="declineTiebreaker()" style="background: #95a5a6;">
+                    No, End Game
+                </button>
+                <button class="btn btn-primary" onclick="acceptTiebreaker()" style="background: #27ae60; font-size: 1.2rem; padding: 15px 30px;">
+                    Yes, Take My Chance! 🎲
+                </button>
+            </div>
+        </div>
+    </div>
+    
     <script src="js/token-management.js"></script>
     <script src="js/game.js"></script>
 </body>

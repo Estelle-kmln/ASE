@@ -186,10 +186,17 @@ function updateGameDisplay() {
     // Update played cards if available
     updatePlayedCards();
     
-    // Check if game is over
+    // Check if game is over FIRST (including tiebreaker declined scenario)
     if (gameState.game_status === 'completed' || gameState.game_status === 'abandoned' || gameState.game_status === 'ignored') {
-        // If game ended without a winner, it was quit by a player
-        if (!gameState.winner) {
+        // Close any open tiebreaker modal if game ended
+        const tiebreakerModal = document.getElementById('tiebreaker-modal');
+        if (tiebreakerModal && tiebreakerModal.classList.contains('active')) {
+            tiebreakerModal.classList.remove('active');
+        }
+        
+        // If game ended without a winner and not from tiebreaker, it was quit by a player
+        if (!gameState.winner && !gameState.awaiting_tiebreaker_response && 
+            !(gameState.player1_tiebreaker_decision || gameState.player2_tiebreaker_decision)) {
             // Game was quit - redirect to home
             clearInterval(pollInterval);
             alert('Game was ended by a player.');
@@ -198,6 +205,24 @@ function updateGameDisplay() {
             // Game finished naturally - show game over modal
             showGameOver();
         }
+        return;
+    }
+    
+    // Check if game is awaiting tiebreaker decision
+    if (gameState.awaiting_tiebreaker_response) {
+        // Show tiebreaker decision modal
+        showTiebreakerDecisionModal();
+        return;
+    }
+    
+    // Check if both players agreed to tiebreaker and need to play their 22nd card
+    if (gameState.player1_tiebreaker_decision === 'yes' && 
+        gameState.player2_tiebreaker_decision === 'yes' && 
+        gameState.game_status === 'active' &&
+        !gameState.player1_played_card && !gameState.player2_played_card) {
+        // Both agreed, show interface to play tiebreaker card
+        showTiebreakerPlayInterface();
+        return;
     }
 }
 
@@ -220,11 +245,20 @@ async function drawCards() {
             renderHand();
             await loadGameState();
         } else {
+            console.error('Failed to draw cards:', data.error || 'Unknown error');
             alert('Failed to draw cards: ' + (data.error || 'Unknown error'));
+            // Refresh game state to see if game has ended
+            await loadGameState();
         }
     } catch (error) {
         console.error('Error drawing cards:', error);
-        alert('Network error. Please try again.');
+        alert('Network error: ' + error.message + '\n\nPlease check your connection and SSL certificate.');
+        // Try to refresh game state
+        try {
+            await loadGameState();
+        } catch (e) {
+            console.error('Could not refresh game state:', e);
+        }
     }
 }
 
@@ -545,3 +579,182 @@ window.addEventListener('beforeunload', () => {
         clearInterval(pollInterval);
     }
 });
+
+// Tiebreaker functionality
+let tiebreakerModalShown = false;
+let tiebreakerPlayInterfaceShown = false;
+
+function showTiebreakerDecisionModal() {
+    if (tiebreakerModalShown) return; // Only show once
+    tiebreakerModalShown = true;
+    
+    // Check if current user already made a decision
+    const isPlayer1 = currentUser.username === gameState.player1.name;
+    const myDecision = isPlayer1 ? gameState.player1_tiebreaker_decision : gameState.player2_tiebreaker_decision;
+    
+    if (myDecision) {
+        // Already decided, just show waiting message
+        const indicator = document.getElementById('turn-indicator');
+        indicator.textContent = 'Waiting for opponent\'s tiebreaker decision...';
+        indicator.style.color = '#7f8c8d';
+        return;
+    }
+    
+    // Show tiebreaker modal
+    const modal = document.getElementById('tiebreaker-modal');
+    modal.classList.add('active');
+}
+
+function acceptTiebreaker() {
+    const modal = document.getElementById('tiebreaker-modal');
+    modal.classList.remove('active');
+    submitTiebreakerDecision('yes');
+}
+
+function declineTiebreaker() {
+    const modal = document.getElementById('tiebreaker-modal');
+    modal.classList.remove('active');
+    submitTiebreakerDecision('no');
+}
+
+async function submitTiebreakerDecision(decision) {
+    const token = localStorage.getItem('token');
+    
+    try {
+        const response = await fetch(`${GAME_API_URL}/${gameId}/tiebreaker-decision`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ decision })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            if (data.both_players_decided) {
+                if (data.proceed_to_tiebreaker) {
+                    // Both said yes, refresh to show tiebreaker play interface
+                    await loadGameState();
+                } else {
+                    // At least one said no, game ended
+                    alert(data.message);
+                    await loadGameState(); // This will trigger game over modal
+                }
+            } else {
+                // Waiting for other player
+                const indicator = document.getElementById('turn-indicator');
+                indicator.textContent = 'Waiting for opponent\'s tiebreaker decision...';
+                indicator.style.color = '#7f8c8d';
+            }
+        } else {
+            alert('Failed to submit decision: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error submitting tiebreaker decision:', error);
+        alert('Network error. Please try again.');
+    }
+}
+
+function showTiebreakerPlayInterface() {
+    if (tiebreakerPlayInterfaceShown) return; // Only show once
+    
+    const isPlayer1 = currentUser.username === gameState.player1.name;
+    const myPlayedCard = isPlayer1 ? gameState.player1.played_card : gameState.player2.played_card;
+    
+    if (myPlayedCard) {
+        // Already played, waiting for opponent
+        const indicator = document.getElementById('turn-indicator');
+        indicator.textContent = 'Your tiebreaker card has been played! Waiting for opponent...';
+        indicator.style.color = '#7f8c8d';
+        
+        // Check if both played to resolve
+        const opponentPlayedCard = isPlayer1 ? gameState.player2.played_card : gameState.player1.played_card;
+        if (opponentPlayedCard) {
+            // Both played, will resolve shortly
+            setTimeout(() => loadGameState(), 1000);
+        }
+        return;
+    }
+    
+    tiebreakerPlayInterfaceShown = true;
+    
+    // Show tiebreaker play button with exciting styling
+    const indicator = document.getElementById('turn-indicator');
+    indicator.innerHTML = `
+        <div style="text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+            <p style="margin-bottom: 10px; color: white; font-size: 1.3rem; font-weight: bold;">🎲 TIEBREAKER ROUND! 🎲</p>
+            <p style="margin-bottom: 15px; color: #f0f0f0; font-size: 1.1rem;">Both players are ready!</p>
+            <button id="play-tiebreaker-btn" style="padding: 15px 40px; font-size: 1.2rem; cursor: pointer; background: #27ae60; color: white; border: none; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: all 0.3s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                🃏 Play Your Last Card! 🃏
+            </button>
+        </div>
+    `;
+    
+    document.getElementById('play-tiebreaker-btn').onclick = playTiebreakerCard;
+}
+
+async function playTiebreakerCard() {
+    const token = localStorage.getItem('token');
+    
+    // Update indicator immediately
+    const indicator = document.getElementById('turn-indicator');
+    indicator.innerHTML = '<div style="text-align: center; color: #f39c12; font-size: 1.2rem;">⏳ Playing your tiebreaker card...</div>';
+    
+    try {
+        const response = await fetch(`${GAME_API_URL}/${gameId}/tiebreaker-play`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            // Show which card was played with dramatic effect
+            indicator.innerHTML = `
+                <div style="text-align: center; background: #27ae60; padding: 15px; border-radius: 8px; color: white;">
+                    <p style="font-size: 1.3rem; margin: 0;">✨ You played: ${cardEmojis[data.tiebreaker_card_played.type]} Power ${data.tiebreaker_card_played.power} ✨</p>
+                </div>
+            `;
+            
+            if (data.both_played && data.tiebreaker_resolved) {
+                // Wait a moment then show result
+                setTimeout(() => {
+                    if (data.is_tied) {
+                        indicator.innerHTML = `
+                            <div style="text-align: center; background: #95a5a6; padding: 15px; border-radius: 8px; color: white;">
+                                <p style="font-size: 1.3rem; margin: 0;">🤝 The tiebreaker cards were identical! Game ends as a tie.</p>
+                            </div>
+                        `;
+                    } else {
+                        const isWinner = data.winner === currentUser.username;
+                        const bgColor = isWinner ? '#27ae60' : '#e74c3c';
+                        const emoji = isWinner ? '👑' : '💀';
+                        indicator.innerHTML = `
+                            <div style="text-align: center; background: ${bgColor}; padding: 15px; border-radius: 8px; color: white;">
+                                <p style="font-size: 1.3rem; margin: 0;">${emoji} ${data.winner} wins the tiebreaker! ${emoji}</p>
+                            </div>
+                        `;
+                    }
+                    
+                    // Load final game state after showing result
+                    setTimeout(() => loadGameState(), 2000);
+                }, 1000);
+            } else {
+                // Waiting for opponent
+                setTimeout(() => loadGameState(), 1000);
+            }
+        } else {
+            alert('Failed to play tiebreaker card: ' + (data.error || 'Unknown error'));
+            await loadGameState();
+        }
+    } catch (error) {
+        console.error('Error playing tiebreaker card:', error);
+        alert('Network error. Please try again.');
+        await loadGameState();
+    }
+}
