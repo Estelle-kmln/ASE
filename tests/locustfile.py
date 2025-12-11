@@ -32,7 +32,7 @@ class AuthServiceUser(HttpUser):
     def on_start(self):
         """Register and login a new user before starting tests"""
         self.username = f"testuser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}"
-        self.password = "testpass123"
+        self.password = "TestPass123!"
         self.token = None
         
         # Register
@@ -118,7 +118,7 @@ class CardServiceUser(HttpUser):
         """Get a valid auth token"""
         # Create unique username to avoid conflicts
         username = f"carduser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}"
-        password = "testpass123"
+        password = "TestPass123!"
         
         # First try to register
         with self.client.post(
@@ -297,7 +297,7 @@ class GameServiceUser(HttpUser):
         # Register player2 first
         with self.client.post(
             "/api/auth/register",
-            json={"username": self.player2_name, "password": "testpass123"},
+            json={"username": self.player2_name, "password": "TestPass123!"},
             catch_response=True,
             name="/api/auth/register [for player2]"
         ) as response:
@@ -308,7 +308,7 @@ class GameServiceUser(HttpUser):
         # If registration fails (user exists), try login
         with self.client.post(
             "/api/auth/login",
-            json={"username": self.player2_name, "password": "testpass123"},
+            json={"username": self.player2_name, "password": "TestPass123!"},
             catch_response=True,
             name="/api/auth/login [for player2]"
         ) as response:
@@ -321,7 +321,7 @@ class GameServiceUser(HttpUser):
     def get_auth_token(self):
         """Get a valid auth token"""
         username = f"player_{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}"
-        password = "testpass123"
+        password = "TestPass123!"
         
         # Register
         with self.client.post(
@@ -430,7 +430,7 @@ class LeaderboardServiceUser(HttpUser):
     def get_auth_token(self):
         """Get a valid auth token"""
         username = f"lbuser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}"
-        password = "testpass123"
+        password = "TestPass123!"
         
         # Register
         with self.client.post(
@@ -533,7 +533,7 @@ class CombinedUser(HttpUser):
         """Set up user for complete game flow"""
         # Register and login
         self.username = f"user_{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}"
-        self.password = "testpass123"
+        self.password = "TestPass123!"
         self.token = None
         self.game_id = None
         
@@ -701,7 +701,7 @@ class CombinedUser(HttpUser):
         # Register player2 first
         with self.client.post(
             "/api/auth/register",
-            json={"username": player2_name, "password": "testpass123"},
+            json={"username": player2_name, "password": "TestPass123!"},
             catch_response=True,
             name="/api/auth/register [player2 combined]"
         ) as response:
@@ -712,7 +712,7 @@ class CombinedUser(HttpUser):
         # If registration fails (user exists), try login
         with self.client.post(
             "/api/auth/login",
-            json={"username": player2_name, "password": "testpass123"},
+            json={"username": player2_name, "password": "TestPass123!"},
             catch_response=True,
             name="/api/auth/login [player2 combined]"
         ) as response:
