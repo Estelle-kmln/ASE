@@ -31,11 +31,12 @@ class AuthServiceUser(HttpUser):
     
     def on_start(self):
         """Register and login a new user before starting tests"""
-        self.username = f"testuser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}"
+        # Use longer random string to avoid collisions in load testing
+        self.username = f"testuser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}"
         self.password = "TestPass123!"
         self.token = None
         
-        # Register
+        # Always register new users to avoid concurrent session conflicts
         with self.client.post(
             "/api/auth/register",
             json={
@@ -48,40 +49,8 @@ class AuthServiceUser(HttpUser):
             if response.status_code == 201:
                 response.success()
                 self.token = response.json().get("access_token")
-            elif response.status_code == 409:
-                # User already exists, this is expected in load testing
-                response.success()
             else:
-                response.failure(f"Unexpected status code: {response.status_code}")
-        
-        # If registration didn't return a token, try to login
-        if not self.token:
-            with self.client.post(
-                "/api/auth/login",
-                json={
-                    "username": self.username,
-                    "password": self.password
-                },
-                catch_response=True,
-                name="/api/auth/login"
-            ) as response:
-                if response.status_code == 200:
-                    response.success()
-                    self.token = response.json().get("access_token")
-                elif response.status_code == 409:
-                    # Concurrent session detected - expected in load testing, use new unique user
-                    response.success()
-                    self.username = f"testuser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=12))}"
-                    # Try registering with new username
-                    reg_response = self.client.post(
-                        "/api/auth/register",
-                        json={"username": self.username, "password": self.password},
-                        name="/api/auth/register"
-                    )
-                    if reg_response.status_code == 201:
-                        self.token = reg_response.json().get("access_token")
-                else:
-                    response.failure(f"Login failed: {response.status_code}")
+                response.failure(f"Registration failed: {response.status_code}")
     
     @task(3)
     def login(self):
@@ -140,10 +109,10 @@ class CardServiceUser(HttpUser):
     def get_auth_token(self):
         """Get a valid auth token"""
         # Create unique username to avoid conflicts
-        username = f"carduser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}"
+        username = f"carduser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}"
         password = "TestPass123!"
         
-        # First try to register
+        # Always register new users to avoid concurrent session conflicts
         with self.client.post(
             "/api/auth/register",
             json={"username": username, "password": password},
@@ -153,21 +122,9 @@ class CardServiceUser(HttpUser):
             if response.status_code == 201:
                 response.success()
                 return response.json().get("access_token")
-            elif response.status_code == 409:
-                response.success()  # Mark as success, username taken is expected
-        
-        # If registration fails, try login
-        with self.client.post(
-            "/api/auth/login",
-            json={"username": username, "password": password},
-            catch_response=True,
-            name="/api/auth/login [for card service]"
-        ) as response:
-            if response.status_code == 200:
-                response.success()
-                return response.json().get("access_token")
-        
-        return None
+            else:
+                response.failure(f"Registration failed: {response.status_code}")
+                return None
     
     @task(5)
     def get_all_cards(self):
@@ -336,7 +293,7 @@ class GameServiceUser(HttpUser):
     
     def get_auth_token_for_player2(self):
         """Get auth token for player 2 (the opponent)"""
-        # Register player2 first
+        # Always register new users to avoid concurrent session conflicts
         with self.client.post(
             "/api/auth/register",
             json={"username": self.player2_name, "password": "TestPass123!"},
@@ -346,26 +303,17 @@ class GameServiceUser(HttpUser):
             if response.status_code == 201:
                 response.success()
                 return response.json().get("access_token")
-        
-        # If registration fails (user exists), try login
-        with self.client.post(
-            "/api/auth/login",
-            json={"username": self.player2_name, "password": "TestPass123!"},
-            catch_response=True,
-            name="/api/auth/login [for player2]"
-        ) as response:
-            if response.status_code == 200:
-                response.success()
-                return response.json().get("access_token")
-        
-        return None
+            else:
+                response.failure(f"Player2 registration failed: {response.status_code}")
+                return None
     
     def get_auth_token(self):
         """Get a valid auth token"""
-        username = f"player_{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}"
+        # Use longer random string to avoid collisions in load testing
+        username = f"player_{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}"
         password = "TestPass123!"
         
-        # Register
+        # Always register new users to avoid concurrent session conflicts
         with self.client.post(
             "/api/auth/register",
             json={"username": username, "password": password},
@@ -375,32 +323,10 @@ class GameServiceUser(HttpUser):
             if response.status_code == 201:
                 response.success()
                 return response.json().get("access_token")
-            elif response.status_code == 409:
-                response.success()
-        
-        # Try login
-        with self.client.post(
-            "/api/auth/login",
-            json={"username": username, "password": password},
-            catch_response=True,
-            name="/api/auth/login [for game service]"
-        ) as response:
-            if response.status_code == 200:
-                response.success()
-                return response.json().get("access_token")
-            elif response.status_code == 409:
-                # Concurrent session - try with a new unique user
-                response.success()
-                username = f"player_{''.join(random.choices(string.ascii_lowercase + string.digits, k=12))}"
-                reg_resp = self.client.post(
-                    "/api/auth/register",
-                    json={"username": username, "password": password},
-                    name="/api/auth/register [for game service]"
-                )
-                if reg_resp.status_code == 201:
-                    return reg_resp.json().get("access_token")
-        
-        return None
+            else:
+                # If registration fails for any reason, mark as failure
+                response.failure(f"Registration failed: {response.status_code}")
+                return None
     
     @task(3)
     def get_game_state(self):
@@ -482,10 +408,10 @@ class LeaderboardServiceUser(HttpUser):
     
     def get_auth_token(self):
         """Get a valid auth token"""
-        username = f"lbuser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}"
+        username = f"lbuser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}"
         password = "TestPass123!"
         
-        # Register
+        # Always register new users to avoid concurrent session conflicts
         with self.client.post(
             "/api/auth/register",
             json={"username": username, "password": password},
@@ -495,21 +421,9 @@ class LeaderboardServiceUser(HttpUser):
             if response.status_code == 201:
                 response.success()
                 return response.json().get("access_token")
-            elif response.status_code == 409:
-                response.success()
-        
-        # Try login
-        with self.client.post(
-            "/api/auth/login",
-            json={"username": username, "password": password},
-            catch_response=True,
-            name="/api/auth/login [for leaderboard service]"
-        ) as response:
-            if response.status_code == 200:
-                response.success()
-                return response.json().get("access_token")
-        
-        return None
+            else:
+                response.failure(f"Registration failed: {response.status_code}")
+                return None
     
     @task(5)
     def get_leaderboard(self):
@@ -584,13 +498,13 @@ class CombinedUser(HttpUser):
     
     def on_start(self):
         """Set up user for complete game flow"""
-        # Register and login
-        self.username = f"user_{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}"
+        # Register new user
+        self.username = f"user_{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}"
         self.password = "TestPass123!"
         self.token = None
         self.game_id = None
         
-        # Register
+        # Always register new users to avoid concurrent session conflicts
         with self.client.post(
             "/api/auth/register",
             json={"username": self.username, "password": self.password},
@@ -600,31 +514,8 @@ class CombinedUser(HttpUser):
             if response.status_code == 201:
                 response.success()
                 self.token = response.json().get("access_token")
-            elif response.status_code == 409:
-                response.success()
-        
-        # Try login if no token yet
-        if not self.token:
-            with self.client.post(
-                "/api/auth/login",
-                json={"username": self.username, "password": self.password},
-                catch_response=True,
-                name="/api/auth/login [combined]"
-            ) as response:
-                if response.status_code == 200:
-                    response.success()
-                    self.token = response.json().get("access_token")
-                elif response.status_code == 409:
-                    # Concurrent session - create new unique user
-                    response.success()
-                    self.username = f"user_{''.join(random.choices(string.ascii_lowercase + string.digits, k=12))}"
-                    reg_resp = self.client.post(
-                        "/api/auth/register",
-                        json={"username": self.username, "password": self.password},
-                        name="/api/auth/register [combined]"
-                    )
-                    if reg_resp.status_code == 201:
-                        self.token = reg_resp.json().get("access_token")
+            else:
+                response.failure(f"Registration failed: {response.status_code}")
     
     @task(10)
     def complete_game_workflow(self):
@@ -778,7 +669,7 @@ class CombinedUser(HttpUser):
     
     def _get_player2_token(self, player2_name):
         """Get auth token for player 2"""
-        # Register player2 first
+        # Always register new users to avoid concurrent session conflicts
         with self.client.post(
             "/api/auth/register",
             json={"username": player2_name, "password": "TestPass123!"},
@@ -788,30 +679,7 @@ class CombinedUser(HttpUser):
             if response.status_code == 201:
                 response.success()
                 return response.json().get("access_token")
-            elif response.status_code == 409:
-                response.success()
-        
-        # If registration fails (user exists), try login
-        with self.client.post(
-            "/api/auth/login",
-            json={"username": player2_name, "password": "TestPass123!"},
-            catch_response=True,
-            name="/api/auth/login [player2 combined]"
-        ) as response:
-            if response.status_code == 200:
-                response.success()
-                return response.json().get("access_token")
-            elif response.status_code == 409:
-                # Concurrent session - try new unique username
-                response.success()
-                new_player = f"opponent_{''.join(random.choices(string.ascii_lowercase + string.digits, k=12))}"
-                reg_resp = self.client.post(
-                    "/api/auth/register",
-                    json={"username": new_player, "password": "TestPass123!"},
-                    name="/api/auth/register [player2 combined]"
-                )
-                if reg_resp.status_code == 201:
-                    return reg_resp.json().get("access_token")
-        
-        return None
+            else:
+                response.failure(f"Player2 registration failed: {response.status_code}")
+                return None
 
