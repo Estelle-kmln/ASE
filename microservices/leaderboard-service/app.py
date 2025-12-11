@@ -585,7 +585,7 @@ def get_global_statistics():
 @app.route('/api/leaderboard/rankings', methods=['GET'])
 @jwt_required()
 def get_rankings():
-    """Get the global leaderboard rankings based on total score."""
+    """Get the global leaderboard rankings based on number of wins."""
     try:
         # Validate and sanitize limit parameter
         limit_param = request.args.get('limit', '100')
@@ -597,13 +597,14 @@ def get_rankings():
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Calculate total score (sum of all scores) for each player
+        # Calculate wins, total score, and games played for each player
         # Only include users who have show_on_leaderboard = TRUE
         cursor.execute("""
-            WITH player_scores AS (
-                -- Player 1 scores
+            WITH player_stats AS (
+                -- Player 1 stats
                 SELECT 
-                    g.player1_name as player, 
+                    g.player1_name as player,
+                    SUM(CASE WHEN g.winner = g.player1_name THEN 1 ELSE 0 END) as wins,
                     SUM(g.player1_score) as total_score,
                     COUNT(*) as games_played
                 FROM games g
@@ -614,9 +615,10 @@ def get_rankings():
                 
                 UNION ALL
                 
-                -- Player 2 scores
+                -- Player 2 stats
                 SELECT 
-                    g.player2_name as player, 
+                    g.player2_name as player,
+                    SUM(CASE WHEN g.winner = g.player2_name THEN 1 ELSE 0 END) as wins,
                     SUM(g.player2_score) as total_score,
                     COUNT(*) as games_played
                 FROM games g
@@ -627,12 +629,13 @@ def get_rankings():
             )
             SELECT 
                 player,
+                SUM(wins) as total_wins,
                 SUM(total_score) as total_score,
                 SUM(games_played) as total_games
-            FROM player_scores
+            FROM player_stats
             WHERE player IS NOT NULL
             GROUP BY player
-            ORDER BY total_score DESC, total_games DESC
+            ORDER BY total_wins DESC, total_score DESC, total_games DESC
             LIMIT %s
         """, (limit,))
         
@@ -644,6 +647,7 @@ def get_rankings():
             rankings.append({
                 'rank': i,
                 'username': player['player'],
+                'wins': player['total_wins'],
                 'total_score': player['total_score'],
                 'games_played': player['total_games']
             })

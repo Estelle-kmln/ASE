@@ -11,10 +11,11 @@ Successfully implemented a global leaderboard feature with privacy controls for 
 ## Features Implemented
 
 ### 1. Global Leaderboard Rankings
-- **Display**: Shows player rankings based on total score (sum of all game scores)
+- **Display**: Shows player rankings based on number of wins (sorted by wins, then total score)
 - **Columns**:
   - Rank (with medal icons for top 3)
   - Username
+  - Wins
   - Total Score
   - Games Played
 - **Privacy**: Only shows players who have opted to appear on the leaderboard
@@ -46,9 +47,10 @@ CREATE INDEX IF NOT EXISTS idx_users_show_on_leaderboard ON users(show_on_leader
 #### 2. Leaderboard Service Endpoints (`microservices/leaderboard-service/app.py`)
 
 **GET `/api/leaderboard/rankings`**
-- Returns ranked list of players based on total score
+- Returns ranked list of players based on number of wins
+- Sorted by: wins (descending), then total score (descending), then games played (descending)
 - Filters out users with `show_on_leaderboard = FALSE`
-- Includes rank, username, total_score, and games_played
+- Includes rank, username, wins, total_score, and games_played
 
 **PUT `/api/leaderboard/visibility`**
 - Updates authenticated user's leaderboard visibility preference
@@ -106,6 +108,7 @@ Updated navigation menus in all pages to include leaderboard link:
     {
       "rank": 1,
       "username": "player1",
+      "wins": 20,
       "total_score": 150,
       "games_played": 25
     }

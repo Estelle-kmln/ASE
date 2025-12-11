@@ -199,6 +199,11 @@ function displayRankings(rankings) {
         }
         row.appendChild(usernameCell);
         
+        // Wins cell
+        const winsCell = document.createElement('td');
+        winsCell.textContent = ranking.wins;
+        row.appendChild(winsCell);
+        
         // Total score cell
         const scoreCell = document.createElement('td');
         scoreCell.textContent = ranking.total_score;
@@ -216,11 +221,11 @@ function displayRankings(rankings) {
 function getMedalForRank(rank) {
     switch(rank) {
         case 1:
-            return '<span class="medal gold-medal">🥇</span> ' + rank;
+            return '<span class="medal gold-medal">🥇</span>';
         case 2:
-            return '<span class="medal silver-medal">🥈</span> ' + rank;
+            return '<span class="medal silver-medal">🥈</span>';
         case 3:
-            return '<span class="medal bronze-medal">🥉</span> ' + rank;
+            return '<span class="medal bronze-medal">🥉</span>';
         default:
             return rank;
     }
@@ -230,7 +235,7 @@ function showError(message) {
     const tbody = document.getElementById('rankings-body');
     tbody.innerHTML = `
         <tr>
-            <td colspan="4" class="error-message" style="text-align: center; color: #e74c3c; padding: 20px;">
+            <td colspan="5" class="error-message" style="text-align: center; color: #e74c3c; padding: 20px;">
                 ${message}
             </td>
         </tr>
