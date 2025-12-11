@@ -152,6 +152,17 @@ def get_active_sessions(user_id: int) -> list:
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # First, clean up expired tokens
+        cursor.execute(
+            """UPDATE refresh_tokens 
+               SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP 
+               WHERE user_id = %s AND revoked = FALSE AND expires_at <= CURRENT_TIMESTAMP""",
+            (user_id,)
+        )
+        conn.commit()
+        
+        # Now get active sessions
         cursor.execute(
             """SELECT id, device_info, ip_address, created_at, last_used_at 
                FROM refresh_tokens 
@@ -161,6 +172,8 @@ def get_active_sessions(user_id: int) -> list:
         )
         sessions = cursor.fetchall()
         conn.close()
+        
+        print(f"Active sessions for user {user_id}: {len(sessions)}")
         return sessions
     except Exception as e:
         print(f"Failed to get active sessions: {e}")
@@ -250,9 +263,11 @@ def revoke_refresh_token(refresh_token: str) -> bool:
             "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE token = %s",
             (refresh_token,)
         )
+        rows_affected = cursor.rowcount
         conn.commit()
         conn.close()
-        return True
+        print(f"Revoked refresh token - rows affected: {rows_affected}")
+        return rows_affected > 0
     except Exception as e:
         print(f"Failed to revoke refresh token: {e}")
         return False
@@ -267,8 +282,10 @@ def revoke_all_user_tokens(user_id: int) -> bool:
             "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE user_id = %s AND revoked = FALSE",
             (user_id,)
         )
+        rows_affected = cursor.rowcount
         conn.commit()
         conn.close()
+        print(f"Revoked all tokens for user {user_id} - rows affected: {rows_affected}")
         return True
     except Exception as e:
         print(f"Failed to revoke user tokens: {e}")
@@ -671,15 +688,55 @@ def update_profile():
             return jsonify({"error": "No data provided"}), 400
 
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Check if user exists
+        # Check if user exists and get user data
         cursor.execute(
-            "SELECT COUNT(*) FROM users WHERE username = %s", (current_user,)
+            "SELECT id, username, created_at, is_admin FROM users WHERE username = %s", (current_user,)
         )
-        if cursor.fetchone()[0] == 0:
+        user = cursor.fetchone()
+        if not user:
             conn.close()
             return jsonify({"error": "User not found"}), 404
+
+        # Track if any updates were made
+        updates_made = []
+        
+        # Update username if provided and different from current
+        if "username" in data and data["username"] and data["username"] != current_user:
+            new_username = data["username"]
+            
+            # Validate username
+            try:
+                new_username = InputSanitizer.validate_username(new_username)
+            except ValueError as e:
+                conn.close()
+                return jsonify({"error": str(e)}), 400
+            
+            # Check if new username already exists
+            cursor.execute(
+                "SELECT COUNT(*) FROM users WHERE username = %s AND username != %s",
+                (new_username, current_user),
+            )
+            if cursor.fetchone()["count"] > 0:
+                conn.close()
+                return jsonify({"error": "Username already exists"}), 400
+            
+            # Update username
+            cursor.execute(
+                "UPDATE users SET username = %s WHERE username = %s",
+                (new_username, current_user),
+            )
+            updates_made.append(f"username changed from '{current_user}' to '{new_username}'")
+            
+            # Update the current_user variable for subsequent operations
+            old_username = current_user
+            current_user = new_username
+            
+            # Log username change
+            log_action(
+                "USERNAME_CHANGED", new_username, f"Username changed from '{old_username}' to '{new_username}'"
+            )
 
         # Update password if provided
         if "password" in data and data["password"]:
@@ -696,15 +753,52 @@ def update_profile():
                 "UPDATE users SET password = %s WHERE username = %s",
                 (hashed_password, current_user),
             )
+            updates_made.append("password")
             # Log password change
             log_action(
                 "PASSWORD_CHANGED", current_user, "User changed their password"
             )
 
         conn.commit()
+        
+        # Fetch updated user data to return
+        cursor.execute(
+            "SELECT id, username, created_at, is_admin FROM users WHERE username = %s",
+            (current_user,)
+        )
+        updated_user = cursor.fetchone()
+        user_id = updated_user['id']
         conn.close()
 
-        return jsonify({"message": "Profile updated successfully"}), 200
+        # Generate new tokens if username was changed
+        response_data = {
+            "message": "Profile updated successfully",
+            "user": dict(updated_user)
+        }
+        
+        if "username" in data and data["username"] and data["username"] != get_jwt_identity():
+            # Username was changed, generate new tokens
+            access_token = create_access_token(identity=current_user)
+            refresh_token = create_refresh_token(identity=current_user)
+            
+            # Store new refresh token in database
+            refresh_expires = app.config["JWT_REFRESH_TOKEN_EXPIRES"]
+            store_refresh_token(user_id, refresh_token, refresh_expires)
+            
+            # OAuth2-style metadata
+            jwt_expires = app.config["JWT_ACCESS_TOKEN_EXPIRES"]
+            expires_in = (
+                int(jwt_expires.total_seconds())
+                if hasattr(jwt_expires, "total_seconds")
+                else int(jwt_expires)
+            )
+            
+            response_data["access_token"] = access_token
+            response_data["refresh_token"] = refresh_token
+            response_data["token_type"] = "bearer"
+            response_data["expires_in"] = expires_in
+
+        return jsonify(response_data), 200
 
     except Exception as e:
         return jsonify({"error": f"Failed to update profile: {str(e)}"}), 500
@@ -784,28 +878,33 @@ def logout():
     """Logout user and revoke refresh token."""
     try:
         current_user = get_jwt_identity()
-        data = request.get_json()
+        data = request.get_json() or {}
         
-        if data and data.get("refresh_token"):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
+        user = cursor.fetchone()
+        conn.close()
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        user_id = user[0]
+        
+        if data.get("refresh_token"):
             # Revoke specific refresh token
             refresh_token = data["refresh_token"]
-            revoke_refresh_token(refresh_token)
-            log_action("USER_LOGOUT", current_user, "User logged out - refresh token revoked")
+            success = revoke_refresh_token(refresh_token)
+            log_action("USER_LOGOUT", current_user, f"User logged out - specific token revoked (success: {success})")
         else:
             # Revoke all refresh tokens for this user
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
-            user = cursor.fetchone()
-            conn.close()
-            
-            if user:
-                revoke_all_user_tokens(user[0])
-                log_action("USER_LOGOUT", current_user, "User logged out - all refresh tokens revoked")
+            success = revoke_all_user_tokens(user_id)
+            log_action("USER_LOGOUT", current_user, f"User logged out - all tokens revoked (success: {success})")
         
         return jsonify({"message": "Logged out successfully"}), 200
         
     except Exception as e:
+        log_action("LOGOUT_ERROR", current_user if 'current_user' in locals() else None, f"Logout failed: {str(e)}")
         return jsonify({"error": f"Logout failed: {str(e)}"}), 500
 
 

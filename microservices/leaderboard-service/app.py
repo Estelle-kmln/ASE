@@ -381,20 +381,26 @@ def get_top_players():
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Top players by wins
+        # Top players by wins (respecting show_on_leaderboard preference)
         cursor.execute("""
             WITH player_stats AS (
-                SELECT player1_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player1_name
-                GROUP BY player1_name
+                SELECT g.player1_name as player, COUNT(*) as wins
+                FROM games g
+                INNER JOIN users u ON g.player1_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned') 
+                AND g.winner = g.player1_name
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player1_name
                 
                 UNION ALL
                 
-                SELECT player2_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player2_name
-                GROUP BY player2_name
+                SELECT g.player2_name as player, COUNT(*) as wins
+                FROM games g
+                INNER JOIN users u ON g.player2_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned') 
+                AND g.winner = g.player2_name
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player2_name
             )
             SELECT 
                 player,
@@ -408,73 +414,86 @@ def get_top_players():
         
         top_by_wins = cursor.fetchall()
         
-        # Top players by win percentage (min 5 games)
+        # Top players by win percentage (min 5 games, respecting show_on_leaderboard preference)
         cursor.execute("""
-            WITH player_stats AS (
-                -- Player 1 wins
-                SELECT player1_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player1_name
-                GROUP BY player1_name
-                
-                UNION ALL
-                
-                -- Player 2 wins
-                SELECT player2_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player2_name
-                GROUP BY player2_name
+            WITH visible_players AS (
+                -- Get all visible players first
+                SELECT username 
+                FROM users 
+                WHERE show_on_leaderboard = TRUE
             ),
-            total_games AS (
-                -- Total games for each player
-                SELECT player1_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player1_name
-                
-                UNION ALL
-                
-                SELECT player2_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player2_name
+            player_wins AS (
+                SELECT player, SUM(wins) as total_wins
+                FROM (
+                    SELECT player1_name as player, COUNT(*) as wins
+                    FROM games 
+                    WHERE game_status IN ('completed', 'abandoned') 
+                    AND winner = player1_name
+                    AND player1_name IN (SELECT username FROM visible_players)
+                    GROUP BY player1_name
+                    
+                    UNION ALL
+                    
+                    SELECT player2_name as player, COUNT(*) as wins
+                    FROM games 
+                    WHERE game_status IN ('completed', 'abandoned') 
+                    AND winner = player2_name
+                    AND player2_name IN (SELECT username FROM visible_players)
+                    GROUP BY player2_name
+                ) wins_subquery
+                GROUP BY player
             ),
-            aggregated_stats AS (
-                SELECT 
-                    COALESCE(p.player, t.player) as player,
-                    SUM(p.wins) as total_wins,
-                    SUM(t.total_games) as total_games
-                FROM player_stats p
-                FULL OUTER JOIN total_games t ON p.player = t.player
-                GROUP BY COALESCE(p.player, t.player)
+            player_games AS (
+                SELECT player, SUM(games) as total_games
+                FROM (
+                    SELECT player1_name as player, COUNT(*) as games
+                    FROM games
+                    WHERE game_status IN ('completed', 'abandoned')
+                    AND player1_name IN (SELECT username FROM visible_players)
+                    GROUP BY player1_name
+                    
+                    UNION ALL
+                    
+                    SELECT player2_name as player, COUNT(*) as games
+                    FROM games
+                    WHERE game_status IN ('completed', 'abandoned')
+                    AND player2_name IN (SELECT username FROM visible_players)
+                    GROUP BY player2_name
+                ) games_subquery
+                GROUP BY player
             )
             SELECT 
-                player,
-                COALESCE(total_wins, 0) as wins,
-                COALESCE(total_games, 0) as games,
-                ROUND((COALESCE(total_wins, 0)::decimal / total_games) * 100, 2) as win_percentage
-            FROM aggregated_stats
-            WHERE player IS NOT NULL AND COALESCE(total_games, 0) >= 5
+                pg.player,
+                COALESCE(pw.total_wins, 0) as wins,
+                pg.total_games as games,
+                ROUND((COALESCE(pw.total_wins, 0)::decimal / pg.total_games) * 100, 2) as win_percentage
+            FROM player_games pg
+            LEFT JOIN player_wins pw ON pg.player = pw.player
+            WHERE pg.total_games >= 1
             ORDER BY win_percentage DESC
             LIMIT 5
         """)
         
         top_by_percentage = cursor.fetchall()
         
-        # Most active players
+        # Most active players (respecting show_on_leaderboard preference)
         cursor.execute("""
             WITH total_games AS (
-                SELECT player1_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player1_name
+                SELECT g.player1_name as player, COUNT(*) as total_games
+                FROM games g
+                INNER JOIN users u ON g.player1_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player1_name
                 
                 UNION ALL
                 
-                SELECT player2_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player2_name
+                SELECT g.player2_name as player, COUNT(*) as total_games
+                FROM games g
+                INNER JOIN users u ON g.player2_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player2_name
             )
             SELECT 
                 player,
@@ -581,6 +600,179 @@ def get_global_statistics():
         
     except Exception as e:
         return jsonify({'error': f'Failed to get statistics: {str(e)}'}), 500
+
+@app.route('/api/leaderboard/rankings', methods=['GET'])
+@jwt_required()
+def get_rankings():
+    """Get the global leaderboard rankings based on number of wins."""
+    try:
+        # Validate and sanitize limit parameter
+        limit_param = request.args.get('limit', '100')
+        try:
+            limit = InputSanitizer.validate_integer(limit_param, min_val=1, max_val=500)
+        except ValueError:
+            limit = 100  # Default to 100 if invalid
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Calculate wins, total score, and games played for each player
+        # Only include users who have show_on_leaderboard = TRUE
+        cursor.execute("""
+            WITH player_stats AS (
+                -- Player 1 stats
+                SELECT 
+                    g.player1_name as player,
+                    SUM(CASE WHEN g.winner = g.player1_name THEN 1 ELSE 0 END) as wins,
+                    SUM(g.player1_score) as total_score,
+                    COUNT(*) as games_played
+                FROM games g
+                INNER JOIN users u ON g.player1_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player1_name
+                
+                UNION ALL
+                
+                -- Player 2 stats
+                SELECT 
+                    g.player2_name as player,
+                    SUM(CASE WHEN g.winner = g.player2_name THEN 1 ELSE 0 END) as wins,
+                    SUM(g.player2_score) as total_score,
+                    COUNT(*) as games_played
+                FROM games g
+                INNER JOIN users u ON g.player2_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player2_name
+            )
+            SELECT 
+                player,
+                SUM(wins) as total_wins,
+                SUM(total_score) as total_score,
+                SUM(games_played) as total_games
+            FROM player_stats
+            WHERE player IS NOT NULL
+            GROUP BY player
+            ORDER BY total_wins DESC, total_score DESC, total_games DESC
+            LIMIT %s
+        """, (limit,))
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        rankings = []
+        for i, player in enumerate(results, 1):
+            rankings.append({
+                'rank': i,
+                'username': player['player'],
+                'wins': player['total_wins'],
+                'total_score': player['total_score'],
+                'games_played': player['total_games']
+            })
+        
+        return jsonify({
+            'rankings': rankings,
+            'total_players': len(rankings)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get rankings: {str(e)}'}), 500
+
+@app.route('/api/leaderboard/visibility', methods=['PUT'])
+@jwt_required()
+def update_visibility():
+    """Update the authenticated user's leaderboard visibility preference."""
+    try:
+        # Get username from JWT token
+        from flask_jwt_extended import get_jwt_identity
+        username = get_jwt_identity()
+        
+        if not username:
+            return jsonify({'error': 'Unable to identify user'}), 401
+        
+        # Validate and sanitize username
+        try:
+            username = InputSanitizer.validate_username(username)
+        except ValueError as e:
+            return jsonify({'error': f'Invalid username: {str(e)}'}), 400
+        
+        # Get the visibility preference from request body
+        data = request.get_json()
+        if data is None or 'show_on_leaderboard' not in data:
+            return jsonify({'error': 'Missing show_on_leaderboard parameter'}), 400
+        
+        show_on_leaderboard = data.get('show_on_leaderboard')
+        
+        # Validate boolean value
+        if not isinstance(show_on_leaderboard, bool):
+            return jsonify({'error': 'show_on_leaderboard must be a boolean'}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Update user's visibility preference
+        cursor.execute("""
+            UPDATE users 
+            SET show_on_leaderboard = %s 
+            WHERE username = %s
+        """, (show_on_leaderboard, username))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'error': 'User not found'}), 404
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'message': 'Visibility preference updated successfully',
+            'show_on_leaderboard': show_on_leaderboard
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to update visibility: {str(e)}'}), 500
+
+@app.route('/api/leaderboard/visibility', methods=['GET'])
+@jwt_required()
+def get_visibility():
+    """Get the authenticated user's leaderboard visibility preference."""
+    try:
+        # Get username from JWT token
+        from flask_jwt_extended import get_jwt_identity
+        username = get_jwt_identity()
+        
+        if not username:
+            return jsonify({'error': 'Unable to identify user'}), 401
+        
+        # Validate and sanitize username
+        try:
+            username = InputSanitizer.validate_username(username)
+        except ValueError as e:
+            return jsonify({'error': f'Invalid username: {str(e)}'}), 400
+        
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get user's visibility preference
+        cursor.execute("""
+            SELECT show_on_leaderboard 
+            FROM users 
+            WHERE username = %s
+        """, (username,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            return jsonify({'error': 'User not found'}), 404
+        
+        return jsonify({
+            'show_on_leaderboard': result['show_on_leaderboard']
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get visibility: {str(e)}'}), 500
 
 if __name__ == '__main__':
     # For development only - debug mode controlled by environment variable

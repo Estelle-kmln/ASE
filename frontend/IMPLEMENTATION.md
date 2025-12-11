@@ -188,7 +188,6 @@ frontend/
 ├── game-history.html            # Game history page
 ├── statistics.html             # Statistics placeholder
 ├── rules.html                  # Game rules page
-├── welcome.html                # Welcome landing page
 └── README.md                   # Frontend documentation
 ```
 

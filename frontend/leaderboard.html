@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Battlecards - Profile</title>
+    <title>Battlecards - Leaderboard</title>
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -27,31 +27,43 @@
     </header>
     
     <div class="container">
-        <div class="profile-container">
-            <div class="profile-header">
-                <h2>Profile</h2>
-                <button class="edit-button" id="edit-btn" onclick="toggleEdit()">✏️ Edit</button>
+        <div class="leaderboard-container">
+            <h2>🏆 Global Leaderboard</h2>
+            
+            <div class="privacy-controls">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="visibility-toggle">
+                    <span>Hide me from other users</span>
+                </label>
+                <p class="privacy-note">When checked, you will not appear on the global leaderboard for other players.</p>
             </div>
             
-            <div id="alert-container"></div>
+            <table class="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Player</th>
+                        <th>Wins</th>
+                        <th>Total Score</th>
+                        <th>Games Played</th>
+                    </tr>
+                </thead>
+                <tbody id="rankings-body">
+                    <tr>
+                        <td colspan="5" style="text-align: center;">
+                            <div class="loading"></div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
             
-            <form id="profile-form">
-                <div class="profile-field">
-                    <label for="username">Username</label>
-                    <input type="text" id="username" disabled>
-                </div>
-                
-                <div class="profile-field">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" disabled placeholder="••••••••" value="••••••••">
-                </div>
-                
-                <button type="submit" class="btn save-button" id="save-btn" style="display: none;">💾 Save Changes</button>
-            </form>
+            <div id="no-data-message" class="no-data-message" style="display: none;">
+                <p>No rankings available yet. Start playing to get on the leaderboard!</p>
+            </div>
         </div>
     </div>
     
     <script src="js/token-management.js"></script>
-    <script src="js/profile.js"></script>
+    <script src="js/leaderboard.js"></script>
 </body>
 </html>
