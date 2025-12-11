@@ -49,6 +49,18 @@ All dependencies are managed through Docker containers. No local Python installa
 
 ### 3. Build and Run the Backend
 
+⚠️ **IMPORTANT - Fresh Start Required:**
+
+If you've run the application before or have existing containers, first remove them:
+```bash
+docker compose down -v
+```
+The `-v` flag removes volumes (database), ensuring fresh initialization. **Always do this**:
+- On first-time setup
+- After database schema changes
+- When troubleshooting issues
+- After switching branches
+
 **Recommended: Use the automated build script** (handles GAME_HISTORY_KEY automatically):
 
 ```bash

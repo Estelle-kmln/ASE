@@ -61,6 +61,17 @@ All services are accessed through the Nginx gateway with HTTPS encryption. HTTP 
 
 **To build and start all microservices:**
 
+⚠️ **IMPORTANT**: If you've previously run the application or have existing containers, first clean up:
+```bash
+cd microservices
+docker compose down -v
+```
+The `-v` flag removes volumes (database data), ensuring a fresh start. This is especially important after:
+- First-time setup
+- Database schema changes
+- Switching branches
+- Troubleshooting issues
+
 1. **Navigate to the microservices directory:**
    ```bash
    cd microservices

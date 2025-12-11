@@ -6,6 +6,28 @@
 
 ## Starting the Application
 
+⚠️ **CRITICAL FIRST STEP - Read This Before Starting!**
+
+If you've previously run the application or have existing Docker containers/volumes, you MUST clean them first:
+
+```powershell
+cd microservices
+docker compose down -v
+```
+
+**Why the `-v` flag is essential:**
+- Removes old database volumes
+- Ensures fresh database initialization
+- Prevents schema conflicts
+- Avoids stale data issues
+
+**When to use `docker compose down -v`:**
+- ✅ First time running the application
+- ✅ After pulling new code with database changes
+- ✅ When switching between branches
+- ✅ If you encounter database errors
+- ✅ Before running tests that need clean data
+
 ### 1. Navigate to the microservices directory
 ```powershell
 cd "C:\Users\estel\OneDrive\Advanced software engineering\project\ASE\microservices"
@@ -132,6 +154,14 @@ docker compose down -v
 docker compose up -d --build
 ```
 
+**Common Issues Solved by `docker compose down -v`:**
+- "Table already exists" errors
+- "Column does not exist" errors  
+- Authentication failures with test data
+- Games stuck in wrong state
+- Missing database tables or columns
+- Old test data interfering with new tests
+
 ### CORS errors in browser?
 - Clear browser cache
 - Try incognito/private mode
@@ -140,12 +170,21 @@ docker compose up -d --build
 ## Stopping the Application
 
 ```powershell
-# Stop all services
+# Stop all services (keeps data)
 docker compose down
 
-# Stop and remove volumes (deletes all data)
+# Stop and remove volumes (deletes all data) - RECOMMENDED
 docker compose down -v
 ```
+
+**Which command should you use?**
+
+- **`docker compose down`** - Stops containers, keeps database data
+  - Use when: Taking a quick break, data preservation needed
+  
+- **`docker compose down -v`** - Stops containers AND removes volumes (fresh start)
+  - Use when: Finishing work, before pulling updates, troubleshooting, before tests
+  - ⭐ **RECOMMENDED** for consistent behavior
 
 ## Development Tips
 

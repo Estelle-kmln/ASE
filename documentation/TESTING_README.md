@@ -27,9 +27,11 @@ docker-compose up -d --build
 
 ## Running Tests Locally to Match GitHub Actions
 
+⚠️ **CRITICAL**: Always start with fresh containers when running tests!
+
 To replicate the same clean-slate testing environment that GitHub Actions uses (fresh database, no pre-existing test data):
 
-### Option 1: Fresh Database Reset (Recommended)
+### Option 1: Fresh Database Reset (Recommended - Use This Every Time)
 
 ```bash
 # 1. Stop all services and remove volumes (clears database)
