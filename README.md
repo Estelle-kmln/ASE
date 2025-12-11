@@ -8,12 +8,18 @@ The Battle Cards application is a distributed system built with microservices, w
 
 **Key Features:**
 - 🔐 JWT-based authentication with OAuth2-style token responses
-- 🃏 Card collection and deck management
-- 🎯 Real-time game logic and battle mechanics
+- 🔄 Automatic token refresh with refresh tokens
+- 🔒 Concurrent session management (strict mode - one session per user)
+- 🛡️ Account lockout after failed login attempts (3 attempts, 15-minute lockout)
+- 📝 Comprehensive user action logging for security monitoring
+- 🃏 Custom deck selection (manual or random) before games
+- ⏱️ Live countdown timer in frontend
+- 🎯 Real-time game logic and battle mechanics with game invitations
 - 🏆 Global leaderboards and player statistics
 - 🛡️ Input sanitization and security protection
 - 📊 Comprehensive testing (unit, integration, performance)
 - 🐳 Docker containerization for easy deployment
+- 🔐 HTTPS/TLS encryption for secure communication
 
 ## 🏗️ Architecture
 
@@ -21,11 +27,13 @@ The application is split into **four microservices** plus supporting infrastruct
 
 | Service | Port | Gateway Path | Purpose |
 |---------|------|--------------|---------|
-| **🔐 Auth Service** | 5001 | `/api/auth` | User authentication, registration, profile management |
+| **🔐 Auth Service** | 5001 | `/api/auth` | User authentication, registration, profile management, sessions |
 | **🃏 Card Service** | 5002 | `/api/cards` | Card database, deck generation, statistics |
-| **🎯 Game Service** | 5003 | `/api/games` | Game logic, state management, battle resolution |
+| **🎯 Game Service** | 5003 | `/api/games` | Game logic, state management, battle resolution, invitations |
 | **🏆 Leaderboard Service** | 5004 | `/api/leaderboard` | Rankings, player statistics, game history |
-| **🌐 Nginx Gateway** | 8080 | `/` | API Gateway and reverse proxy |
+| **📝 Logs Service** | 5005 | `/api/logs` | User action logging and audit trails |
+| **🌐 Nginx Gateway** | 8443 (HTTPS) | `/` | API Gateway and reverse proxy with TLS/SSL |
+| **🌐 Nginx Gateway** | 8080 (HTTP) | `/` | Redirects to HTTPS (port 8443) |
 | **🗄️ PostgreSQL Database** | 5432 | - | Data persistence |
 
 ### Technology Stack
@@ -39,9 +47,11 @@ The application is split into **four microservices** plus supporting infrastruct
 
 ### API Access
 
-All services are accessed through the Nginx gateway at `http://localhost:8080`. Direct service access is not recommended in production.
+All services are accessed through the Nginx gateway with HTTPS encryption. HTTP requests on port 8080 are automatically redirected to HTTPS on port 8443.
 
-**Base URL**: `http://localhost:8080/api`
+**Base URL**: `https://localhost:8443/api`
+
+**Note:** The application uses self-signed SSL certificates for development. Your browser will show a security warning - click "Advanced" and "Proceed to localhost" to continue.
 
 ## 🚀 Quick Start
 
@@ -70,14 +80,15 @@ All services are accessed through the Nginx gateway at `http://localhost:8080`. 
 
 3. **Verify services are running:**
    ```bash
-   # Check gateway health
-   curl http://localhost:8080/health
+   # Check gateway health (use -k flag for self-signed certificates)
+   curl -k https://localhost:8443/health
    
    # Check individual services
-   curl http://localhost:8080/api/auth/health
-   curl http://localhost:8080/api/cards/health
-   curl http://localhost:8080/api/games/health
-   curl http://localhost:8080/api/leaderboard/health
+   curl -k https://localhost:8443/api/auth/health
+   curl -k https://localhost:8443/api/cards/health
+   curl -k https://localhost:8443/api/games/health
+   curl -k https://localhost:8443/api/leaderboard/health
+   curl -k https://localhost:8443/api/logs/health
    ```
 
 4. **Check container status:**
@@ -112,12 +123,23 @@ docker-compose down
 
 Comprehensive documentation is available in the `documentation/` folder:
 
+### Core Documentation
+- **[Quick Start Guide](documentation/QUICK_START.md)** - Get started quickly
 - **[API Documentation](documentation/API_Documentation.md)** - Complete REST API reference
 - **[Security Guide](documentation/SECURITY_GUIDE.md)** - Security features and input validation
 - **[Testing Guide](documentation/MICROSERVICE_TESTING.md)** - Unit and integration testing
 - **[Performance Testing](documentation/PERFORMANCE_TESTING.md)** - Load testing with Locust
 - **[Docker Setup](documentation/README-DOCKER.md)** - Docker configuration details
 - **[OpenAPI Specification](openapi.yaml)** - Machine-readable API specification
+
+### Feature-Specific Documentation
+- **[Token Refresh Guide](documentation/TOKEN_REFRESH_QUICK_REFERENCE.md)** - Automatic token refresh implementation
+- **[Concurrent Sessions](documentation/CONCURRENT_SESSION_QUICK_REFERENCE.md)** - Session management (strict mode)
+- **[Account Lockout](documentation/ACCOUNT_LOCKOUT_SUMMARY.md)** - Failed login protection
+- **[User Action Logging](documentation/LOGGING_QUICK_REFERENCE.md)** - Security audit logging
+- **[Deck Selection](documentation/DECK_SELECTION_FEATURE.md)** - Custom deck building feature
+- **[Countdown Timer](documentation/COUNTDOWN_TIMER_FEATURE.md)** - Live timer in frontend
+- **[Game Invitations](documentation/GAME_INVITATION_UPDATE.md)** - Game invitation system
 
 ## 🧪 Testing
 
@@ -152,13 +174,17 @@ npm install -g newman
 ```bash
 # From project root directory (not microservices folder)
 newman run tests/microservices_postman_collection.json \
-  --env-var "BASE_URL=http://localhost:8080"
+  --env-var "BASE_URL=https://localhost:8443" \
+  --insecure
 
 # With HTML report
 newman run tests/microservices_postman_collection.json \
-  --env-var "BASE_URL=http://localhost:8080" \
+  --env-var "BASE_URL=https://localhost:8443" \
+  --insecure \
   --reporters html --reporter-html-export report.html
 ```
+
+**Note:** Use `--insecure` flag for self-signed certificates in development.
 
 **Test Coverage**: 50+ API endpoint tests with automated assertions covering:
 - Request/response validation
@@ -173,8 +199,10 @@ See [TESTING_README.md](documentation/TESTING_README.md) for detailed Postman te
 ```bash
 # Run Locust performance tests
 cd tests
-locust -f locustfile.py --host=http://localhost:8080
+locust -f locustfile.py --host=https://localhost:8443
 ```
+
+**Note:** Locust will handle self-signed certificates automatically. For web UI, access at `http://localhost:8089`.
 
 See [PERFORMANCE_TESTING.md](documentation/PERFORMANCE_TESTING.md) for detailed instructions.
 
@@ -186,17 +214,18 @@ All tests run automatically on push/PR via GitHub Actions with 3 parallel test j
 
 The API uses JWT (JSON Web Tokens) with OAuth2-style responses:
 
-1. **Register or Login** to receive a token:
+1. **Register or Login** to receive tokens:
    ```bash
-   curl -X POST http://localhost:8080/api/auth/register \
+   curl -k -X POST https://localhost:8443/api/auth/register \
      -H "Content-Type: application/json" \
      -d '{"username":"player1","password":"pass1234"}'
    ```
 
-2. **Response includes OAuth2-style fields:**
+2. **Response includes OAuth2-style fields with refresh token:**
    ```json
    {
      "access_token": "eyJhbGciOiJIUzI1NiIs...",
+     "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
      "token_type": "bearer",
      "expires_in": 86400,
      "user": {"id": 1, "username": "player1"}

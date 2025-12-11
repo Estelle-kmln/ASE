@@ -34,10 +34,16 @@ All services should show "healthy" status.
 ### 4. Access the application
 Open your browser and go to:
 ```
-http://localhost:8080
+https://localhost:8443
 ```
 
+**Important**: Your browser will show a security warning because the application uses a self-signed SSL certificate for development. This is normal.
+- Click "Advanced" or "Show Details"
+- Click "Proceed to localhost" or "Accept Risk and Continue"
+
 You'll see the login page as the default entry point.
+
+**Note**: HTTP requests to `http://localhost:8080` will automatically redirect to HTTPS on port 8443.
 
 ## First Time Setup
 
@@ -66,7 +72,8 @@ You'll see the login page as the default entry point.
 1. Choose **Manual Selection** or **Random Deck**
 2. For manual:
    - Click +/- to add/remove Rock 🪨, Paper 📄, or Scissors ✂️
-   - Total must equal 10 cards
+   - Total must equal 22 cards
+   - Powers (1-10) are randomly assigned
 3. Click "Confirm Deck & Start Game"
 4. Wait for your opponent to also select their deck
 
@@ -86,11 +93,12 @@ You'll see the login page as the default entry point.
 
 ### Homepage Menu (☰)
 Click the menu button in the top-right to access:
-- **Profile** - View/edit your account
-- **Leaderboard** - View your game history
+- **Profile** - View/edit your account details and manage sessions
+- **Leaderboard** - View your game history and rankings
 - **Game Statistics** - Coming soon!
 - **Game Rules** - Learn how to play
-- **Logout** - Sign out
+- **Admin Panel** - View logs and monitor system (admin only)
+- **Logout** - Sign out (invalidates current session)
 
 ### Back Button (←)
 Every page except the homepage has a back button in the top-left corner.
@@ -169,40 +177,58 @@ docker compose restart auth-service
 
 ## API Endpoints
 
-Access backend APIs directly (for testing):
+Access backend APIs directly (for testing). Use `-k` flag with curl for self-signed certificates:
 
 ### Auth Service
-- POST `http://localhost:8080/api/auth/register`
-- POST `http://localhost:8080/api/auth/login`
-- GET `http://localhost:8080/api/auth/profile`
-- PUT `http://localhost:8080/api/auth/profile`
+- POST `https://localhost:8443/api/auth/register` - Create new account
+- POST `https://localhost:8443/api/auth/login` - Login (returns access_token & refresh_token)
+- POST `https://localhost:8443/api/auth/refresh` - Refresh access token
+- GET `https://localhost:8443/api/auth/profile` - View profile
+- PUT `https://localhost:8443/api/auth/profile` - Update profile
+- GET `https://localhost:8443/api/auth/sessions` - View active sessions
+- DELETE `https://localhost:8443/api/auth/sessions/{id}` - Logout specific device
+- POST `https://localhost:8443/api/auth/sessions/revoke-all` - Logout all devices
 
 ### Game Service
-- POST `http://localhost:8080/api/game/create`
-- POST `http://localhost:8080/api/game/{game_id}/join`
-- POST `http://localhost:8080/api/game/{game_id}/select-deck`
-- GET `http://localhost:8080/api/game/{game_id}/state`
-- POST `http://localhost:8080/api/game/{game_id}/play-card`
+- POST `https://localhost:8443/api/games/` - Create game with invitation
+- POST `https://localhost:8443/api/games/{game_id}/accept-invitation` - Accept invitation
+- POST `https://localhost:8443/api/games/{game_id}/decline-invitation` - Decline invitation
+- POST `https://localhost:8443/api/games/{game_id}/select-deck` - Select deck
+- GET `https://localhost:8443/api/games/{game_id}` - Get game state
+- POST `https://localhost:8443/api/games/{game_id}/play-card` - Play a card
+- GET `https://localhost:8443/api/games/pending-invitations` - View pending invitations
 
 ### Leaderboard Service
-- GET `http://localhost:8080/api/leaderboard/my-matches`
+- GET `https://localhost:8443/api/leaderboard/` - Global leaderboard
+- GET `https://localhost:8443/api/leaderboard/player/{name}` - Player stats
+
+### Logs Service (Admin Only)
+- GET `https://localhost:8443/api/logs/list` - View all logs
+- GET `https://localhost:8443/api/logs/user/{username}` - User-specific logs
 
 ## Architecture
 
 ```
-Browser (localhost:8080)
+Browser (https://localhost:8443)
     ↓
-Nginx Gateway (Container)
+Nginx Gateway (HTTPS/TLS - Container)
     ↓
-┌─────────────┬─────────────┬─────────────┬─────────────┐
-│ Auth        │ Card        │ Game        │ Leaderboard │
-│ Service     │ Service     │ Service     │ Service     │
-│ :5001       │ :5002       │ :5003       │ :5004       │
-└─────────────┴─────────────┴─────────────┴─────────────┘
+┌──────────┬──────────┬──────────┬────────────┬──────────┐
+│ Auth     │ Card     │ Game     │ Leaderboard│ Logs     │
+│ Service  │ Service  │ Service  │ Service    │ Service  │
+│ :5001    │ :5002    │ :5003    │ :5004      │ :5005    │
+└──────────┴──────────┴──────────┴────────────┴──────────┘
                         ↓
                   PostgreSQL
                    (Container)
 ```
+
+**Security Features:**
+- HTTPS/TLS encryption
+- JWT with automatic refresh tokens
+- Concurrent session control (one per user)
+- Account lockout (3 failed attempts)
+- Comprehensive action logging
 
 ## Tech Stack
 
@@ -230,12 +256,14 @@ For issues or questions:
 
 ## Game Rules Summary
 
-- Each player builds a 10-card deck
+- Each player builds a 22-card deck (manual or random)
 - Cards: Rock 🪨, Paper 📄, Scissors ✂️
-- Each card has a random power value
+- Each card has a power value (1-10)
 - Rock beats Scissors, Scissors beats Paper, Paper beats Rock
 - Same type: Higher power wins
-- Winner of each round earns points
-- Most points after 10 rounds wins!
+- Winner of each round earns points equal to their card's power
+- Most points after all cards are played wins!
+- Game includes live countdown timer
+- All actions are logged for security
 
 Enjoy playing Battlecards! 🎮👑

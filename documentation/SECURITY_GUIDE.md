@@ -39,7 +39,10 @@ Your application now blocks:
 - ✅ Path Traversal attacks (`../../etc/passwd`)
 - ✅ Buffer overflows (length limits)
 - ✅ Integer overflows (bounds checking)
-- ✅ Brute-force attacks (account lockout after 3 failed attempts)
+- ✅ Brute-force attacks (account lockout after 3 failed attempts, 15-minute timeout)
+- ✅ Session hijacking (strict concurrent session control)
+- ✅ Token theft (automatic token refresh with refresh tokens)
+- ✅ Man-in-the-middle attacks (HTTPS/TLS encryption)
 
 ---
 
@@ -56,22 +59,32 @@ Your application now blocks:
 ### **Microservice Protection Status**
 | Service | Status | Protected Against |
 |---------|--------|-------------------|
-| **Auth Service** | ✅ **SECURED** | Username/password injection, JWT issuing, brute-force attacks |
-| **Game Service** | ✅ **SECURED** | Game ID validation, player name sanitization, JWT-based access control |
-| **Card Service** | ✅ **SECURED** | Card type validation, ID bounds checking, JWT-based access control |
-| **Leaderboard Service** | ✅ **SECURED** | Query parameter sanitization, JWT-based access control |
+| **Auth Service** | ✅ **SECURED** | Username/password injection, JWT issuing, brute-force attacks, session hijacking, token refresh security |
+| **Game Service** | ✅ **SECURED** | Game ID validation, player name sanitization, JWT-based access control, invitation tampering |
+| **Card Service** | ✅ **SECURED** | Card type validation, ID bounds checking, JWT-based access control, deck manipulation |
+| **Leaderboard Service** | ✅ **SECURED** | Query parameter sanitization, JWT-based access control, data exposure |
+| **Logs Service** | ✅ **SECURED** | Admin-only access, JWT validation, query injection, unauthorized access |
+| **Nginx Gateway** | ✅ **SECURED** | HTTPS/TLS encryption, automatic HTTP to HTTPS redirect, SSL certificate validation |
 
 ---
 
 ## 🔐 **Authentication & Authorization (OAuth2‑style with JWT Bearer Tokens)**
 
 ### **Overview**
-- The platform uses **JWT bearer tokens** for authentication and authorization.
-- Tokens are issued by the **Auth Service** and consumed by all other microservices.
-- **Account lockout protection**: Accounts are locked for 15 minutes after 3 failed login attempts.
+- The platform uses **JWT bearer tokens** with **automatic token refresh** for authentication and authorization.
+- **Access tokens** (short-lived) and **refresh tokens** (long-lived) are issued by the **Auth Service**.
+- Tokens are consumed by all other microservices via validation.
+- **Multi-layer security**:
+  - **Account lockout protection**: Accounts lock for 15 minutes after 3 failed login attempts
+  - **Concurrent session control**: Strict mode - only one active session per user
+  - **Automatic token refresh**: Seamless access token renewal without re-authentication
+  - **Session management**: Users can view and revoke sessions from any device
 - The flow is compatible with common **OAuth2-style** patterns:
-  - Tokens are returned from login/register endpoints as a bearer token with expiry metadata.
-  - Clients send the token in the `Authorization` header on every protected request.
+  - Tokens are returned from login/register endpoints as bearer tokens with expiry metadata
+  - Access tokens expire after 24 hours, refresh tokens after 30 days
+  - Clients send the access token in the `Authorization` header on every protected request
+  - When access token expires, clients use refresh token to get a new access token
+- **HTTPS/TLS**: All communication encrypted with SSL certificates (self-signed for development)
 
 ### **Token Issuance (Auth Service)**
 
@@ -83,7 +96,8 @@ Your application now blocks:
 ```json
 {
   "message": "Login successful",
-  "access_token": "<JWT>",
+  "access_token": "<ACCESS_JWT>",
+  "refresh_token": "<REFRESH_JWT>",
   "token_type": "bearer",
   "expires_in": 86400,
   "user": {
@@ -94,9 +108,54 @@ Your application now blocks:
 ```
 
 - **Fields:**
-  - `access_token`: The signed **JWT** created with `Flask‑JWT‑Extended`.
-  - `token_type`: Always `"bearer"` to match OAuth2 conventions.
-  - `expires_in`: Token lifetime in **seconds** (derived from `JWT_ACCESS_TOKEN_EXPIRES`, currently 24h).
+  - `access_token`: The signed **JWT** for API access (short-lived: 24 hours)
+  - `refresh_token`: The signed **JWT** for token renewal (long-lived: 30 days)
+  - `token_type`: Always `"bearer"` to match OAuth2 conventions
+  - `expires_in`: Access token lifetime in **seconds** (86400 = 24 hours)
+
+### **Token Refresh (Auth Service)**
+
+- Endpoint: `POST /api/auth/refresh`
+- When access token expires, clients use the refresh token to get a new access token
+- **No re-authentication required** - seamless user experience
+- Example:
+
+```bash
+curl -k -X POST https://localhost:8443/api/auth/refresh \
+  -H "Authorization: Bearer <REFRESH_TOKEN>"
+```
+
+- Response:
+
+```json
+{
+  "access_token": "<NEW_ACCESS_JWT>",
+  "token_type": "bearer",
+  "expires_in": 86400
+}
+```
+
+### **Session Management**
+
+- **Concurrent Session Control**: Users can only have ONE active session at a time (strict mode)
+- **Session Endpoints**:
+  - `GET /api/auth/sessions` - View all active sessions
+  - `DELETE /api/auth/sessions/{id}` - Logout from specific device
+  - `POST /api/auth/sessions/revoke-all` - Logout from all devices
+- **Session Tracking**: Each login creates a session record with device info, IP address, timestamps
+- **Automatic Cleanup**: Sessions are automatically invalidated on logout or when new login occurs
+
+### **Account Lockout Protection**
+
+- **Failed Login Tracking**: System tracks consecutive failed login attempts per user
+- **Lockout Threshold**: 3 failed attempts within any timeframe
+- **Lockout Duration**: 15 minutes from the last failed attempt
+- **Counter Reset**: Successful login resets the failed attempt counter
+- **User Feedback**: API returns remaining attempts and lockout duration
+- **Database Fields**:
+  - `failed_login_attempts` - Counter of consecutive failures
+  - `account_locked_until` - Timestamp when lock expires (NULL if unlocked)
+  - `last_failed_login` - Timestamp of most recent failed attempt
 
 ### **Using the Token (Clients)**
 

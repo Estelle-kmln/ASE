@@ -18,10 +18,11 @@ The Battle Card Game consists of 5 microservices running on different ports:
 
 | Service | Gateway Path | Purpose | Status |
 |---------|--------------|---------|--------|
-| **🔐 Auth Service** | /api/auth | User authentication and profile management | ✅ Active |
-| **🃏 Card Service** | /api/cards | Card collection and deck management | ✅ Active |
-| **🎯 Game Service** | /api/games | Game logic and battle mechanics | ✅ Active |
-| **🏆 Leaderboard Service** | /api/leaderboard | Rankings and statistics | ✅ Active |
+| **🔐 Auth Service** | /api/auth | User authentication, profile management, session control, token refresh | ✅ Active |
+| **🃏 Card Service** | /api/cards | Card collection, deck generation, and statistics | ✅ Active |
+| **🎯 Game Service** | /api/games | Game logic, invitations, deck selection, battle mechanics | ✅ Active |
+| **🏆 Leaderboard Service** | /api/leaderboard | Rankings, player statistics, and game history | ✅ Active |
+| **📝 Logs Service** | /api/logs | User action logging and security audit trails (admin only) | ✅ Active |
 | **🌐 Nginx Gateway** | 8443 (HTTPS), 8080 (HTTP redirects) | API Gateway and reverse proxy | ✅ Active |
 | **🗄️ PostgreSQL Database** | 5432 | Data persistence | ✅ Active |
 
@@ -85,8 +86,9 @@ curl -X POST https://localhost:8443/api/auth/register \
 ```http
 POST /api/auth/login
 ```
-**Purpose**: Authenticate existing user and receive JWT token  
+**Purpose**: Authenticate existing user and receive JWT access token and refresh token  
 **Authentication**: Not required  
+**Security**: Account locks after 3 failed login attempts for 15 minutes  
 **Request Body**:
 ```json
 {
@@ -96,7 +98,7 @@ POST /api/auth/login
 ```
 **Example**:
 ```bash
-curl -X POST https://localhost:8443/api/auth/login \
+curl -k -X POST https://localhost:8443/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"player1","password":"password123"}'
 ```
@@ -119,6 +121,89 @@ PUT /api/auth/profile
 ```
 **Purpose**: Update user profile details  
 **Authentication**: Bearer token required
+
+### **Token Refresh**
+```http
+POST /api/auth/refresh
+```
+**Purpose**: Refresh an expired access token using a valid refresh token  
+**Authentication**: Refresh token required in Authorization header  
+**Example**:
+```bash
+curl -k -X POST https://localhost:8443/api/auth/refresh \
+  -H "Authorization: Bearer YOUR_REFRESH_TOKEN"
+```
+**Response**:
+```json
+{
+  "access_token": "new_access_token_here",
+  "token_type": "bearer",
+  "expires_in": 86400
+}
+```
+
+### **Logout**
+```http
+POST /api/auth/logout
+```
+**Purpose**: Invalidate current session and tokens  
+**Authentication**: Bearer token required  
+**Example**:
+```bash
+curl -k -X POST https://localhost:8443/api/auth/logout \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### **Get Active Sessions**
+```http
+GET /api/auth/sessions
+```
+**Purpose**: View all active sessions for the authenticated user  
+**Authentication**: Bearer token required  
+**Example**:
+```bash
+curl -k -H "Authorization: Bearer YOUR_TOKEN" \
+  https://localhost:8443/api/auth/sessions
+```
+**Response**:
+```json
+{
+  "sessions": [
+    {
+      "id": 1,
+      "device": "Chrome on Windows",
+      "ip_address": "192.168.1.100",
+      "created_at": "2025-12-11T12:00:00",
+      "last_used_at": "2025-12-11T14:30:00"
+    }
+  ],
+  "total": 1
+}
+```
+
+### **Logout from Specific Device**
+```http
+DELETE /api/auth/sessions/<session_id>
+```
+**Purpose**: Logout from a specific device/session  
+**Authentication**: Bearer token required  
+**Example**:
+```bash
+curl -k -X DELETE -H "Authorization: Bearer YOUR_TOKEN" \
+  https://localhost:8443/api/auth/sessions/1
+```
+
+### **Logout from All Devices**
+```http
+POST /api/auth/sessions/revoke-all
+```
+**Purpose**: Invalidate all sessions except the current one  
+**Authentication**: Bearer token required  
+**Example**:
+```bash
+curl -k -X POST -H "Authorization: Bearer YOUR_TOKEN" \
+  https://localhost:8443/api/auth/sessions/revoke-all
+```
 
 ### **Token Validation**
 ```http
@@ -145,6 +230,20 @@ GET /health
 GET /api/cards
 ```
 **Purpose**: Retrieve all 39 cards in the game (13 Rock, 13 Paper, 13 Scissors)  
+**Authentication**: Bearer token required  
+**Example**:
+```bash
+curl -k -H "Authorization: Bearer YOUR_TOKEN" \
+  https://localhost:8443/api/cards
+```
+
+**Note**: The `-k` flag is required for self-signed SSL certificates in development.
+
+### **Get Cards by Type**
+```http
+GET /api/cards/by-type/<type>
+```
+**Purpose**: Get all cards of a specific type (Rock, Paper, or Scissors)  
 **Authentication**: Bearer token required  
 **Example**:
 ```bash
@@ -260,7 +359,7 @@ GET /health
 ```http
 POST /api/games
 ```
-**Purpose**: Initialize a new game between two players  
+**Purpose**: Initialize a new game and send invitation to another player  
 **Authentication**: Bearer token required  
 **Request Body**:
 ```json
@@ -270,7 +369,7 @@ POST /api/games
 ```
 **Example**:
 ```bash
-curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
+curl -k -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"player2_name":"opponent"}' \
   https://localhost:8443/api/games
@@ -281,10 +380,88 @@ curl -X POST -H "Authorization: Bearer YOUR_TOKEN" \
   "game_id": "uuid-string",
   "player1_name": "authenticated_user",
   "player2_name": "opponent",
-  "status": "created",
-  "turn": 1,
-  "current_player": 1
+  "status": "invitation_sent",
+  "turn": 0,
+  "invitation_code": "ABC123"
 }
+```
+
+### **Accept Game Invitation**
+```http
+POST /api/games/<game_id>/accept-invitation
+```
+**Purpose**: Accept a game invitation  
+**Authentication**: Bearer token required (must be player2)  
+**Example**:
+```bash
+curl -k -X POST -H "Authorization: Bearer YOUR_TOKEN" \
+  https://localhost:8443/api/games/GAME_ID/accept-invitation
+```
+
+### **Decline Game Invitation**
+```http
+POST /api/games/<game_id>/decline-invitation
+```
+**Purpose**: Decline a game invitation  
+**Authentication**: Bearer token required (must be player2)  
+**Example**:
+```bash
+curl -k -X POST -H "Authorization: Bearer YOUR_TOKEN" \
+  https://localhost:8443/api/games/GAME_ID/decline-invitation
+```
+
+### **Cancel Game Invitation**
+```http
+POST /api/games/<game_id>/cancel-invitation
+```
+**Purpose**: Cancel a sent game invitation  
+**Authentication**: Bearer token required (must be player1)  
+**Example**:
+```bash
+curl -k -X POST -H "Authorization: Bearer YOUR_TOKEN" \
+  https://localhost:8443/api/games/GAME_ID/cancel-invitation
+```
+
+### **Get Pending Invitations**
+```http
+GET /api/games/pending-invitations
+```
+**Purpose**: Get all pending game invitations for the authenticated user  
+**Authentication**: Bearer token required  
+**Example**:
+```bash
+curl -k -H "Authorization: Bearer YOUR_TOKEN" \
+  https://localhost:8443/api/games/pending-invitations
+```
+
+### **Select Deck**
+```http
+POST /api/games/<game_id>/select-deck
+```
+**Purpose**: Select a deck for the game (manual or random)  
+**Authentication**: Bearer token required  
+**Request Body**:
+```json
+{
+  "deck": [
+    {"type": "Rock"},
+    {"type": "Paper"},
+    {"type": "Scissors"}
+  ]
+}
+```
+**Or for random deck**:
+```json
+{
+  "random": true
+}
+```
+**Example**:
+```bash
+curl -k -X POST -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"random":true}' \
+  https://localhost:8443/api/games/GAME_ID/select-deck
 ```
 
 ### **Get Game State**
@@ -550,6 +727,110 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 
 ---
 
+## **📝 Logs Service** (`/api/logs`) - Admin Only
+
+Provides comprehensive user action logging and security audit trails. All endpoints require admin authentication.
+
+### **Health Check**
+```http
+GET /health
+```
+**Purpose**: Service health status  
+**Authentication**: Not required
+
+### **List All Logs**
+```http
+GET /api/logs/list?page=0&size=20
+```
+**Purpose**: Get paginated list of all user action logs  
+**Authentication**: Bearer token required (admin only)  
+**Query Parameters**:
+- `page` (optional): Page number (default: 0)
+- `size` (optional): Items per page (default: 20, max: 100)
+**Example**:
+```bash
+curl -k -H "Authorization: Bearer ADMIN_TOKEN" \
+  "https://localhost:8443/api/logs/list?page=0&size=20"
+```
+**Response**:
+```json
+{
+  "logs": [
+    {
+      "id": 1,
+      "username": "player1",
+      "action": "USER_LOGIN",
+      "details": "Login successful",
+      "timestamp": "2025-12-11T12:00:00",
+      "ip_address": "192.168.1.100"
+    }
+  ],
+  "total": 150,
+  "page": 0,
+  "size": 20
+}
+```
+
+### **Get User Logs**
+```http
+GET /api/logs/user/<username>
+```
+**Purpose**: Get all logs for a specific user  
+**Authentication**: Bearer token required (admin only)  
+**Example**:
+```bash
+curl -k -H "Authorization: Bearer ADMIN_TOKEN" \
+  https://localhost:8443/api/logs/user/player1
+```
+
+### **Get Logs by Action Type**
+```http
+GET /api/logs/action/<action_type>
+```
+**Purpose**: Get all logs for a specific action type  
+**Authentication**: Bearer token required (admin only)  
+**Available Action Types**:
+- `USER_REGISTERED`, `USER_LOGIN`, `LOGIN_FAILED`, `PASSWORD_CHANGED`
+- `GAME_CREATED`, `GAME_INVITATION_ACCEPTED`, `GAME_INVITATION_DECLINED`
+- `DECK_SELECTED`, `GAME_STARTED`, `GAME_COMPLETED`, `GAME_ABANDONED`
+**Example**:
+```bash
+curl -k -H "Authorization: Bearer ADMIN_TOKEN" \
+  https://localhost:8443/api/logs/action/LOGIN_FAILED
+```
+
+### **Search Logs**
+```http
+GET /api/logs/search?query=login&start_date=2025-12-01&end_date=2025-12-11
+```
+**Purpose**: Search logs with filters  
+**Authentication**: Bearer token required (admin only)  
+**Query Parameters**:
+- `query` (optional): Search term
+- `start_date` (optional): Start date (YYYY-MM-DD)
+- `end_date` (optional): End date (YYYY-MM-DD)
+- `action` (optional): Filter by action type
+- `username` (optional): Filter by username
+**Example**:
+```bash
+curl -k -H "Authorization: Bearer ADMIN_TOKEN" \
+  "https://localhost:8443/api/logs/search?action=LOGIN_FAILED&start_date=2025-12-01"
+```
+
+### **Get Logging Statistics**
+```http
+GET /api/logs/statistics
+```
+**Purpose**: Get statistics about logged actions  
+**Authentication**: Bearer token required (admin only)  
+**Example**:
+```bash
+curl -k -H "Authorization: Bearer ADMIN_TOKEN" \
+  https://localhost:8443/api/logs/statistics
+```
+
+---
+
 ## **🏆 Leaderboard Service** (`localhost:5004`)
 
 Provides rankings, statistics, and game history analysis.
@@ -811,19 +1092,30 @@ curl -k -H "Authorization: Bearer YOUR_TOKEN_HERE" \
 
 ### **Current Service Status**
 All services are operational and healthy:
-- ✅ **Nginx Gateway**: Running on port 8443 (HTTPS), port 8080 redirects to HTTPS
-- ✅ **Auth Service**: Accessible at /api/auth
-- ✅ **Card Service**: Accessible at /api/cards  
-- ✅ **Game Service**: Accessible at /api/games
-- ✅ **Leaderboard Service**: Accessible at /api/leaderboard
-- ✅ **Database**: PostgreSQL initialized with 39 cards
+- ✅ **Nginx Gateway**: Running on port 8443 (HTTPS with TLS/SSL), port 8080 redirects to HTTPS
+- ✅ **Auth Service**: Accessible at /api/auth - Authentication, sessions, token refresh
+- ✅ **Card Service**: Accessible at /api/cards - Card database and deck generation
+- ✅ **Game Service**: Accessible at /api/games - Game logic, invitations, deck selection
+- ✅ **Leaderboard Service**: Accessible at /api/leaderboard - Rankings and statistics
+- ✅ **Logs Service**: Accessible at /api/logs - User action logging (admin only)
+- ✅ **Database**: PostgreSQL initialized with 39 cards and all schemas
+
+### **New Security Features**
+- 🔄 **Automatic Token Refresh**: Access tokens refresh automatically using refresh tokens
+- 🔒 **Session Management**: Strict mode - one active session per user
+- 🛡️ **Account Lockout**: Accounts lock after 3 failed login attempts for 15 minutes
+- 📝 **Action Logging**: All user actions are logged for security monitoring
+- 🔐 **HTTPS/TLS**: All communication encrypted with SSL certificates
 
 ### **Database Schema**
 The system uses the following main tables:
-- **users**: User accounts and authentication
+- **users**: User accounts and authentication with lockout fields
 - **cards**: Card collection (39 total: Rock, Paper, Scissors × 13 power levels each)
-- **games**: Game state and player information
+- **games**: Game state, player information, invitations, and deck selection
 - **game_history**: Encrypted, tamper-evident snapshots of completed games (requires `GAME_HISTORY_KEY`)
+- **user_sessions**: Active user sessions for concurrent session management
+- **refresh_tokens**: Refresh tokens for automatic access token renewal
+- **user_logs**: Comprehensive audit trail of all user actions
 
 ### **Deployment Instructions**
 
@@ -879,16 +1171,20 @@ docker compose ps
 4. Other services validate tokens via Auth Service `/api/auth/validate` endpoint
 
 ### **Game Rules**
-- Each player starts with 22 randomly selected cards
+- Players must accept/decline game invitations before starting
+- Each player selects a 22-card deck (manual selection or random)
+- Deck must be confirmed before game begins
 - Players draw 3 cards to hand each turn
 - Players select 1 card to play, other 2 are discarded
 - Battle resolution follows rock-paper-scissors rules:
   - Rock > Scissors
   - Scissors > Paper  
   - Paper > Rock
-  - Same type: Higher power wins (special: 1 beats 13)
+  - Same type: Higher power wins (power values 1-10)
+- Winner earns points equal to their card's power value
 - Game continues until a player cannot draw 3 cards
-- Winner is determined by most rounds won
+- Winner is determined by total points scored
+- All game actions are logged for security and audit purposes
 
 ### **Error Handling**
 All services return consistent error responses:
