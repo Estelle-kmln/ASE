@@ -27,76 +27,69 @@
     </header>
     
     <div class="container">
-        <div class="placeholder-container">
+        <div class="stats-container">
             <h2>📊 Game Statistics</h2>
-            <p>This feature is coming soon!</p>
-            <p>Here you'll be able to view your detailed game statistics including:</p>
-            <ul style="text-align: left; max-width: 400px; margin: 2rem auto;">
-                <li>Win/Loss ratio</li>
-                <li>Most used cards</li>
-                <li>Average score per game</li>
-                <li>Playing streak</li>
-                <li>Card effectiveness statistics</li>
-            </ul>
+            
+            <!-- Personal Stats Section -->
+            <div class="stats-section">
+                <h3>Your Performance</h3>
+                <div class="stats-grid" id="personal-stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="total-games">-</div>
+                        <div class="stat-label">Total Games</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="total-wins">-</div>
+                        <div class="stat-label">Wins</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="total-losses">-</div>
+                        <div class="stat-label">Losses</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="win-percentage">-</div>
+                        <div class="stat-label">Win Rate</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Players Section -->
+            <div class="stats-section">
+                <h3>🏆 Top Players</h3>
+                <div class="top-players-grid">
+                    <!-- Top by Wins -->
+                    <div class="top-players-card">
+                        <h4>Most Wins</h4>
+                        <div class="loading" id="top-wins-loading"></div>
+                        <ul id="top-wins-list" class="top-players-list"></ul>
+                    </div>
+                    
+                    <!-- Top by Win Percentage -->
+                    <div class="top-players-card">
+                        <h4>Best Win Rate</h4>
+                        <div class="loading" id="top-percentage-loading"></div>
+                        <ul id="top-percentage-list" class="top-players-list"></ul>
+                    </div>
+                    
+                    <!-- Most Active -->
+                    <div class="top-players-card">
+                        <h4>Most Active</h4>
+                        <div class="loading" id="most-active-loading"></div>
+                        <ul id="most-active-list" class="top-players-list"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Games Section (Admin Only) -->
+            <div class="stats-section" id="recent-games-section" style="display: none;">
+                <h3>🎮 Recent Games Across Platform</h3>
+                <div class="loading" id="recent-games-loading"></div>
+                <div id="recent-games-container"></div>
+            </div>
         </div>
     </div>
     
-    <script>
-        // Check authentication before page loads
-        let currentUser = null;
-        (function() {
-            const token = localStorage.getItem('token');
-            const user = localStorage.getItem('user');
-            
-            if (!token || !user) {
-                window.location.href = 'login.html';
-            }
-            
-            try {
-                currentUser = JSON.parse(user);
-            } catch (e) {
-                console.error('Error parsing user data:', e);
-            }
-        })();
-        
-        document.addEventListener('DOMContentLoaded', () => {
-            setupMenu();
-        });
-        
-        function setupMenu() {
-            const userInfoElement = document.getElementById('user-info');
-            if (userInfoElement && currentUser) {
-                userInfoElement.textContent = currentUser.username;
-            }
-            
-            const menuBtn = document.getElementById('menu-btn');
-            const dropdownMenu = document.getElementById('dropdown-menu');
-            
-            if (menuBtn && dropdownMenu) {
-                menuBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    dropdownMenu.classList.toggle('active');
-                });
-                
-                document.addEventListener('click', () => {
-                    dropdownMenu.classList.remove('active');
-                });
-            }
-        }
-        
-        function navigateTo(page) {
-            window.location.href = page;
-        }
-        
-        function logout() {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
-            window.location.href = 'login.html';
-        }
-        
-        function goHome() {
-            window.location.href = 'index.html';
-        }
-    </script>
+    <script src="js/token-management.js"></script>
+    <script src="js/statistics.js"></script>
 </body>
 </html>

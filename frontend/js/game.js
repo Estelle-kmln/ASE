@@ -98,6 +98,10 @@ async function loadGameState() {
             
             // Start polling for game updates
             startPolling();
+        } else if (response.status === 401 || response.status === 404) {
+            console.error('Unauthorized or user not found - clearing session');
+            localStorage.clear();
+            window.location.href = 'login.html';
         } else {
             alert('Failed to load game: ' + (data.error || 'Unknown error'));
             window.location.href = 'index.html';
@@ -438,6 +442,11 @@ function startPolling() {
             if (response.ok) {
                 gameState = data;
                 updateGameDisplay();
+            } else if (response.status === 401 || response.status === 404) {
+                console.error('Unauthorized or user not found - clearing session');
+                clearInterval(pollInterval);
+                localStorage.clear();
+                window.location.href = 'login.html';
             }
         } catch (error) {
             console.error('Error polling game state:', error);

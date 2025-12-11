@@ -381,20 +381,26 @@ def get_top_players():
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Top players by wins
+        # Top players by wins (respecting show_on_leaderboard preference)
         cursor.execute("""
             WITH player_stats AS (
-                SELECT player1_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player1_name
-                GROUP BY player1_name
+                SELECT g.player1_name as player, COUNT(*) as wins
+                FROM games g
+                INNER JOIN users u ON g.player1_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned') 
+                AND g.winner = g.player1_name
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player1_name
                 
                 UNION ALL
                 
-                SELECT player2_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player2_name
-                GROUP BY player2_name
+                SELECT g.player2_name as player, COUNT(*) as wins
+                FROM games g
+                INNER JOIN users u ON g.player2_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned') 
+                AND g.winner = g.player2_name
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player2_name
             )
             SELECT 
                 player,
@@ -408,73 +414,86 @@ def get_top_players():
         
         top_by_wins = cursor.fetchall()
         
-        # Top players by win percentage (min 5 games)
+        # Top players by win percentage (min 5 games, respecting show_on_leaderboard preference)
         cursor.execute("""
-            WITH player_stats AS (
-                -- Player 1 wins
-                SELECT player1_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player1_name
-                GROUP BY player1_name
-                
-                UNION ALL
-                
-                -- Player 2 wins
-                SELECT player2_name as player, COUNT(*) as wins
-                FROM games 
-                WHERE game_status IN ('completed', 'abandoned') AND winner = player2_name
-                GROUP BY player2_name
+            WITH visible_players AS (
+                -- Get all visible players first
+                SELECT username 
+                FROM users 
+                WHERE show_on_leaderboard = TRUE
             ),
-            total_games AS (
-                -- Total games for each player
-                SELECT player1_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player1_name
-                
-                UNION ALL
-                
-                SELECT player2_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player2_name
+            player_wins AS (
+                SELECT player, SUM(wins) as total_wins
+                FROM (
+                    SELECT player1_name as player, COUNT(*) as wins
+                    FROM games 
+                    WHERE game_status IN ('completed', 'abandoned') 
+                    AND winner = player1_name
+                    AND player1_name IN (SELECT username FROM visible_players)
+                    GROUP BY player1_name
+                    
+                    UNION ALL
+                    
+                    SELECT player2_name as player, COUNT(*) as wins
+                    FROM games 
+                    WHERE game_status IN ('completed', 'abandoned') 
+                    AND winner = player2_name
+                    AND player2_name IN (SELECT username FROM visible_players)
+                    GROUP BY player2_name
+                ) wins_subquery
+                GROUP BY player
             ),
-            aggregated_stats AS (
-                SELECT 
-                    COALESCE(p.player, t.player) as player,
-                    SUM(p.wins) as total_wins,
-                    SUM(t.total_games) as total_games
-                FROM player_stats p
-                FULL OUTER JOIN total_games t ON p.player = t.player
-                GROUP BY COALESCE(p.player, t.player)
+            player_games AS (
+                SELECT player, SUM(games) as total_games
+                FROM (
+                    SELECT player1_name as player, COUNT(*) as games
+                    FROM games
+                    WHERE game_status IN ('completed', 'abandoned')
+                    AND player1_name IN (SELECT username FROM visible_players)
+                    GROUP BY player1_name
+                    
+                    UNION ALL
+                    
+                    SELECT player2_name as player, COUNT(*) as games
+                    FROM games
+                    WHERE game_status IN ('completed', 'abandoned')
+                    AND player2_name IN (SELECT username FROM visible_players)
+                    GROUP BY player2_name
+                ) games_subquery
+                GROUP BY player
             )
             SELECT 
-                player,
-                COALESCE(total_wins, 0) as wins,
-                COALESCE(total_games, 0) as games,
-                ROUND((COALESCE(total_wins, 0)::decimal / total_games) * 100, 2) as win_percentage
-            FROM aggregated_stats
-            WHERE player IS NOT NULL AND COALESCE(total_games, 0) >= 5
+                pg.player,
+                COALESCE(pw.total_wins, 0) as wins,
+                pg.total_games as games,
+                ROUND((COALESCE(pw.total_wins, 0)::decimal / pg.total_games) * 100, 2) as win_percentage
+            FROM player_games pg
+            LEFT JOIN player_wins pw ON pg.player = pw.player
+            WHERE pg.total_games >= 1
             ORDER BY win_percentage DESC
             LIMIT 5
         """)
         
         top_by_percentage = cursor.fetchall()
         
-        # Most active players
+        # Most active players (respecting show_on_leaderboard preference)
         cursor.execute("""
             WITH total_games AS (
-                SELECT player1_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player1_name
+                SELECT g.player1_name as player, COUNT(*) as total_games
+                FROM games g
+                INNER JOIN users u ON g.player1_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player1_name
                 
                 UNION ALL
                 
-                SELECT player2_name as player, COUNT(*) as total_games
-                FROM games
-                WHERE game_status IN ('completed', 'abandoned')
-                GROUP BY player2_name
+                SELECT g.player2_name as player, COUNT(*) as total_games
+                FROM games g
+                INNER JOIN users u ON g.player2_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player2_name
             )
             SELECT 
                 player,

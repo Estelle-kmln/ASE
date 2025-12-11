@@ -67,7 +67,7 @@ function navigateTo(page) {
 }
 
 function goHome() {
-    window.location.href = 'welcome.html';
+    window.location.href = 'index.html';
 }
 
 function logout() {
@@ -92,6 +92,10 @@ async function loadVisibilityPreference() {
             const toggle = document.getElementById('visibility-toggle');
             // Checkbox is "Hide from others", so inverse of show_on_leaderboard
             toggle.checked = !data.show_on_leaderboard;
+        } else if (response.status === 401 || response.status === 404) {
+            console.error('Unauthorized or user not found - clearing session');
+            localStorage.clear();
+            window.location.href = 'login.html';
         }
     } catch (error) {
         console.error('Error loading visibility preference:', error);
@@ -124,6 +128,10 @@ function setupVisibilityToggle() {
                 // Reload rankings to reflect the change
                 await loadRankings();
                 showNotification('Privacy settings updated successfully');
+            } else if (response.status === 401 || response.status === 404) {
+                console.error('Unauthorized or user not found - clearing session');
+                localStorage.clear();
+                window.location.href = 'login.html';
             } else {
                 showError('Failed to update privacy settings: ' + (data.error || 'Unknown error'));
                 // Revert the toggle
