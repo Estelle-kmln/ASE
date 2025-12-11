@@ -117,7 +117,7 @@ You'll see the login page as the default entry point.
 ### Homepage Menu (☰)
 Click the menu button in the top-right to access:
 - **Profile** - View/edit your account details and manage sessions
-- **My game history** - View your game history and rankings
+- **Game history** - View your game history and rankings
 - **Game Statistics** - Coming soon!
 - **Game Rules** - Learn how to play
 - **Admin Panel** - View logs and monitor system (admin only)
