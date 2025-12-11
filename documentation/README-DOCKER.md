@@ -4,9 +4,16 @@ This project includes Docker configurations for running the battle card game wit
 
 ## Architecture
 
-- **PostgreSQL Container**: Stores card data and user information
-- **Python Game Container**: Runs the CLI-based battle card game
-- **Docker Compose**: Orchestrates both containers with proper networking
+The Battle Cards application uses a microservices architecture with the following containers:
+
+- **Nginx Gateway**: Reverse proxy with HTTPS/TLS (ports 8443, 8080)
+- **Auth Service**: User authentication, sessions, token refresh (port 5001)
+- **Card Service**: Card database and deck generation (port 5002)
+- **Game Service**: Game logic, invitations, deck selection (port 5003)
+- **Leaderboard Service**: Rankings and statistics (port 5004)
+- **Logs Service**: User action logging and audit trails (port 5005)
+- **PostgreSQL Container**: Data persistence for all services (port 5432)
+- **Docker Compose**: Orchestrates all containers with proper networking
 
 ## Quick Start
 
@@ -16,84 +23,119 @@ This project includes Docker configurations for running the battle card game wit
 
 ### Running the Application
 
-1. **Build and start all services:**
+1. **Build and start all services (recommended method):**
    ```bash
-   docker-compose up --build
+   cd microservices
+   ./build-and-start.sh
    ```
+   This script automatically generates the required `GAME_HISTORY_KEY` if not present.
 
-2. **Run in detached mode (background):**
+2. **Manual build (alternative):**
    ```bash
+   cd microservices
    docker-compose up -d --build
    ```
 
-3. **Interactive game session:**
+3. **Access the application:**
+   - Frontend: `https://localhost:8443` (HTTPS with self-signed certificate)
+   - API Gateway: `https://localhost:8443/api`
+   - HTTP requests to port 8080 automatically redirect to HTTPS
+
+4. **Verify all services are running:**
    ```bash
-   # After starting with docker-compose up -d
-   docker-compose exec game-app python main.py
+   docker-compose ps
+   # All services should show "Up" and "healthy"
+   
+   # Test gateway health
+   curl -k https://localhost:8443/health
    ```
 
 ### Database Access
 
-- **PostgreSQL Connection**: `postgresql://gameuser:gamepassword@localhost:5432/battlecards`
-- **Database Name**: `battlecards`
-- **Tables**: `users`, `cards`
+- **PostgreSQL Connection**: `postgresql://battlecards_user:battlecards_password@localhost:5432/battlecards_db`
+- **Database Name**: `battlecards_db`
+- **Tables**: `users`, `cards`, `games`, `game_history`, `user_sessions`, `refresh_tokens`, `user_logs`
 
 ### Useful Commands
 
 ```bash
-# View logs
-docker-compose logs -f game-app
+# View logs for all services
+docker-compose logs -f
+
+# View logs for specific service
+docker-compose logs -f auth-service
+docker-compose logs -f game-service
+docker-compose logs -f api-gateway
 docker-compose logs -f postgresql
 
 # Stop all services
 docker-compose down
 
-# Stop and remove volumes (deletes data)
+# Stop and remove volumes (deletes all data)
 docker-compose down -v
 
-# Rebuild containers
+# Rebuild specific service
+docker-compose up -d --build auth-service
+
+# Rebuild all containers from scratch
 docker-compose build --no-cache
+docker-compose up -d
 
 # Access PostgreSQL shell
-docker-compose exec postgresql psql -U gameuser -d battlecards
+docker-compose exec postgresql psql -U battlecards_user -d battlecards_db
 
-# Access game container bash
-docker-compose exec game-app bash
+# Access service container bash
+docker-compose exec auth-service bash
+docker-compose exec game-service bash
+
+# Check service health
+curl -k https://localhost:8443/api/auth/health
+curl -k https://localhost:8443/api/cards/health
+curl -k https://localhost:8443/api/games/health
+curl -k https://localhost:8443/api/leaderboard/health
+curl -k https://localhost:8443/api/logs/health
 ```
 
 ## Card Data
 
-The Postgres container is pre-populated with sample cards including:
-- Fire Dragon (Rare Creature)
-- Lightning Bolt (Common Spell) 
-- Healing Potion (Common Spell)
-- Ice Giant (Epic Creature)
-- Shadow Assassin (Uncommon Creature)
-- Shield Wall (Uncommon Spell)
-- Ancient Wizard (Rare Creature)
-- Fireball (Common Spell)
+The PostgreSQL container is pre-populated with 39 battle cards:
+- **Rock Cards**: 13 cards with power values 1-13
+- **Paper Cards**: 13 cards with power values 1-13
+- **Scissors Cards**: 13 cards with power values 1-13
+
+Players build 22-card decks from these cards for battles.
 
 ## Development
 
 ### Local Development Setup
 ```bash
-# Install Python dependencies
+# Install Python dependencies for testing
 pip install -r requirements.txt
 
-# Start only PostgreSQL
+# Start only PostgreSQL for local development
+cd microservices
 docker-compose up -d postgresql
 
-# Run game locally (connects to containerized PostgreSQL)
-export DATABASE_URL="postgresql://gameuser:gamepassword@localhost:5432/battlecards"
-python main.py
+# Run individual service locally (example: auth service)
+cd microservices/auth-service
+export DATABASE_URL="postgresql://battlecards_user:battlecards_password@localhost:5432/battlecards_db"
+export JWT_SECRET_KEY="your-dev-secret-key"
+flask run --port 5001
 ```
 
 ### Environment Variables
 
+Required environment variables (automatically configured in docker-compose.yml):
+
 - `DATABASE_URL`: PostgreSQL connection string
-- `POSTGRES_USER`: PostgreSQL username
+- `JWT_SECRET_KEY`: Secret key for JWT token signing
+- `GAME_HISTORY_KEY`: 32-byte base64 key for game history encryption (auto-generated)
+- `FLASK_ENV`: Flask environment (development/production)
+- `POSTGRES_USER`: PostgreSQL username (battlecards_user)
 - `POSTGRES_PASSWORD`: PostgreSQL password
-- `POSTGRES_DB`: Initial database name
+- `POSTGRES_DB`: Database name (battlecards_db)
+
+**Security Note**: The `GAME_HISTORY_KEY` is automatically generated by `build-and-start.sh` and stored in `.env` (gitignored). Never commit secrets to version control.
 
 ## Troubleshooting
 

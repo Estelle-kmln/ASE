@@ -82,7 +82,17 @@ The tests use unique timestamps to avoid conflicts and validate all response cod
 - `GET /cards?type={type}` - Get cards by type (valid/invalid type)
 - `GET /cards/{cardId}` - Get card by ID (valid/non-existent ID)
 
-**Total: 22 tests** (11 valid input tests, 11 invalid input tests)
+**Total: 96+ tests across all test files**
+
+**Additional Test Coverage:**
+- **Token Refresh Tests** (10+ tests): Access token expiry, refresh token validation, automatic renewal
+- **Session Management Tests** (8+ tests): Concurrent sessions, session tracking, logout from devices
+- **Account Lockout Tests** (6+ tests): Failed login tracking, lockout duration, counter reset
+- **Deck Selection Tests** (10+ tests): Manual selection, random generation, validation
+- **Game Invitation Tests** (8+ tests): Send, accept, decline, cancel invitations
+- **Logging Tests** (12+ tests): Action logging, admin access, log filtering
+- **Security Tests** (15+ tests): Input validation, injection prevention, XSS protection
+- **Complete Game Flow** (8+ tests): End-to-end gameplay with all new features
 
 ### Setup Instructions
 
@@ -97,10 +107,17 @@ The tests use unique timestamps to avoid conflicts and validate all response cod
 
 The collection uses the following variables (pre-configured with correct defaults):
 
-- `game_service_url` - Base URL for Game Service (default: `http://localhost:5003`)
-- `user_service_url` - Base URL for Auth Service (default: `http://localhost:5001`)
-- `card_service_url` - Base URL for Card Service (default: `http://localhost:5002`)
+- `BASE_URL` - Base URL for API Gateway (default: `https://localhost:8443`)
+- `game_service_url` - Game Service via gateway: `https://localhost:8443/api/games`
+- `auth_service_url` - Auth Service via gateway: `https://localhost:8443/api/auth`
+- `card_service_url` - Card Service via gateway: `https://localhost:8443/api/cards`
+- `leaderboard_service_url` - Leaderboard Service via gateway: `https://localhost:8443/api/leaderboard`
+- `logs_service_url` - Logs Service via gateway: `https://localhost:8443/api/logs`
 - `game_id` - Game ID for testing (set dynamically after creating a game)
+- `access_token` - JWT access token (obtained from login)
+- `refresh_token` - JWT refresh token (obtained from login)
+
+**Important**: All requests should go through the Nginx gateway with HTTPS.
 
 **Default values are already configured correctly** in the collection file. If you need to override them:
 
@@ -114,10 +131,15 @@ The collection uses the following variables (pre-configured with correct default
 
 ```bash
 # Override variables via command line if needed
-newman run tests/postman_unit_tests.json \
-  --env-var "game_service_url=http://localhost:5003" \
-  --env-var "user_service_url=http://localhost:5001" \
-  --env-var "card_service_url=http://localhost:5002"
+newman run tests/microservices_postman_collection.json \
+  --env-var "BASE_URL=https://localhost:8443" \
+  --insecure
+
+# Or test specific service
+newman run tests/microservices_postman_collection.json \
+  --folder "Auth Service" \
+  --env-var "BASE_URL=https://localhost:8443" \
+  --insecure
 ```
 
 #### 3. Running Unit Tests
@@ -196,8 +218,11 @@ The same Postman collection can be used for **integration testing** against the 
 - Test service health endpoints:
 
   ```bash
-  curl http://localhost:5001/health
-  curl http://localhost:5002/health
+  curl -k https://localhost:8443/api/auth/health
+  curl -k https://localhost:8443/api/cards/health
+  curl -k https://localhost:8443/api/games/health
+  curl -k https://localhost:8443/api/leaderboard/health
+  curl -k https://localhost:8443/api/logs/health
   curl http://localhost:5003/health
   ```
 

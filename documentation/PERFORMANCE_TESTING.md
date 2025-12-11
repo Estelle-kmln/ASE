@@ -37,44 +37,54 @@ pip install -r locust_requirements.txt
 Start Locust with the default configuration:
 ```bash
 cd tests
-locust -f locustfile.py
+locust -f locustfile.py --host=https://localhost:8443
 ```
 
 Then open your browser to `http://localhost:8089` to access the Locust web UI.
 
+**Note**: All tests should target the Nginx gateway with HTTPS. Locust automatically handles self-signed certificates.
+
 ### Running Specific User Classes
 
-You can test individual services by specifying the user class:
+You can test individual services by specifying the user class. All tests go through the Nginx gateway:
 
 **Test Auth Service only:**
 ```bash
 cd tests
-locust -f locustfile.py --host=http://localhost:5001 AuthServiceUser
+locust -f locustfile.py --host=https://localhost:8443 AuthServiceUser
 ```
 
 **Test Card Service only:**
 ```bash
 cd tests
-locust -f locustfile.py --host=http://localhost:5002 CardServiceUser
+locust -f locustfile.py --host=https://localhost:8443 CardServiceUser
 ```
 
 **Test Game Service only:**
 ```bash
 cd tests
-locust -f locustfile.py --host=http://localhost:5003 GameServiceUser
+locust -f locustfile.py --host=https://localhost:8443 GameServiceUser
 ```
 
 **Test Leaderboard Service only:**
 ```bash
 cd tests
-locust -f locustfile.py --host=http://localhost:5004 LeaderboardServiceUser
+locust -f locustfile.py --host=https://localhost:8443 LeaderboardServiceUser
+```
+
+**Test Logs Service (Admin):**
+```bash
+cd tests
+locust -f locustfile.py --host=https://localhost:8443 LogsServiceUser
 ```
 
 **Test Combined Workflow (all services):**
 ```bash
 cd tests
-locust -f locustfile.py --host=http://localhost:5001 CombinedUser
+locust -f locustfile.py --host=https://localhost:8443 CombinedUser
 ```
+
+**Note**: The locustfile tests all services through the API gateway paths (`/api/auth`, `/api/cards`, `/api/games`, `/api/leaderboard`, `/api/logs`).
 
 ### Headless Mode (No Web UI)
 
@@ -83,10 +93,14 @@ Run tests without the web interface:
 ```bash
 # Run with specific number of users and spawn rate
 cd tests
-locust -f locustfile.py --headless --users 100 --spawn-rate 10 --run-time 5m --host=http://localhost:5001
+locust -f locustfile.py --headless --users 100 --spawn-rate 10 --run-time 5m --host=https://localhost:8443
 
 # Test all services in headless mode
-locust -f locustfile.py --headless --users 50 --spawn-rate 5 --run-time 3m --host=http://localhost:5001 CombinedUser
+locust -f locustfile.py --headless --users 50 --spawn-rate 5 --run-time 3m --host=https://localhost:8443 CombinedUser
+
+# Generate HTML report
+locust -f locustfile.py --headless --users 100 --spawn-rate 10 --run-time 5m \
+  --host=https://localhost:8443 --html=locust_report.html
 ```
 
 ### Command Line Options

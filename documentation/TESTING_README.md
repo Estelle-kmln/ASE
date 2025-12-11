@@ -27,9 +27,11 @@ docker-compose up -d --build
 
 ## Running Tests Locally to Match GitHub Actions
 
+⚠️ **CRITICAL**: Always start with fresh containers when running tests!
+
 To replicate the same clean-slate testing environment that GitHub Actions uses (fresh database, no pre-existing test data):
 
-### Option 1: Fresh Database Reset (Recommended)
+### Option 1: Fresh Database Reset (Recommended - Use This Every Time)
 
 ```bash
 # 1. Stop all services and remove volumes (clears database)
@@ -122,16 +124,26 @@ docker-compose ps
 
 ```bash
 # From project root directory (not microservices folder)
-locust -f tests/locustfile.py
+locust -f tests/locustfile.py --host=https://localhost:8443
 ```
 
 Then open `http://localhost:8089` in your browser to configure and run tests.
 
+**Note**: Locust automatically handles HTTPS connections. The tests will work with self-signed certificates.
+
 **2. Run All Postman API Tests:**
 
 ```bash
-# Run all Postman tests (default URLs are pre-configured)
-newman run tests/postman_unit_tests.json
+# Run all Postman tests with HTTPS (use --insecure for self-signed certificates)
+newman run tests/microservices_postman_collection.json \
+  --env-var "BASE_URL=https://localhost:8443" \
+  --insecure
+
+# With HTML report
+newman run tests/microservices_postman_collection.json \
+  --env-var "BASE_URL=https://localhost:8443" \
+  --insecure \
+  --reporters html --reporter-html-export report.html
 ```
 
 ---
@@ -141,6 +153,22 @@ newman run tests/postman_unit_tests.json
 ### Overview
 
 The project includes comprehensive Python unit tests covering all core game functionality. All tests can be run using a single master test runner script that executes both custom test functions and unittest-based tests.
+
+### Test Files Available
+
+- `test_auth_service.py` - Authentication, registration, profile, token refresh, sessions (45+ tests)
+- `test_account_lockout.py` - Account lockout after failed login attempts
+- `test_token_refresh.py` - Automatic token refresh functionality
+- `test_concurrent_sessions.py` - Concurrent session management (strict mode)
+- `test_game_service.py` - Game logic, invitations, deck selection
+- `test_card_service.py` - Card database and deck generation
+- `test_leaderboard_service.py` - Rankings and statistics
+- `test_deck_selection.py` - Deck selection feature (manual and random)
+- `test_complete_game_flow.py` - End-to-end game workflow
+- `test_security.py` - Security features and input validation
+- `test_password_requirements.py` - Password strength validation
+- `comprehensive_logging_test.py` - User action logging
+- `locustfile.py` - Performance testing with load simulation
 
 ### Prerequisites
 

@@ -2,14 +2,28 @@
 
 A Rock Paper Scissors battle card game implemented using microservices architecture with REST APIs, HTTPS communication, and persistent data storage.
 
+## Key Features
+
+- 🔐 **JWT Authentication** - OAuth2-style tokens with automatic refresh
+- 🔒 **Session Management** - Concurrent session control (strict mode - one session per user)
+- 🛡️ **Account Security** - Lockout after 3 failed login attempts (15-minute timeout)
+- 📝 **Action Logging** - Comprehensive audit trail of all user actions
+- 🎴 **Deck Selection** - Players build custom decks (22 cards) before games start
+- 🎯 **Game Invitations** - Send, accept, decline, or cancel game invitations
+- ⏱️ **Live Timer** - Real-time countdown displayed in frontend
+- 🏆 **Leaderboards** - Player rankings and game history
+- 🔐 **HTTPS/TLS** - Encrypted communication with SSL certificates
+- 🐳 **Dockerized** - Full containerization for easy deployment
+
 ## Architecture
 
-The application is split into four microservices:
+The application is split into five microservices:
 
-1. **Auth Service** (Port 5001) - User authentication and profile management
-2. **Card Service** (Port 5002) - Card database and statistics  
-3. **Game Service** (Port 5003) - Game logic and state management
-4. **Leaderboard Service** (Port 5004) - Game results and rankings
+1. **Auth Service** (Port 5001) - User authentication, profile management, session control, token refresh
+2. **Card Service** (Port 5002) - Card database, deck generation, and statistics  
+3. **Game Service** (Port 5003) - Game logic, state management, invitations, deck selection
+4. **Leaderboard Service** (Port 5004) - Game results, rankings, and player statistics
+5. **Logs Service** (Port 5005) - User action logging and security audit trails
 
 All services communicate through an Nginx API Gateway (Port 8443 for HTTPS, Port 8080 redirects to HTTPS) and use PostgreSQL for data persistence.
 
@@ -34,6 +48,18 @@ cd ASE/microservices
 All dependencies are managed through Docker containers. No local Python installation required.
 
 ### 3. Build and Run the Backend
+
+⚠️ **IMPORTANT - Fresh Start Required:**
+
+If you've run the application before or have existing containers, first remove them:
+```bash
+docker compose down -v
+```
+The `-v` flag removes volumes (database), ensuring fresh initialization. **Always do this**:
+- On first-time setup
+- After database schema changes
+- When troubleshooting issues
+- After switching branches
 
 **Recommended: Use the automated build script** (handles GAME_HISTORY_KEY automatically):
 
@@ -107,10 +133,15 @@ Authorization: Bearer <your_jwt_token>
 
 #### Auth Service (`/api/auth/`)
 - `POST /register` - Register new user
-- `POST /login` - User login
+- `POST /login` - User login (returns access_token and refresh_token)
+- `POST /refresh` - Refresh access token using refresh token
+- `POST /logout` - Logout and invalidate tokens
 - `GET /profile` - Get user profile
 - `PUT /profile` - Update user profile
 - `POST /validate` - Validate JWT token
+- `GET /sessions` - Get user's active sessions
+- `DELETE /sessions/{session_id}` - Logout from specific device
+- `POST /sessions/revoke-all` - Logout from all devices
 
 #### Card Service (`/api/cards/`)
 - `GET /` - Get all cards
@@ -121,14 +152,19 @@ Authorization: Bearer <your_jwt_token>
 - `GET /types` - Get available card types and powers
 
 #### Game Service (`/api/games/`)
-- `POST /` - Create new game
+- `POST /` - Create new game and send invitation
 - `GET /{game_id}` - Get game state
+- `POST /{game_id}/accept-invitation` - Accept game invitation
+- `POST /{game_id}/decline-invitation` - Decline game invitation
+- `POST /{game_id}/cancel-invitation` - Cancel sent invitation
+- `POST /{game_id}/select-deck` - Select deck (manual or random)
 - `GET /{game_id}/hand` - Get player's current hand
-- `POST /{game_id}/draw-hand` - Draw new hand
-- `POST /{game_id}/play-card` - Play a card
+- `POST /{game_id}/draw-hand` - Draw new hand from deck
+- `POST /{game_id}/play-card` - Play a card from hand
 - `POST /{game_id}/resolve-round` - Resolve round after both players play
 - `POST /{game_id}/end` - End game
 - `GET /user/{username}` - Get user's games
+- `GET /pending-invitations` - Get user's pending invitations
 
 #### Leaderboard Service (`/api/leaderboard/`)
 - `GET /` - Get global leaderboard
@@ -136,6 +172,13 @@ Authorization: Bearer <your_jwt_token>
 - `GET /recent-games` - Get recent completed games
 - `GET /top-players` - Get top players by various metrics
 - `GET /statistics` - Get global game statistics
+
+#### Logs Service (`/api/logs/`) - Admin Only
+- `GET /list` - Get paginated list of logs
+- `GET /user/{username}` - Get logs for specific user
+- `GET /action/{action_type}` - Get logs by action type
+- `GET /search` - Search logs with filters
+- `GET /statistics` - Get logging statistics
 
 ## Environment Variables
 
@@ -171,31 +214,43 @@ CARD_SERVICE_URL=http://card-service:5002
 
 ### Testing with Postman
 
-Import the API endpoints into Postman for testing:
+Import the API endpoints into Postman for testing. **Important**: Disable SSL certificate verification in Postman settings for self-signed certificates.
 
 1. **Register User:**
    ```
    POST https://localhost:8443/api/auth/register
-   Body: {"username": "testuser", "password": "testpass"}
+   Body: {"username": "testuser", "password": "testpass123"}
    ```
 
-2. **Login:**
+2. **Login (receives access_token and refresh_token):**
    ```
    POST https://localhost:8443/api/auth/login
-   Body: {"username": "testuser", "password": "testpass"}
+   Body: {"username": "testuser", "password": "testpass123"}
    ```
    
-3. **Get Cards:**
+3. **Refresh Token:**
    ```
-   GET https://localhost:8443/api/cards/
-   Headers: Authorization: Bearer <token>
+   POST https://localhost:8443/api/auth/refresh
+   Headers: Authorization: Bearer <refresh_token>
    ```
 
-4. **Create Game:**
+4. **Get Cards:**
+   ```
+   GET https://localhost:8443/api/cards/
+   Headers: Authorization: Bearer <access_token>
+   ```
+
+5. **Create Game with Invitation:**
    ```
    POST https://localhost:8443/api/games/
-   Headers: Authorization: Bearer <token>
+   Headers: Authorization: Bearer <access_token>
    Body: {"player2_name": "opponent"}
+   ```
+
+6. **View Logs (Admin Only):**
+   ```
+   GET https://localhost:8443/api/logs/list?page=0&size=20
+   Headers: Authorization: Bearer <admin_access_token>
    ```
 
 ### Local Development
