@@ -86,7 +86,7 @@ class AuthServiceUser(HttpUser):
                 name="/api/auth/validate"
             )
     
-    @task(1)
+    @task(3)
     def refresh_token(self):
         """Test token refresh endpoint"""
         if self.refresh_token:
@@ -98,14 +98,18 @@ class AuthServiceUser(HttpUser):
             ) as response:
                 if response.status_code == 200:
                     response.success()
-                    # Update token with new one
+                    # Update token with new one (but keep refresh token)
                     new_token = response.json().get("access_token")
                     if new_token:
                         self.token = new_token
+                elif response.status_code == 401:
+                    # Token was revoked - re-authenticate to get a new token
+                    response.success()
+                    self._reauth()
     
     @task(1)
-    def logout(self):
-        """Test logout endpoint"""
+    def logout_and_reauth(self):
+        """Test logout endpoint, then re-authenticate"""
         if self.token and self.refresh_token:
             with self.client.post(
                 "/api/auth/logout",
@@ -116,6 +120,43 @@ class AuthServiceUser(HttpUser):
             ) as response:
                 if response.status_code in [200, 404]:
                     response.success()
+                    # After logout, re-authenticate to continue testing
+                    self._reauth()
+    
+    def _reauth(self):
+        """Re-authenticate user to get new tokens"""
+        with self.client.post(
+            "/api/auth/login",
+            json={"username": self.username, "password": self.password},
+            catch_response=True,
+            name="/api/auth/login [reauth]"
+        ) as response:
+            if response.status_code == 200:
+                response.success()
+                self.token = response.json().get("access_token")
+                self.refresh_token = response.json().get("refresh_token")
+            elif response.status_code == 409:
+                # Concurrent session - force logout first
+                self._force_logout_and_login()
+    
+    def _force_logout_and_login(self):
+        """Force logout all sessions and login again"""
+        self.client.post(
+            "/api/auth/force-logout",
+            json={"username": self.username, "password": self.password},
+            name="/api/auth/force-logout [reauth]"
+        )
+        # Now login again
+        with self.client.post(
+            "/api/auth/login",
+            json={"username": self.username, "password": self.password},
+            catch_response=True,
+            name="/api/auth/login [after force]"
+        ) as response:
+            if response.status_code == 200:
+                response.success()
+                self.token = response.json().get("access_token")
+                self.refresh_token = response.json().get("refresh_token")
     
     @task(1)
     def get_sessions(self):
