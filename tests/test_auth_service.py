@@ -579,6 +579,432 @@ class TestAuthServiceEdgeCases(unittest.TestCase):
         self.assertIn(response.status_code, [201, 400, 500])
 
 
+class TestAuthServiceRefreshToken(unittest.TestCase):
+    """Test cases for token refresh endpoint."""
+
+    def setUp(self):
+        """Set up test environment with a registered user."""
+        self.unique_id = int(time.time() * 1000)
+        self.test_username = f"refreshuser_{self.unique_id}"
+        self.test_password = "SecurePass123!"
+
+        # Register and get tokens
+        response = session.post(
+            f"{BASE_URL}/api/auth/register",
+            json={
+                "username": self.test_username,
+                "password": self.test_password,
+            },
+        )
+        self.access_token = response.json()["access_token"]
+        self.refresh_token = response.json()["refresh_token"]
+
+    def test_refresh_token_success(self):
+        """Test successful token refresh with valid refresh token."""
+        response = session.post(
+            f"{BASE_URL}/api/auth/refresh",
+            json={"refresh_token": self.refresh_token},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("access_token", data)
+        self.assertIn("token_type", data)
+        self.assertEqual(data["token_type"], "bearer")
+        self.assertIn("expires_in", data)
+        self.assertIsInstance(data["expires_in"], int)
+        self.assertGreater(data["expires_in"], 0)
+
+    def test_refresh_token_missing(self):
+        """Test token refresh fails without refresh token."""
+        response = session.post(f"{BASE_URL}/api/auth/refresh", json={})
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("error", data)
+        self.assertIn("Refresh token is required", data["error"])
+
+    def test_refresh_token_invalid(self):
+        """Test token refresh fails with invalid refresh token."""
+        response = session.post(
+            f"{BASE_URL}/api/auth/refresh",
+            json={"refresh_token": "invalid_refresh_token_xyz"},
+        )
+
+        self.assertEqual(response.status_code, 401)
+        data = response.json()
+        self.assertIn("error", data)
+        self.assertIn("Invalid or expired", data["error"])
+
+    def test_refresh_token_empty_string(self):
+        """Test token refresh fails with empty string refresh token."""
+        response = session.post(
+            f"{BASE_URL}/api/auth/refresh", json={"refresh_token": ""}
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("error", data)
+
+
+class TestAuthServiceLogout(unittest.TestCase):
+    """Test cases for logout endpoint."""
+
+    def setUp(self):
+        """Set up test environment with a registered user."""
+        self.unique_id = int(time.time() * 1000)
+        self.test_username = f"logoutuser_{self.unique_id}"
+        self.test_password = "SecurePass123!"
+
+        # Register and get tokens
+        response = session.post(
+            f"{BASE_URL}/api/auth/register",
+            json={
+                "username": self.test_username,
+                "password": self.test_password,
+            },
+        )
+        self.access_token = response.json()["access_token"]
+        self.refresh_token = response.json()["refresh_token"]
+        self.headers = {"Authorization": f"Bearer {self.access_token}"}
+
+    def test_logout_success_with_refresh_token(self):
+        """Test successful logout with specific refresh token."""
+        response = session.post(
+            f"{BASE_URL}/api/auth/logout",
+            json={"refresh_token": self.refresh_token},
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("message", data)
+        self.assertIn("successfully", data["message"].lower())
+
+    def test_logout_success_without_refresh_token(self):
+        """Test successful logout without specific refresh token (revokes all)."""
+        response = session.post(
+            f"{BASE_URL}/api/auth/logout", json={}, headers=self.headers
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("message", data)
+        self.assertIn("successfully", data["message"].lower())
+
+    def test_logout_no_token(self):
+        """Test logout fails without authentication token."""
+        response = session.post(f"{BASE_URL}/api/auth/logout", json={})
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_logout_invalid_token(self):
+        """Test logout fails with invalid authentication token."""
+        invalid_headers = {"Authorization": "Bearer invalid_token_xyz"}
+        response = session.post(
+            f"{BASE_URL}/api/auth/logout", json={}, headers=invalid_headers
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+
+class TestAuthServiceForceLogout(unittest.TestCase):
+    """Test cases for force logout endpoint."""
+
+    def setUp(self):
+        """Set up test environment with a registered user."""
+        self.unique_id = int(time.time() * 1000)
+        self.test_username = f"forcelogoutuser_{self.unique_id}"
+        self.test_password = "SecurePass123!"
+
+        # Register user
+        session.post(
+            f"{BASE_URL}/api/auth/register",
+            json={
+                "username": self.test_username,
+                "password": self.test_password,
+            },
+        )
+
+    def test_force_logout_success(self):
+        """Test successful force logout with valid credentials."""
+        response = session.post(
+            f"{BASE_URL}/api/auth/force-logout",
+            json={
+                "username": self.test_username,
+                "password": self.test_password,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("message", data)
+        self.assertIn("terminated", data["message"].lower())
+
+    def test_force_logout_invalid_password(self):
+        """Test force logout fails with invalid password."""
+        response = session.post(
+            f"{BASE_URL}/api/auth/force-logout",
+            json={
+                "username": self.test_username,
+                "password": "WrongPassword123!",
+            },
+        )
+
+        self.assertEqual(response.status_code, 401)
+        data = response.json()
+        self.assertIn("error", data)
+        self.assertIn("Invalid", data["error"])
+
+    def test_force_logout_missing_username(self):
+        """Test force logout fails without username."""
+        response = session.post(
+            f"{BASE_URL}/api/auth/force-logout",
+            json={"password": self.test_password},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("error", data)
+
+    def test_force_logout_missing_password(self):
+        """Test force logout fails without password."""
+        response = session.post(
+            f"{BASE_URL}/api/auth/force-logout",
+            json={"username": self.test_username},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("error", data)
+
+    def test_force_logout_nonexistent_user(self):
+        """Test force logout fails with non-existent username."""
+        response = session.post(
+            f"{BASE_URL}/api/auth/force-logout",
+            json={
+                "username": "nonexistent_user_99999",
+                "password": self.test_password,
+            },
+        )
+
+        self.assertEqual(response.status_code, 401)
+        data = response.json()
+        self.assertIn("error", data)
+
+
+class TestAuthServiceSessions(unittest.TestCase):
+    """Test cases for session management endpoints."""
+
+    def setUp(self):
+        """Set up test environment with a registered user."""
+        self.unique_id = int(time.time() * 1000)
+        self.test_username = f"sessionuser_{self.unique_id}"
+        self.test_password = "SecurePass123!"
+
+        # Register and get tokens
+        response = session.post(
+            f"{BASE_URL}/api/auth/register",
+            json={
+                "username": self.test_username,
+                "password": self.test_password,
+            },
+        )
+        self.access_token = response.json()["access_token"]
+        self.headers = {"Authorization": f"Bearer {self.access_token}"}
+
+    def test_get_sessions_success(self):
+        """Test successfully retrieving active sessions."""
+        response = session.get(
+            f"{BASE_URL}/api/auth/sessions", headers=self.headers
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("sessions", data)
+        self.assertIn("total", data)
+        self.assertIsInstance(data["sessions"], list)
+        self.assertGreaterEqual(data["total"], 1)
+
+    def test_get_sessions_no_token(self):
+        """Test getting sessions fails without authentication token."""
+        response = session.get(f"{BASE_URL}/api/auth/sessions")
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_revoke_specific_session_success(self):
+        """Test successfully revoking a specific session."""
+        # First get sessions to get a session ID
+        get_response = session.get(
+            f"{BASE_URL}/api/auth/sessions", headers=self.headers
+        )
+        sessions = get_response.json()["sessions"]
+
+        if len(sessions) > 0:
+            session_id = sessions[0]["id"]
+
+            # Revoke the session
+            response = session.delete(
+                f"{BASE_URL}/api/auth/sessions/{session_id}",
+                headers=self.headers,
+            )
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertIn("message", data)
+            self.assertIn("revoked", data["message"].lower())
+
+    def test_revoke_specific_session_not_found(self):
+        """Test revoking non-existent session fails."""
+        response = session.delete(
+            f"{BASE_URL}/api/auth/sessions/999999", headers=self.headers
+        )
+
+        self.assertEqual(response.status_code, 404)
+        data = response.json()
+        self.assertIn("error", data)
+
+    def test_revoke_specific_session_no_token(self):
+        """Test revoking session fails without authentication token."""
+        response = session.delete(f"{BASE_URL}/api/auth/sessions/1")
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_revoke_all_sessions_success(self):
+        """Test successfully revoking all sessions."""
+        # Create a fresh session to avoid token conflicts from previous tests
+        unique_id = int(time.time() * 1000)
+        test_username = f"revoke_all_user_{unique_id}"
+        test_password = "SecurePass123!"
+        
+        # Register a new user and get fresh tokens
+        reg_response = session.post(
+            f"{BASE_URL}/api/auth/register",
+            json={
+                "username": test_username,
+                "password": test_password,
+            },
+        )
+        fresh_token = reg_response.json()["access_token"]
+        fresh_headers = {"Authorization": f"Bearer {fresh_token}"}
+        
+        response = session.post(
+            f"{BASE_URL}/api/auth/sessions/revoke-all",
+            json={},
+            headers=fresh_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("message", data)
+        self.assertIn("revoked", data["message"].lower())
+
+    def test_revoke_all_sessions_no_token(self):
+        """Test revoking all sessions fails without authentication token."""
+        response = session.post(f"{BASE_URL}/api/auth/sessions/revoke-all")
+
+        self.assertEqual(response.status_code, 401)
+
+
+class TestAuthServiceAdmin(unittest.TestCase):
+    """Test cases for admin endpoints."""
+
+    def setUp(self):
+        """Set up test environment with an admin user."""
+        # Note: This assumes you have a way to create an admin user
+        # You may need to manually create one in the database or adjust this
+        self.unique_id = int(time.time() * 1000)
+        self.admin_username = f"admin_{self.unique_id}"
+        self.admin_password = "AdminPass123!"
+        self.regular_username = f"regularuser_{self.unique_id}"
+        self.regular_password = "RegularPass123!"
+
+        # Register a regular user
+        response = session.post(
+            f"{BASE_URL}/api/auth/register",
+            json={
+                "username": self.regular_username,
+                "password": self.regular_password,
+            },
+        )
+        self.regular_token = response.json()["access_token"]
+        self.regular_headers = {
+            "Authorization": f"Bearer {self.regular_token}"
+        }
+
+        # For admin tests, we'll use the regular user token
+        # In a real scenario, you'd need to have an actual admin user
+
+    def test_list_users_no_token(self):
+        """Test listing users fails without authentication token."""
+        response = session.get(f"{BASE_URL}/api/admin/users")
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_list_users_non_admin(self):
+        """Test listing users fails with non-admin token."""
+        response = session.get(
+            f"{BASE_URL}/api/admin/users", headers=self.regular_headers
+        )
+
+        # Should return 403 Forbidden for non-admin users
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertIn("error", data)
+
+    def test_search_users_no_token(self):
+        """Test searching users fails without authentication token."""
+        response = session.get(
+            f"{BASE_URL}/api/admin/users/search?query=test"
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_search_users_non_admin(self):
+        """Test searching users fails with non-admin token."""
+        response = session.get(
+            f"{BASE_URL}/api/admin/users/search?query=test",
+            headers=self.regular_headers,
+        )
+
+        # Should return 403 Forbidden for non-admin users
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertIn("error", data)
+
+    def test_list_roles_no_token(self):
+        """Test listing roles fails without authentication token."""
+        response = session.get(f"{BASE_URL}/api/admin/roles")
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_list_roles_non_admin(self):
+        """Test listing roles fails with non-admin token."""
+        response = session.get(
+            f"{BASE_URL}/api/admin/roles", headers=self.regular_headers
+        )
+
+        # Should return 403 Forbidden for non-admin users
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertIn("error", data)
+
+
+class TestAuthServiceHealth(unittest.TestCase):
+    """Test cases for health check endpoint."""
+
+    def test_health_check_success(self):
+        """Test health check endpoint returns healthy status."""
+        response = session.get(f"{BASE_URL}/api/auth/health")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("status", data)
+        self.assertEqual(data["status"], "healthy")
+        self.assertIn("service", data)
+        self.assertEqual(data["service"], "auth-service")
+
+
 if __name__ == "__main__":
     # Run tests with verbose output
     unittest.main(verbosity=2)

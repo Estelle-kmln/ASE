@@ -32,32 +32,85 @@
             <div style="text-align: left; max-width: 600px; margin: 2rem auto; line-height: 1.8;">
                 <h3>How to Play:</h3>
                 <ol>
-                    <li><strong>Start a Game:</strong> Click "LAUNCH A GAME!" to create a new game and share the code with a friend, or click "JOIN A GAME!" to enter a code.</li>
-                    
-                    <li><strong>Build Your Deck:</strong> Choose 10 cards from Rock, Paper, and Scissors. You can select manually or get a random deck. Powers are automatically assigned!</li>
-                    
-                    <li><strong>Play Cards:</strong> Each turn, select a card from your hand and play it against your opponent's card.</li>
-                    
-                    <li><strong>Winning Rounds:</strong>
+                    <li><strong>Starting a Game:</strong> 
                         <ul>
-                            <li>Rock beats Scissors</li>
-                            <li>Scissors beats Paper</li>
-                            <li>Paper beats Rock</li>
-                            <li>If both players use the same type, the card with higher power wins!</li>
+                            <li>Click the "PLAY" button on the home page</li>
+                            <li>Enter the opponent's username to create a game invitation</li>
+                            <li>Your opponent will receive the invitation and can accept it</li>
+                            <li>Once accepted, both players proceed to deck selection</li>
                         </ul>
                     </li>
                     
-                    <li><strong>Scoring:</strong> Win a round to earn points! The player with the most points after all cards are played wins the game.</li>
+                    <li><strong>Building Your Deck:</strong> 
+                        <ul>
+                            <li>You must select exactly <strong>22 cards</strong> from Rock, Paper, and Scissors to form your deck</li>
+                            <li><strong>Random Deck:</strong> Click "Random Deck" to automatically generate a random selection of 22 cards</li>
+                            <li><strong>Manual Selection:</strong> Use the +/- buttons to choose how many cards of each type you want (Rock, Paper, Scissors). You can choose any combination that totals exactly 22 cards</li>
+                            <li>Power values (1-13) are automatically and randomly assigned to your cards from the card database</li>
+                            <li>Once your deck is complete, confirm your selection to proceed</li>
+                            <li>The game begins when <strong>both players</strong> have selected their decks</li>
+                        </ul>
+                    </li>
                     
-                    <li><strong>Victory:</strong> May the best strategist win! 👑</li>
+                    <li><strong>Each Turn:</strong>
+                        <ul>
+                            <li><strong>Drawing Cards:</strong> Click the "Draw Cards" button to draw <strong>3 cards</strong> from your deck to your hand. You can only draw once per turn</li>
+                            <li><strong>Viewing Card Details:</strong> Each card in your hand displays its type (Rock 🪨/Paper 📄/Scissors ✂️) and power value (1-10)</li>
+                            <li><strong>Playing a Card:</strong> Select one card from your hand and click "Play Card". The <strong>2 unplayed cards are permanently discarded</strong> from the game</li>
+                            <li>Both players can draw and play independently - you don't have to wait for your opponent</li>
+                            <li>The round <strong>automatically resolves</strong> when both players have played their cards</li>
+                        </ul>
+                    </li>
+                    
+                    <li><strong>Winning Rounds:</strong>
+                        <ul>
+                            <li><strong>Rock beats Scissors</strong> 🪨 > ✂️</li>
+                            <li><strong>Scissors beats Paper</strong> ✂️ > 📄</li>
+                            <li><strong>Paper beats Rock</strong> 📄 > 🪨</li>
+                            <li><strong>Same Type:</strong> If both players play the same card type (e.g., both play Rock), the card with the <strong>higher power value</strong> wins the round</li>
+                            <li><strong>Perfect Tie:</strong> If both cards have the same type AND the same power value, the round is a tie and <strong>no points are awarded to either player</strong></li>
+                        </ul>
+                    </li>
+                    
+                    <li><strong>Game Length - 7 Rounds:</strong>
+                        <ul>
+                            <li>A game lasts exactly <strong>7 rounds</strong> (21 cards played from each player's 22-card deck)</li>
+                            <li>Win a round to earn 1 point (tied rounds award 0 points)</li>
+                            <li>The player with the most points after 7 rounds wins the game</li>
+                            <li>After 7 rounds, each player has 1 card remaining (their 22nd card)</li>
+                        </ul>
+                    </li>
+                    
+                    <li><strong>Tiebreaker - The 22nd Card:</strong>
+                        <ul>
+                            <li><strong>What happens in a tie:</strong> If both players have the same score after 7 rounds, you'll be prompted: "Do you want to take your chance and play your last card?"</li>
+                            <li><strong>Both players must agree:</strong> 
+                                <ul>
+                                    <li>If <strong>both players say YES</strong>: You each play your 22nd card, and the winner of this final round wins the game</li>
+                                    <li>If <strong>at least one player says NO</strong>: The game ends as an official tie with no winner</li>
+                                </ul>
+                            </li>
+                            <li><strong>Tiebreaker tie:</strong> If both 22nd cards are identical (same type and power), the game ends as a tie</li>
+                            <li><strong>Note:</strong> Unlike regular rounds, there's only ONE tiebreaker opportunity with the remaining card - no continuous rounds</li>
+                        </ul>
+                    </li>
+                    
+                    <li><strong>Victory:</strong> The first player to have more points than their opponent after 7 rounds (or after the optional tiebreaker) wins the game! 👑</li>
                 </ol>
                 
-                <h3 style="margin-top: 2rem;">Tips:</h3>
+                <h3 style="margin-top: 2rem;">Strategy Tips:</h3>
                 <ul>
-                    <li>Pay attention to your opponent's playing patterns</li>
-                    <li>Save high-power cards for crucial moments</li>
-                    <li>Balance your deck composition for better versatility</li>
+                    <li>Watch which card types your opponent has already played to anticipate their remaining deck</li>
+                    <li>Save high-power cards for crucial later rounds</li>
+                    <li>Each round, 2 cards are discarded - choose your played card wisely!</li>
+                    <li>Remember: winning 4 out of 7 rounds guarantees victory without needing a tiebreaker</li>
+                    <li>Your 22nd card is your last resort - consider its power when deciding to accept a tiebreaker</li>
                 </ul>
+                
+                <h3 style="margin-top: 2rem;">Quick Summary:</h3>
+                <p style="background: #ecf0f1; padding: 15px; border-radius: 8px; margin-top: 1rem;">
+                    <strong>22 cards</strong> → <strong>7 rounds</strong> (3 cards drawn, 1 played, 2 discarded per round) → <strong>1 card left</strong> for potential tiebreaker
+                </p>
             </div>
         </div>
     </div>

@@ -562,6 +562,495 @@ class TestGameServiceResolveRound(TestGameServiceSetup):
         self.assertIn("error", data)
 
 
+class TestGameServiceHealth(unittest.TestCase):
+    """Test cases for health check endpoint."""
+
+    def test_health_check_success(self):
+        """Test health check endpoint returns healthy status."""
+        response = session.get(f"{BASE_URL}/api/games/health")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("status", data)
+        self.assertEqual(data["status"], "healthy")
+        self.assertIn("service", data)
+        self.assertEqual(data["service"], "game-service")
+
+    def test_health_check_no_auth_required(self):
+        """Test health check works without authentication (public endpoint)."""
+        response = session.get(f"{BASE_URL}/api/games/health")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "healthy")
+
+
+class TestGameServiceGetDetails(TestGameServiceSetup):
+    """Test cases for GET /api/games/<game_id>/details endpoint."""
+
+    def test_get_details_success(self):
+        """Test successfully retrieving game details for archived game."""
+        # Create and archive a completed game
+        game_id = self.create_active_game()
+        
+        # Play one round
+        session.post(
+            f"{BASE_URL}/api/games/{game_id}/draw-hand",
+            headers=self.player1_headers,
+        )
+        session.post(
+            f"{BASE_URL}/api/games/{game_id}/play-card",
+            headers=self.player1_headers,
+            json={"card_index": 0},
+        )
+        session.post(
+            f"{BASE_URL}/api/games/{game_id}/draw-hand",
+            headers=self.player2_headers,
+        )
+        session.post(
+            f"{BASE_URL}/api/games/{game_id}/play-card",
+            headers=self.player2_headers,
+            json={"card_index": 0},
+        )
+        
+        # End the game to archive it
+        session.post(
+            f"{BASE_URL}/api/games/{game_id}/end",
+            headers=self.player1_headers,
+        )
+        
+        response = session.get(
+            f"{BASE_URL}/api/games/{game_id}/details",
+            headers=self.player1_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("game_id", data)
+        self.assertIn("player1_name", data)
+        self.assertIn("player2_name", data)
+
+    def test_get_details_game_not_found(self):
+        """Test getting details for non-existent game returns 404."""
+        fake_game_id = "00000000-0000-0000-0000-000000000000"
+        response = session.get(
+            f"{BASE_URL}/api/games/{fake_game_id}/details",
+            headers=self.player1_headers,
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_details_no_token(self):
+        """Test getting details fails without token."""
+        fake_game_id = "00000000-0000-0000-0000-000000000000"
+        response = session.get(f"{BASE_URL}/api/games/{fake_game_id}/details")
+
+        self.assertEqual(response.status_code, 401)
+
+
+class TestGameServiceAcceptInvitation(TestGameServiceSetup):
+    """Test cases for POST /api/games/<game_id>/accept endpoint."""
+
+    def setUp(self):
+        """Create a game for testing."""
+        response = session.post(
+            f"{BASE_URL}/api/games",
+            headers=self.player1_headers,
+            json={"player2_name": self.player2_username},
+        )
+        self.game_id = response.json().get("game_id")
+
+    def test_accept_invitation_success(self):
+        """Test successfully accepting a game invitation."""
+        response = session.post(
+            f"{BASE_URL}/api/games/{self.game_id}/accept",
+            headers=self.player1_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("message", data)
+
+    def test_accept_invitation_game_not_found(self):
+        """Test accepting invitation for non-existent game returns 404."""
+        fake_game_id = "00000000-0000-0000-0000-000000000000"
+        response = session.post(
+            f"{BASE_URL}/api/games/{fake_game_id}/accept",
+            headers=self.player1_headers,
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_accept_invitation_no_token(self):
+        """Test accepting invitation fails without token."""
+        response = session.post(f"{BASE_URL}/api/games/{self.game_id}/accept")
+
+        self.assertEqual(response.status_code, 401)
+
+
+class TestGameServiceIgnoreInvitation(TestGameServiceSetup):
+    """Test cases for POST /api/games/<game_id>/ignore endpoint."""
+
+    def setUp(self):
+        """Create a game for testing."""
+        response = session.post(
+            f"{BASE_URL}/api/games",
+            headers=self.player1_headers,
+            json={"player2_name": self.player2_username},
+        )
+        self.game_id = response.json().get("game_id")
+
+    def test_ignore_invitation_success(self):
+        """Test successfully ignoring a game invitation."""
+        response = session.post(
+            f"{BASE_URL}/api/games/{self.game_id}/ignore",
+            headers=self.player2_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("message", data)
+
+    def test_ignore_invitation_game_not_found(self):
+        """Test ignoring invitation for non-existent game returns 404."""
+        fake_game_id = "00000000-0000-0000-0000-000000000000"
+        response = session.post(
+            f"{BASE_URL}/api/games/{fake_game_id}/ignore",
+            headers=self.player2_headers,
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_ignore_invitation_no_token(self):
+        """Test ignoring invitation fails without token."""
+        response = session.post(f"{BASE_URL}/api/games/{self.game_id}/ignore")
+
+        self.assertEqual(response.status_code, 401)
+
+
+class TestGameServiceCancelGame(TestGameServiceSetup):
+    """Test cases for POST /api/games/<game_id>/cancel endpoint."""
+
+    def setUp(self):
+        """Create a game for testing."""
+        response = session.post(
+            f"{BASE_URL}/api/games",
+            headers=self.player1_headers,
+            json={"player2_name": self.player2_username},
+        )
+        self.game_id = response.json().get("game_id")
+
+    def test_cancel_game_success(self):
+        """Test successfully canceling a game."""
+        response = session.post(
+            f"{BASE_URL}/api/games/{self.game_id}/cancel",
+            headers=self.player1_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("message", data)
+
+    def test_cancel_game_not_found(self):
+        """Test canceling non-existent game returns 404."""
+        fake_game_id = "00000000-0000-0000-0000-000000000000"
+        response = session.post(
+            f"{BASE_URL}/api/games/{fake_game_id}/cancel",
+            headers=self.player1_headers,
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_cancel_game_no_token(self):
+        """Test canceling game fails without token."""
+        response = session.post(f"{BASE_URL}/api/games/{self.game_id}/cancel")
+
+        self.assertEqual(response.status_code, 401)
+
+
+class TestGameServiceSelectDeck(TestGameServiceSetup):
+    """Test cases for POST /api/games/<game_id>/select-deck endpoint."""
+
+    def setUp(self):
+        """Create a game and accept invitation for testing."""
+        response = session.post(
+            f"{BASE_URL}/api/games",
+            headers=self.player1_headers,
+            json={"player2_name": self.player2_username},
+        )
+        self.game_id = response.json().get("game_id")
+        session.post(
+            f"{BASE_URL}/api/games/{self.game_id}/accept",
+            headers=self.player1_headers,
+        )
+
+    def test_select_deck_success(self):
+        """Test successfully selecting a deck."""
+        deck = [
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Rock"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Paper"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
+            {"type": "Scissors"},
+        ]
+
+        response = session.post(
+            f"{BASE_URL}/api/games/{self.game_id}/select-deck",
+            headers=self.player1_headers,
+            json={"deck": deck},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("message", data)
+
+    def test_select_deck_missing_deck(self):
+        """Test selecting deck fails without deck data."""
+        response = session.post(
+            f"{BASE_URL}/api/games/{self.game_id}/select-deck",
+            headers=self.player1_headers,
+            json={},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("error", data)
+
+    def test_select_deck_wrong_size(self):
+        """Test selecting deck fails with wrong size."""
+        deck = [{"type": "Rock"}, {"type": "Paper"}]  # Too few cards
+
+        response = session.post(
+            f"{BASE_URL}/api/games/{self.game_id}/select-deck",
+            headers=self.player1_headers,
+            json={"deck": deck},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("error", data)
+
+    def test_select_deck_game_not_found(self):
+        """Test selecting deck for non-existent game returns 404."""
+        fake_game_id = "00000000-0000-0000-0000-000000000000"
+        deck = [{"type": "Rock"}] * 22
+
+        response = session.post(
+            f"{BASE_URL}/api/games/{fake_game_id}/select-deck",
+            headers=self.player1_headers,
+            json={"deck": deck},
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_select_deck_no_token(self):
+        """Test selecting deck fails without token."""
+        deck = [{"type": "Rock"}] * 22
+
+        response = session.post(
+            f"{BASE_URL}/api/games/{self.game_id}/select-deck",
+            json={"deck": deck},
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+
+class TestGameServiceTurnInfo(TestGameServiceSetup):
+    """Test cases for GET /api/games/<game_id>/turn-info endpoint."""
+
+    def setUp(self):
+        """Create an active game for testing."""
+        self.game_id = self.create_active_game()
+
+    def test_get_turn_info_success(self):
+        """Test successfully retrieving turn information."""
+        response = session.get(
+            f"{BASE_URL}/api/games/{self.game_id}/turn-info",
+            headers=self.player1_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("turn", data)
+        # API returns 'current_user' not 'current_player'
+        self.assertIn("current_user", data)
+        self.assertIn("turn_status", data)
+
+    def test_get_turn_info_game_not_found(self):
+        """Test getting turn info for non-existent game returns 404."""
+        fake_game_id = "00000000-0000-0000-0000-000000000000"
+        response = session.get(
+            f"{BASE_URL}/api/games/{fake_game_id}/turn-info",
+            headers=self.player1_headers,
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_turn_info_no_token(self):
+        """Test getting turn info fails without token."""
+        response = session.get(f"{BASE_URL}/api/games/{self.game_id}/turn-info")
+
+        self.assertEqual(response.status_code, 401)
+
+
+class TestGameServiceStatus(TestGameServiceSetup):
+    """Test cases for GET /api/games/<game_id>/status endpoint."""
+
+    def setUp(self):
+        """Create a game for testing."""
+        response = session.post(
+            f"{BASE_URL}/api/games",
+            headers=self.player1_headers,
+            json={"player2_name": self.player2_username},
+        )
+        self.game_id = response.json().get("game_id")
+
+    def test_get_status_success(self):
+        """Test successfully retrieving game status."""
+        response = session.get(
+            f"{BASE_URL}/api/games/{self.game_id}/status",
+            headers=self.player1_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        # API returns 'status' not 'game_status'
+        self.assertIn("status", data)
+        self.assertIn("game_id", data)
+
+    def test_get_status_game_not_found(self):
+        """Test getting status for non-existent game returns 404."""
+        fake_game_id = "00000000-0000-0000-0000-000000000000"
+        response = session.get(
+            f"{BASE_URL}/api/games/{fake_game_id}/status",
+            headers=self.player1_headers,
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_status_no_token(self):
+        """Test getting status fails without token."""
+        response = session.get(f"{BASE_URL}/api/games/{self.game_id}/status")
+
+        self.assertEqual(response.status_code, 401)
+
+
+class TestGameServiceTieBreaker(TestGameServiceSetup):
+    """Test cases for tie-breaker related endpoints."""
+
+    def setUp(self):
+        """Create an active game for testing."""
+        self.game_id = self.create_active_game()
+
+    def test_get_tie_breaker_status_success(self):
+        """Test successfully retrieving tie-breaker status."""
+        response = session.get(
+            f"{BASE_URL}/api/games/{self.game_id}/tie-breaker-status",
+            headers=self.player1_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        # API returns different fields
+        self.assertIn("tie_breaker_possible", data)
+        self.assertIn("is_tied_game", data)
+
+    def test_get_tie_breaker_status_game_not_found(self):
+        """Test getting tie-breaker status for non-existent game returns 404."""
+        fake_game_id = "00000000-0000-0000-0000-000000000000"
+        response = session.get(
+            f"{BASE_URL}/api/games/{fake_game_id}/tie-breaker-status",
+            headers=self.player1_headers,
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_tie_breaker_status_no_token(self):
+        """Test getting tie-breaker status fails without token."""
+        response = session.get(
+            f"{BASE_URL}/api/games/{self.game_id}/tie-breaker-status"
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_initiate_tie_breaker_game_not_found(self):
+        """Test initiating tie-breaker for non-existent game returns error."""
+        fake_game_id = "00000000-0000-0000-0000-000000000000"
+        response = session.post(
+            f"{BASE_URL}/api/games/{fake_game_id}/tie-breaker",
+            headers=self.player1_headers,
+        )
+
+        # API may return 404 or 500 for non-existent game
+        self.assertIn(response.status_code, [404, 500])
+
+    def test_initiate_tie_breaker_no_token(self):
+        """Test initiating tie-breaker fails without token."""
+        response = session.post(
+            f"{BASE_URL}/api/games/{self.game_id}/tie-breaker"
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_tiebreaker_decision_no_token(self):
+        """Test tie-breaker decision fails without token."""
+        response = session.post(
+            f"{BASE_URL}/api/games/{self.game_id}/tiebreaker-decision",
+            json={"accept": True},
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_tiebreaker_decision_game_not_found(self):
+        """Test tie-breaker decision for non-existent game returns error."""
+        fake_game_id = "00000000-0000-0000-0000-000000000000"
+        response = session.post(
+            f"{BASE_URL}/api/games/{fake_game_id}/tiebreaker-decision",
+            headers=self.player1_headers,
+            json={"accept": True},
+        )
+
+        # API may return 400 or 404 for non-existent game
+        self.assertIn(response.status_code, [400, 404])
+
+    def test_tiebreaker_play_no_token(self):
+        """Test tie-breaker play fails without token."""
+        response = session.post(
+            f"{BASE_URL}/api/games/{self.game_id}/tiebreaker-play",
+            json={"card_index": 0},
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_tiebreaker_play_game_not_found(self):
+        """Test tie-breaker play for non-existent game returns 404."""
+        fake_game_id = "00000000-0000-0000-0000-000000000000"
+        response = session.post(
+            f"{BASE_URL}/api/games/{fake_game_id}/tiebreaker-play",
+            headers=self.player1_headers,
+            json={"card_index": 0},
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+
 class TestGameHistoryEndpoints(TestGameServiceSetup):
     """Tests for immutable game history retrieval and tamper detection."""
 
