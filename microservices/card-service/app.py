@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 import requests
 
 # Add utils directory to path for input sanitizer
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "utils"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "utils"))
 from input_sanitizer import (
     InputSanitizer,
     SecurityMiddleware,
