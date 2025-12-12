@@ -165,8 +165,8 @@ def create_log():
         if not data or "action" not in data:
             return jsonify({"error": "Action is required"}), 400
         
-        action = InputSanitizer.sanitize(data["action"])
-        details = InputSanitizer.sanitize(data.get("details", ""))
+        action = InputSanitizer.sanitize_string(data["action"])
+        details = InputSanitizer.sanitize_string(data.get("details", ""))
         
         conn = get_db_connection()
         cursor = conn.cursor()

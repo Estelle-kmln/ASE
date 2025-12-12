@@ -6,6 +6,7 @@ This file contains performance test scenarios for all microservices:
 - Card Service (port 5002)
 - Game Service (port 5003)
 - Leaderboard Service (port 5004)
+- Logs Service (port 5006)
 
 Run with: locust -f locustfile.py --host=https://localhost:8443
 """
@@ -62,6 +63,17 @@ class AuthServiceUser(HttpUser):
                 name="/api/auth/profile"
             )
     
+    @task(1)
+    def update_profile(self):
+        """Test update profile endpoint"""
+        if self.token:
+            self.client.put(
+                "/api/auth/profile",
+                headers={"Authorization": f"Bearer {self.token}"},
+                json={"bio": "Test bio"},
+                name="/api/auth/profile"
+            )
+    
     @task(2)
     def validate_token(self):
         """Test token validation"""
@@ -73,11 +85,46 @@ class AuthServiceUser(HttpUser):
             )
     
     @task(1)
+    def refresh_token(self):
+        """Test token refresh endpoint"""
+        if self.token:
+            with self.client.post(
+                "/api/auth/refresh",
+                headers={"Authorization": f"Bearer {self.token}"},
+                catch_response=True,
+                name="/api/auth/refresh"
+            ) as response:
+                if response.status_code == 200:
+                    response.success()
+                    # Update token with new one
+                    new_token = response.json().get("access_token")
+                    if new_token:
+                        self.token = new_token
+    
+    @task(1)
+    def logout(self):
+        """Test logout endpoint"""
+        if self.token:
+            self.client.post(
+                "/api/auth/logout",
+                headers={"Authorization": f"Bearer {self.token}"},
+                name="/api/auth/logout"
+            )
+    
+    @task(1)
+    def get_sessions(self):
+        """Test get active sessions"""
+        if self.token:
+            self.client.get(
+                "/api/auth/sessions",
+                headers={"Authorization": f"Bearer {self.token}"},
+                name="/api/auth/sessions"
+            )
+    
+    @task(1)
     def health_check(self):
         """Test health check endpoint"""
-        with self.client.get("/api/auth/profile", headers={"Authorization": f"Bearer {self.token}"} if self.token else {}, catch_response=True, name="/health [auth]") as response:
-            if response.status_code in [200, 401]:
-                response.success()
+        self.client.get("/api/auth/health", name="/api/auth/health")
 
 
 class CardServiceUser(HttpUser):
@@ -180,9 +227,7 @@ class CardServiceUser(HttpUser):
     @task(1)
     def health_check(self):
         """Test health check endpoint"""
-        with self.client.get("/api/cards", headers={"Authorization": f"Bearer {self.token}"} if self.token else {}, catch_response=True, name="/health [card]") as response:
-            if response.status_code in [200, 401]:
-                response.success()
+        self.client.get("/api/cards/health", name="/api/cards/health")
 
 
 class GameServiceUser(HttpUser):
@@ -367,12 +412,75 @@ class GameServiceUser(HttpUser):
             )
     
     @task(1)
-    def health_check(self):
-        """Test health check endpoint"""
+    def get_game_status(self):
+        """Test get game status"""
         if self.token and self.game_id:
-            with self.client.get(f"/api/games/{self.game_id}", headers={"Authorization": f"Bearer {self.token}"}, catch_response=True, name="/health [game]") as response:
+            self.client.get(
+                f"/api/games/{self.game_id}/status",
+                headers={"Authorization": f"Bearer {self.token}"},
+                name="/api/games/[id]/status"
+            )
+    
+    @task(1)
+    def resolve_round(self):
+        """Test resolve round"""
+        if self.token and self.game_id:
+            with self.client.post(
+                f"/api/games/{self.game_id}/resolve-round",
+                headers={"Authorization": f"Bearer {self.token}"},
+                catch_response=True,
+                name="/api/games/[id]/resolve-round"
+            ) as response:
+                if response.status_code in [200, 400]:
+                    response.success()
+    
+    @task(1)
+    def get_pending_games(self):
+        """Test get pending games"""
+        if self.token:
+            self.client.get(
+                "/api/games/pending",
+                headers={"Authorization": f"Bearer {self.token}"},
+                name="/api/games/pending"
+            )
+    
+    @task(1)
+    def get_active_games(self):
+        """Test get active games"""
+        if self.token:
+            self.client.get(
+                "/api/games/active",
+                headers={"Authorization": f"Bearer {self.token}"},
+                name="/api/games/active"
+            )
+    
+    @task(1)
+    def get_completed_games(self):
+        """Test get completed games"""
+        if self.token:
+            self.client.get(
+                "/api/games/completed",
+                headers={"Authorization": f"Bearer {self.token}"},
+                name="/api/games/completed"
+            )
+    
+    @task(1)
+    def get_game_history(self):
+        """Test get game history"""
+        if self.token and self.game_id:
+            with self.client.get(
+                f"/api/games/{self.game_id}/history",
+                headers={"Authorization": f"Bearer {self.token}"},
+                catch_response=True,
+                name="/api/games/[id]/history"
+            ) as response:
                 if response.status_code in [200, 404]:
                     response.success()
+    
+    @task(1)
+    def health_check(self):
+        """Test health check endpoint"""
+        self.client.get("/api/games/health", name="/api/games/health")
 
 
 class LeaderboardServiceUser(HttpUser):
@@ -461,12 +569,403 @@ class LeaderboardServiceUser(HttpUser):
                 name="/api/leaderboard/statistics"
             )
     
+    @task(2)
+    def get_my_matches(self):
+        """Test get my matches"""
+        if self.token:
+            limit = random.choice([10, 20, 30])
+            self.client.get(
+                f"/api/leaderboard/my-matches?limit={limit}",
+                headers={"Authorization": f"Bearer {self.token}"},
+                name="/api/leaderboard/my-matches"
+            )
+    
+    @task(1)
+    def get_rankings(self):
+        """Test get rankings"""
+        if self.token:
+            self.client.get(
+                "/api/leaderboard/rankings",
+                headers={"Authorization": f"Bearer {self.token}"},
+                name="/api/leaderboard/rankings"
+            )
+    
+    @task(1)
+    def get_visibility(self):
+        """Test get visibility preference"""
+        if self.token:
+            self.client.get(
+                "/api/leaderboard/visibility",
+                headers={"Authorization": f"Bearer {self.token}"},
+                name="/api/leaderboard/visibility"
+            )
+    
+    @task(1)
+    def update_visibility(self):
+        """Test update visibility preference"""
+        if self.token:
+            show = random.choice([True, False])
+            self.client.put(
+                "/api/leaderboard/visibility",
+                headers={"Authorization": f"Bearer {self.token}"},
+                json={"show_on_leaderboard": show},
+                name="/api/leaderboard/visibility"
+            )
+    
     @task(1)
     def health_check(self):
         """Test health check endpoint"""
-        with self.client.get("/api/leaderboard", headers={"Authorization": f"Bearer {self.token}"} if self.token else {}, catch_response=True, name="/health [leaderboard]") as response:
-            if response.status_code in [200, 401]:
+        self.client.get("/api/leaderboard/health", name="/api/leaderboard/health")
+
+
+class GameInvitationUser(HttpUser):
+    """Test user for game invitation workflows (accept/ignore/cancel)"""
+    host = "https://localhost:8443"
+    wait_time = between(2, 4)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.client.verify = False
+    
+    def on_start(self):
+        """Get authentication token"""
+        self.token = self.get_auth_token()
+    
+    def get_auth_token(self):
+        """Get a valid auth token"""
+        username = f"invuser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}"
+        password = "TestPass123!"
+        
+        with self.client.post(
+            "/api/auth/register",
+            json={"username": username, "password": password},
+            catch_response=True,
+            name="/api/auth/register [invitation user]"
+        ) as response:
+            if response.status_code == 201:
                 response.success()
+                return response.json().get("access_token")
+            else:
+                response.failure(f"Registration failed: {response.status_code}")
+                return None
+    
+    @task(3)
+    def create_and_cancel_game(self):
+        """Test creating and canceling a game"""
+        if not self.token:
+            return
+        
+        # Register opponent
+        opponent_name = f"opponent_{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}"
+        with self.client.post(
+            "/api/auth/register",
+            json={"username": opponent_name, "password": "TestPass123!"},
+            catch_response=True,
+            name="/api/auth/register [opponent]"
+        ) as response:
+            if response.status_code != 201:
+                return
+        
+        # Create game
+        with self.client.post(
+            "/api/games",
+            headers={"Authorization": f"Bearer {self.token}"},
+            json={"player2_name": opponent_name},
+            catch_response=True,
+            name="/api/games [create for cancel]"
+        ) as response:
+            if response.status_code != 201:
+                return
+            game_id = response.json().get("game_id")
+        
+        # Cancel the game
+        if game_id:
+            with self.client.post(
+                f"/api/games/{game_id}/cancel",
+                headers={"Authorization": f"Bearer {self.token}"},
+                catch_response=True,
+                name="/api/games/[id]/cancel"
+            ) as response:
+                if response.status_code in [200, 400]:
+                    response.success()
+    
+    @task(2)
+    def create_and_ignore_game(self):
+        """Test creating and ignoring a game invitation"""
+        if not self.token:
+            return
+        
+        # Register players
+        player1_name = f"player1_{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}"
+        player2_name = f"player2_{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}"
+        
+        # Register player1
+        with self.client.post(
+            "/api/auth/register",
+            json={"username": player1_name, "password": "TestPass123!"},
+            catch_response=True,
+            name="/api/auth/register [p1 for ignore]"
+        ) as response:
+            if response.status_code != 201:
+                return
+            player1_token = response.json().get("access_token")
+        
+        # Register player2
+        with self.client.post(
+            "/api/auth/register",
+            json={"username": player2_name, "password": "TestPass123!"},
+            catch_response=True,
+            name="/api/auth/register [p2 for ignore]"
+        ) as response:
+            if response.status_code != 201:
+                return
+            player2_token = response.json().get("access_token")
+        
+        # Player1 creates game
+        with self.client.post(
+            "/api/games",
+            headers={"Authorization": f"Bearer {player1_token}"},
+            json={"player2_name": player2_name},
+            catch_response=True,
+            name="/api/games [create for ignore]"
+        ) as response:
+            if response.status_code != 201:
+                return
+            game_id = response.json().get("game_id")
+        
+        # Player2 ignores the invitation
+        if game_id and player2_token:
+            with self.client.post(
+                f"/api/games/{game_id}/ignore",
+                headers={"Authorization": f"Bearer {player2_token}"},
+                catch_response=True,
+                name="/api/games/[id]/ignore"
+            ) as response:
+                if response.status_code in [200, 400]:
+                    response.success()
+    
+    @task(1)
+    def get_game_details(self):
+        """Test getting game details"""
+        if not self.token:
+            return
+        
+        # Check completed games first
+        completed_response = self.client.get(
+            "/api/games/completed",
+            headers={"Authorization": f"Bearer {self.token}"},
+            name="/api/games/completed [for details]"
+        )
+        
+        if completed_response.status_code == 200:
+            games = completed_response.json()
+            if games and len(games) > 0:
+                game_id = games[0].get("game_id")
+                if game_id:
+                    with self.client.get(
+                        f"/api/games/{game_id}/details",
+                        headers={"Authorization": f"Bearer {self.token}"},
+                        catch_response=True,
+                        name="/api/games/[id]/details"
+                    ) as response:
+                        if response.status_code in [200, 404]:
+                            response.success()
+
+
+class AdminServiceUser(HttpUser):
+    """Test user for Admin endpoints"""
+    host = "https://localhost:8443"
+    wait_time = between(2, 4)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Disable SSL verification for self-signed certificates
+        self.client.verify = False
+    
+    def on_start(self):
+        """Login as admin user"""
+        self.admin_token = None
+        
+        # Login as admin (credentials from 05-add-admin-and-logs.sql)
+        with self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "Admin123!"},
+            catch_response=True,
+            name="/api/auth/login [admin]"
+        ) as response:
+            if response.status_code == 200:
+                response.success()
+                self.admin_token = response.json().get("access_token")
+            else:
+                response.failure(f"Admin login failed: {response.status_code}")
+    
+    @task(3)
+    def get_all_users(self):
+        """Test get all users endpoint"""
+        if self.admin_token:
+            self.client.get(
+                "/api/admin/users",
+                headers={"Authorization": f"Bearer {self.admin_token}"},
+                name="/api/admin/users"
+            )
+    
+    @task(2)
+    def search_users(self):
+        """Test search users endpoint"""
+        if self.admin_token:
+            search_term = random.choice(["test", "user", "admin", "player"])
+            self.client.get(
+                f"/api/admin/search?query={search_term}",
+                headers={"Authorization": f"Bearer {self.admin_token}"},
+                name="/api/admin/search"
+            )
+    
+    @task(1)
+    def update_user_role(self):
+        """Test update user role endpoint"""
+        if self.admin_token:
+            # Try to update a test user (might not exist, that's ok for load testing)
+            with self.client.put(
+                "/api/admin/roles",
+                headers={"Authorization": f"Bearer {self.admin_token}"},
+                json={"username": f"testuser_{random.randint(1, 100)}", "is_admin": False},
+                catch_response=True,
+                name="/api/admin/roles"
+            ) as response:
+                if response.status_code in [200, 404]:
+                    response.success()
+    
+    @task(1)
+    def force_logout_user(self):
+        """Test force logout user endpoint"""
+        if self.admin_token:
+            # Try to force logout a test user (might not exist, that's ok for load testing)
+            with self.client.post(
+                "/api/auth/force-logout",
+                headers={"Authorization": f"Bearer {self.admin_token}"},
+                json={"username": f"testuser_{random.randint(1, 100)}"},
+                catch_response=True,
+                name="/api/auth/force-logout"
+            ) as response:
+                if response.status_code in [200, 404]:
+                    response.success()
+
+
+class LogsServiceUser(HttpUser):
+    """Test user for Logs Service endpoints"""
+    host = "https://localhost:8443"
+    wait_time = between(1, 3)
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Disable SSL verification for self-signed certificates
+        self.client.verify = False
+    
+    def on_start(self):
+        """Register user and login as admin before starting tests"""
+        # Register a regular user
+        self.username = f"logsuser_{''.join(random.choices(string.ascii_lowercase + string.digits, k=16))}"
+        self.password = "TestPass123!"
+        self.user_token = None
+        self.admin_token = None
+        
+        # Register regular user
+        with self.client.post(
+            "/api/auth/register",
+            json={
+                "username": self.username,
+                "password": self.password
+            },
+            catch_response=True,
+            name="/api/auth/register [logs]"
+        ) as response:
+            if response.status_code == 201:
+                response.success()
+                self.user_token = response.json().get("access_token")
+            else:
+                response.failure(f"Registration failed: {response.status_code}")
+        
+        # Login as admin for admin-only endpoints
+        with self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "Admin123!"},
+            catch_response=True,
+            name="/api/auth/login [admin logs]"
+        ) as response:
+            if response.status_code == 200:
+                response.success()
+                self.admin_token = response.json().get("access_token")
+            else:
+                response.failure(f"Admin login failed: {response.status_code}")
+    
+    @task(3)
+    def create_log(self):
+        """Test create log endpoint"""
+        if self.user_token:
+            self.client.post(
+                "/api/logs/create",
+                headers={"Authorization": f"Bearer {self.user_token}"},
+                json={
+                    "action": f"LOAD_TEST_{random.choice(['LOGIN', 'LOGOUT', 'UPDATE', 'DELETE', 'CREATE'])}",
+                    "details": f"Load test log entry at {random.randint(1, 10000)}"
+                },
+                name="/api/logs/create"
+            )
+    
+    @task(2)
+    def list_logs_admin(self):
+        """Test list logs endpoint (admin only)"""
+        if self.admin_token:
+            page = random.randint(0, 5)
+            size = random.choice([10, 20, 50])
+            self.client.get(
+                f"/api/logs/list?page={page}&size={size}",
+                headers={"Authorization": f"Bearer {self.admin_token}"},
+                name="/api/logs/list"
+            )
+    
+    @task(2)
+    def search_logs_admin(self):
+        """Test search logs endpoint (admin only)"""
+        if self.admin_token:
+            query = random.choice(['LOAD_TEST', 'LOGIN', 'UPDATE', 'CREATE', 'TEST', ''])
+            page = random.randint(0, 2)
+            size = random.choice([10, 20, 50])
+            self.client.get(
+                f"/api/logs/search?query={query}&page={page}&size={size}",
+                headers={"Authorization": f"Bearer {self.admin_token}"},
+                name="/api/logs/search"
+            )
+    
+    @task(1)
+    def list_logs_non_admin_forbidden(self):
+        """Test that regular users cannot list logs (should fail)"""
+        if self.user_token:
+            with self.client.get(
+                "/api/logs/list",
+                headers={"Authorization": f"Bearer {self.user_token}"},
+                catch_response=True,
+                name="/api/logs/list [forbidden]"
+            ) as response:
+                if response.status_code == 403:
+                    response.success()
+                else:
+                    response.failure(f"Expected 403, got {response.status_code}")
+    
+    @task(1)
+    def search_logs_non_admin_forbidden(self):
+        """Test that regular users cannot search logs (should fail)"""
+        if self.user_token:
+            with self.client.get(
+                "/api/logs/search?query=TEST",
+                headers={"Authorization": f"Bearer {self.user_token}"},
+                catch_response=True,
+                name="/api/logs/search [forbidden]"
+            ) as response:
+                if response.status_code == 403:
+                    response.success()
+                else:
+                    response.failure(f"Expected 403, got {response.status_code}")
 
 
 class CombinedUser(HttpUser):
@@ -646,6 +1145,50 @@ class CombinedUser(HttpUser):
                 headers={"Authorization": f"Bearer {self.token}"},
                 name="/api/auth/profile [combined]"
             )
+    
+    @task(2)
+    def check_my_games(self):
+        """Check pending and active games"""
+        if not self.token:
+            return
+        
+        # Check pending games
+        self.client.get(
+            "/api/games/pending",
+            headers={"Authorization": f"Bearer {self.token}"},
+            name="/api/games/pending [combined]"
+        )
+        
+        # Check active games
+        self.client.get(
+            "/api/games/active",
+            headers={"Authorization": f"Bearer {self.token}"},
+            name="/api/games/active [combined]"
+        )
+    
+    @task(2)
+    def view_my_matches(self):
+        """View my match history"""
+        if not self.token:
+            return
+        
+        self.client.get(
+            "/api/leaderboard/my-matches",
+            headers={"Authorization": f"Bearer {self.token}"},
+            name="/api/leaderboard/my-matches [combined]"
+        )
+    
+    @task(1)
+    def check_rankings(self):
+        """Check personal rankings"""
+        if not self.token:
+            return
+        
+        self.client.get(
+            "/api/leaderboard/rankings",
+            headers={"Authorization": f"Bearer {self.token}"},
+            name="/api/leaderboard/rankings [combined]"
+        )
     
     def _get_player2_token(self, player2_name):
         """Get auth token for player 2"""

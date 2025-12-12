@@ -25,6 +25,10 @@ tags:
     description: Game logic and battle mechanics
   - name: Leaderboard
     description: Rankings and player statistics
+  - name: Logs
+    description: System logging and monitoring (admin privileges required)
+  - name: Admin
+    description: Administrative operations (admin privileges required)
   - name: Health
     description: Service health checks
 
@@ -59,6 +63,9 @@ components:
           type: string
           format: date-time
           nullable: true
+        show_on_leaderboard:
+          type: boolean
+          description: Whether user is visible on public leaderboards
       required:
         - id
         - username
@@ -71,6 +78,9 @@ components:
         access_token:
           type: string
           description: JWT bearer token
+        refresh_token:
+          type: string
+          description: JWT refresh token for obtaining new access tokens
         token_type:
           type: string
           enum: [bearer]
@@ -83,6 +93,7 @@ components:
       required:
         - message
         - access_token
+        - refresh_token
         - token_type
         - expires_in
         - user
@@ -187,6 +198,58 @@ components:
         - games
         - losses
         - win_percentage
+    
+    Session:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Session ID
+        device:
+          type: string
+          description: Device information
+        ip_address:
+          type: string
+          description: IP address of the session
+        created_at:
+          type: string
+          format: date-time
+          description: When the session was created
+        last_used_at:
+          type: string
+          format: date-time
+          description: When the session was last used
+      required:
+        - id
+        - device
+        - ip_address
+        - created_at
+    
+    LogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Log entry ID
+        action:
+          type: string
+          description: Action that was logged
+        username:
+          type: string
+          nullable: true
+          description: User who performed the action
+        timestamp:
+          type: string
+          format: date-time
+          description: When the action occurred
+        details:
+          type: string
+          nullable: true
+          description: Additional details about the action
+      required:
+        - id
+        - action
+        - timestamp
 
 security:
   - bearerAuth: []
@@ -294,7 +357,49 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                type: object
+                properties:
+                  error:
+                    type: string
+                  remaining_attempts:
+                    type: integer
+                    description: Remaining login attempts before account lockout
+        '409':
+          description: Concurrent session detected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  active_session:
+                    type: object
+                    properties:
+                      device:
+                        type: string
+                      ip_address:
+                        type: string
+                      created_at:
+                        type: string
+                        format: date-time
+        '423':
+          description: Account locked due to multiple failed attempts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  locked_until:
+                    type: string
+                    format: date-time
+                  retry_after:
+                    type: integer
+                    description: Seconds until account unlock
 
   /auth/profile:
     get:
@@ -311,7 +416,19 @@ paths:
                 type: object
                 properties:
                   user:
-                    $ref: '#/components/schemas/User'
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      username:
+                        type: string
+                      is_admin:
+                        type: boolean
+                      enabled:
+                        type: boolean
+                      created_at:
+                        type: string
+                        format: date-time
         '401':
           description: Unauthorized
           content:
@@ -328,7 +445,7 @@ paths:
       tags:
         - Auth
       summary: Update user profile
-      description: Update user profile (currently supports password update)
+      description: Update user profile (supports username and password updates). If username is changed, new tokens will be issued.
       requestBody:
         required: true
         content:
@@ -336,10 +453,16 @@ paths:
             schema:
               type: object
               properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 50
+                  description: New username (optional)
                 password:
                   type: string
                   minLength: 4
                   maxLength: 128
+                  description: New password (optional)
       responses:
         '200':
           description: Profile updated successfully
@@ -350,8 +473,32 @@ paths:
                 properties:
                   message:
                     type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      username:
+                        type: string
+                      created_at:
+                        type: string
+                        format: date-time
+                      is_admin:
+                        type: boolean
+                  access_token:
+                    type: string
+                    description: New access token (only if username changed)
+                  refresh_token:
+                    type: string
+                    description: New refresh token (only if username changed)
+                  token_type:
+                    type: string
+                    description: Token type (only if username changed)
+                  expires_in:
+                    type: integer
+                    description: Token expiration in seconds (only if username changed)
         '400':
-          description: Invalid input
+          description: Invalid input or username already exists
           content:
             application/json:
               schema:
@@ -388,13 +535,252 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /auth/refresh:
+    post:
+      tags:
+        - Auth
+      summary: Refresh access token
+      description: Obtain a new access token using a refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+                  description: Valid refresh token
+              required:
+                - refresh_token
+      responses:
+        '200':
+          description: New access token generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                    enum: [bearer]
+                  expires_in:
+                    type: integer
+        '400':
+          description: Refresh token not provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Logout user
+      description: Logout user and revoke refresh token(s)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+                  description: Specific refresh token to revoke. If not provided, all tokens will be revoked.
+      responses:
+        '200':
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/force-logout:
+    post:
+      tags:
+        - Auth
+      summary: Force logout all sessions
+      description: Force logout all sessions for a user after password verification
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+              required:
+                - username
+                - password
+      responses:
+        '200':
+          description: All sessions terminated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid username or password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to terminate sessions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/sessions:
+    get:
+      tags:
+        - Auth
+      summary: Get active sessions
+      description: Get all active sessions for the current user
+      responses:
+        '200':
+          description: List of active sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Session'
+                  total:
+                    type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/sessions/{session_id}:
+    delete:
+      tags:
+        - Auth
+      summary: Revoke specific session
+      description: Revoke a specific session by its ID
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Session ID to revoke
+      responses:
+        '200':
+          description: Session revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Cannot revoke another user's session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Session not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/sessions/revoke-all:
+    post:
+      tags:
+        - Auth
+      summary: Revoke all sessions
+      description: Revoke all sessions for the current user
+      responses:
+        '200':
+          description: All sessions revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   # Card Service
   /cards:
     get:
       tags:
         - Cards
       summary: Get all cards
-      description: Retrieve all available cards in the database
+      description: Retrieve all available cards in the database, ordered by type and power
       responses:
         '200':
           description: List of all cards
@@ -413,21 +799,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /cards/by-type/{type}:
     get:
       tags:
         - Cards
       summary: Get cards by type
-      description: Filter cards by type (rock, paper, or scissors)
+      description: Filter cards by type (rock, paper, or scissors). Case-insensitive.
       parameters:
         - name: type
           in: path
           required: true
           schema:
             type: string
-            enum: [rock, paper, scissors]
-          description: Card type
+            enum: [rock, paper, scissors, Rock, Paper, Scissors]
+          description: Card type (case-insensitive)
       responses:
         '200':
           description: List of cards of specified type
@@ -442,6 +834,7 @@ paths:
                       $ref: '#/components/schemas/Card'
                   type:
                     type: string
+                    description: The validated card type
         '400':
           description: Invalid card type
           content:
@@ -454,20 +847,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /cards/{card_id}:
     get:
       tags:
         - Cards
       summary: Get card by ID
-      description: Retrieve details of a specific card
+      description: Retrieve details of a specific card by its ID
       parameters:
         - name: card_id
           in: path
           required: true
           schema:
             type: integer
-          description: Card ID
+            minimum: 0
+          description: Card ID (non-negative integer)
       responses:
         '200':
           description: Card details
@@ -478,8 +878,8 @@ paths:
                 properties:
                   card:
                     $ref: '#/components/schemas/Card'
-        '404':
-          description: Card not found
+        '400':
+          description: Invalid card ID format
           content:
             application/json:
               schema:
@@ -490,13 +890,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '404':
+          description: Card not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /cards/random-deck:
     post:
       tags:
         - Cards
       summary: Create random deck
-      description: Generate a random deck of cards for gameplay
+      description: Generate a random deck of cards for gameplay. Randomly selects cards from the database.
       requestBody:
         content:
           application/json:
@@ -508,7 +920,7 @@ paths:
                   minimum: 1
                   maximum: 50
                   default: 22
-                  description: Number of cards in deck
+                  description: Number of cards in deck (defaults to 22 if not provided)
       responses:
         '200':
           description: Random deck generated
@@ -517,13 +929,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/Deck'
         '400':
-          description: Invalid deck size
+          description: Invalid deck size or not enough cards in database
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    examples:
+                      - "Deck size must be between 1 and 50"
+                      - "Not enough cards in database. Available: 39, Requested: 50"
+        '401':
+          description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-        '401':
-          description: Unauthorized
+        '500':
+          description: Server error
           content:
             application/json:
               schema:
@@ -545,23 +969,48 @@ paths:
                 properties:
                   total_cards:
                     type: integer
+                    description: Total number of cards in database
                   type_distribution:
                     type: object
+                    properties:
+                      counts:
+                        type: object
+                        additionalProperties:
+                          type: integer
+                        description: Count of cards by type
+                      percentages:
+                        type: object
+                        additionalProperties:
+                          type: number
+                          format: float
+                        description: Percentage distribution by type
                   power_distribution:
                     type: object
+                    additionalProperties:
+                      type: integer
+                    description: Count of cards by power level
                   available_types:
                     type: array
                     items:
                       type: string
+                    description: List of unique card types
                   power_range:
                     type: object
                     properties:
                       min:
                         type: integer
+                        description: Minimum power value
                       max:
                         type: integer
+                        description: Maximum power value
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No cards found in database
           content:
             application/json:
               schema:
@@ -572,7 +1021,7 @@ paths:
       tags:
         - Cards
       summary: Get available card types
-      description: Get list of all available card types and powers
+      description: Get list of all unique card types and power levels available in the database
       responses:
         '200':
           description: Available types and powers
@@ -585,12 +1034,20 @@ paths:
                     type: array
                     items:
                       type: string
+                    description: List of unique card types (e.g., Rock, Paper, Scissors)
                   powers:
                     type: array
                     items:
                       type: integer
+                    description: List of unique power levels available
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
           content:
             application/json:
               schema:
@@ -602,7 +1059,7 @@ paths:
       tags:
         - Games
       summary: Create new game
-      description: Initialize a new game between two players. Players must then select their decks before the game can start.
+      description: Initialize a new game invitation. Creates a pending game that the invited player must accept before deck selection.
       requestBody:
         required: true
         content:
@@ -614,11 +1071,12 @@ paths:
                   type: string
                   minLength: 3
                   maxLength: 50
+                  description: Username of the player to invite
               required:
                 - player2_name
       responses:
         '201':
-          description: Game created successfully
+          description: Game invitation created successfully
           content:
             application/json:
               schema:
@@ -633,7 +1091,8 @@ paths:
                     type: string
                   status:
                     type: string
-                    enum: [deck_selection]
+                    enum: [pending]
+                    description: Game starts in pending status awaiting acceptance
                   turn:
                     type: integer
         '400':
@@ -644,6 +1103,12 @@ paths:
                 $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
           content:
             application/json:
               schema:
@@ -677,6 +1142,221 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/history:
+    get:
+      tags:
+        - Games
+      summary: Get game history
+      description: Return the immutable, decrypted history for a completed game. Only accessible to players who participated.
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Game history with archived snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  game_id:
+                    type: string
+                    format: uuid
+                  player1_name:
+                    type: string
+                  player2_name:
+                    type: string
+                  player1_score:
+                    type: integer
+                  player2_score:
+                    type: integer
+                  winner:
+                    type: string
+                    nullable: true
+                  archived_at:
+                    type: string
+                    format: date-time
+                  snapshot:
+                    type: object
+                    description: Decrypted game state snapshot
+        '403':
+          description: Unauthorized - not a player in this game
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: History not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: History integrity verification failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/details:
+    get:
+      tags:
+        - Games
+      summary: Get game details
+      description: Get detailed match information including round-by-round card plays
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Detailed game information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  game_id:
+                    type: string
+                    format: uuid
+                  player1_name:
+                    type: string
+                  player2_name:
+                    type: string
+                  player1_score:
+                    type: integer
+                  player2_score:
+                    type: integer
+                  winner:
+                    type: string
+                    nullable: true
+                  archived_at:
+                    type: string
+                    format: date-time
+                  rounds:
+                    type: array
+                    items:
+                      type: object
+                      description: Round-by-round card play history
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/turn-info:
+    get:
+      tags:
+        - Games
+      summary: Get turn information
+      description: Get detailed turn information including who needs to act next
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Turn information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  game_id:
+                    type: string
+                    format: uuid
+                  turn:
+                    type: integer
+                  game_status:
+                    type: string
+                  current_user:
+                    type: string
+                  player1_name:
+                    type: string
+                  player2_name:
+                    type: string
+                  turn_status:
+                    type: object
+                    properties:
+                      both_need_to_draw:
+                        type: boolean
+                      p1_needs_to_draw:
+                        type: boolean
+                      p2_needs_to_draw:
+                        type: boolean
+                      p1_needs_to_play:
+                        type: boolean
+                      p2_needs_to_play:
+                        type: boolean
+                      both_played:
+                        type: boolean
+                      ready_to_resolve:
+                        type: boolean
+                  deck_status:
+                    type: object
+                    properties:
+                      p1_deck_size:
+                        type: integer
+                      p2_deck_size:
+                        type: integer
+                      p1_hand_size:
+                        type: integer
+                      p2_hand_size:
+                        type: integer
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
           content:
             application/json:
               schema:
@@ -717,6 +1397,12 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
           content:
             application/json:
               schema:
@@ -915,6 +1601,7 @@ paths:
                   type: integer
                   minimum: 0
                   maximum: 20
+                  description: Index of card in hand to play
               required:
                 - card_index
       responses:
@@ -937,6 +1624,7 @@ paths:
                     type: boolean
                   round_result:
                     type: object
+                    description: Round result if both players played and round resolved
         '400':
           description: Invalid card index or game state
           content:
@@ -951,6 +1639,12 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
           content:
             application/json:
               schema:
@@ -980,6 +1674,7 @@ paths:
                   round_winner:
                     type: integer
                     nullable: true
+                    description: Winner index (1 or 2), null if tied
                   round_tied:
                     type: boolean
                   player1_card:
@@ -995,6 +1690,9 @@ paths:
                   winner:
                     type: string
                     nullable: true
+                  awaiting_tiebreaker_response:
+                    type: boolean
+                    description: True if 7th round tie and awaiting player decisions
         '400':
           description: Both players must play cards before resolving
           content:
@@ -1009,6 +1707,382 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/tie-breaker-status:
+    get:
+      tags:
+        - Games
+      summary: Check tie-breaker status
+      description: Check if tie-breaker round is possible
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tie-breaker status information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  is_tied_game:
+                    type: boolean
+                  tie_breaker_possible:
+                    type: boolean
+                  player1_remaining_cards:
+                    type: integer
+                  player2_remaining_cards:
+                    type: integer
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/tie-breaker:
+    post:
+      tags:
+        - Games
+      summary: Play tie-breaker round
+      description: Play a tie-breaker round using remaining cards when game ends in tie
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tie-breaker round played
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  winner:
+                    type: string
+                    nullable: true
+        '400':
+          description: Invalid game state for tie-breaker
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/tiebreaker-decision:
+    post:
+      tags:
+        - Games
+      summary: Submit tiebreaker decision
+      description: Submit player's decision on whether to play the 22nd card for tiebreaker after 7th round tie
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decision:
+                  type: string
+                  enum: [yes, no]
+                  description: Player's decision to play tiebreaker
+              required:
+                - decision
+      responses:
+        '200':
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decision_recorded:
+                    type: boolean
+                  game_completed:
+                    type: boolean
+                    description: True if game ended (player declined or both agreed)
+                  tiebreaker_ready:
+                    type: boolean
+                    description: True if both players agreed to play tiebreaker
+        '400':
+          description: Invalid decision or game not awaiting tiebreaker
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/tiebreaker-play:
+    post:
+      tags:
+        - Games
+      summary: Play tiebreaker card
+      description: Play the 22nd card for the tiebreaker round after both players agreed
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tiebreaker card played
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tiebreaker_card_played:
+                    $ref: '#/components/schemas/Card'
+                  both_played:
+                    type: boolean
+                  winner:
+                    type: string
+                    nullable: true
+                    description: Winner if both played
+                  is_tied:
+                    type: boolean
+                    description: True if tiebreaker also tied
+        '400':
+          description: Invalid game state or already played
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/accept:
+    post:
+      tags:
+        - Games
+      summary: Accept game invitation
+      description: Accept a pending game invitation and transition to deck selection
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Invitation accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+                    enum: [deck_selection]
+        '400':
+          description: Game not in valid state for accepting
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Unauthorized - not a player in this game
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/ignore:
+    post:
+      tags:
+        - Games
+      summary: Ignore game invitation
+      description: Ignore/decline a game invitation (player2 only)
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Invitation ignored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Game not in valid state for ignoring
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Unauthorized - only invited player can ignore
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /games/{game_id}/cancel:
+    post:
+      tags:
+        - Games
+      summary: Cancel game invitation
+      description: Cancel a game invitation by the player who created it (player1 only)
+      parameters:
+        - name: game_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Invitation cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Game not in valid state for cancelling
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Unauthorized - only game creator can cancel
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
           content:
             application/json:
               schema:
@@ -1045,6 +2119,12 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
           content:
             application/json:
               schema:
@@ -1087,13 +2167,345 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  # Admin Endpoints
+  /admin/users:
+    get:
+      tags:
+        - Admin
+      summary: List all users
+      description: Get paginated list of all users (admin only)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Page number
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+          description: Page size
+      responses:
+        '200':
+          description: Paginated list of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  content:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        username:
+                          type: string
+                        roles:
+                          type: array
+                          items:
+                            type: string
+                        created_at:
+                          type: string
+                          format: date-time
+                  totalPages:
+                    type: integer
+                  totalElements:
+                    type: integer
+                  number:
+                    type: integer
+                  size:
+                    type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin privileges required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/users/search:
+    get:
+      tags:
+        - Admin
+      summary: Search users
+      description: Search users by username (admin only)
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Page number
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 100
+          description: Page size
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  content:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        username:
+                          type: string
+                        roles:
+                          type: array
+                          items:
+                            type: string
+                        created_at:
+                          type: string
+                          format: date-time
+                  totalPages:
+                    type: integer
+                  totalElements:
+                    type: integer
+                  number:
+                    type: integer
+                  size:
+                    type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin privileges required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /admin/roles:
+    get:
+      tags:
+        - Admin
+      summary: List available roles
+      description: Get list of all available user roles (admin only)
+      responses:
+        '200':
+          description: List of roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      description: Role identifier (e.g., ROLE_USER, ROLE_ADMIN)
+                    name:
+                      type: string
+                      description: Human-readable role name
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin privileges required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Logs Service
+  /logs/list:
+    get:
+      tags:
+        - Logs
+      summary: List all logs
+      description: List all system logs with pagination (admin only)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Page number (0-indexed)
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+          description: Number of logs per page
+      responses:
+        '200':
+          description: List of logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogEntry'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin privileges required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /logs/create:
+    post:
+      tags:
+        - Logs
+      summary: Create log entry
+      description: Create a new log entry. Authenticated users can create logs for tracking their actions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  description: Action being logged
+                details:
+                  type: string
+                  description: Additional details about the action
+              required:
+                - action
+      responses:
+        '201':
+          description: Log created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  id:
+                    type: integer
+                    description: ID of the created log entry
+        '400':
+          description: Action is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /logs/search:
+    get:
+      tags:
+        - Logs
+      summary: Search logs
+      description: Search logs by action, username, or details (admin only)
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query (searches action, username, and details fields)
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Page number (0-indexed)
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+          description: Number of logs per page
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogEntry'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Admin privileges required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   # Leaderboard Service
   /leaderboard:
     get:
       tags:
         - Leaderboard
       summary: Get global leaderboard
-      description: Retrieve the global leaderboard with player rankings
+      description: Retrieve the global leaderboard with player rankings based on wins. Only includes players who have enabled leaderboard visibility.
       parameters:
         - name: limit
           in: query
@@ -1123,13 +2535,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /leaderboard/player/{player_name}:
     get:
       tags:
         - Leaderboard
       summary: Get player statistics
-      description: Get detailed statistics for a specific player
+      description: Get detailed statistics for a specific player including recent games
       parameters:
         - name: player_name
           in: path
@@ -1159,8 +2577,91 @@ paths:
                     type: array
                     items:
                       type: object
+                      properties:
+                        game_id:
+                          type: string
+                          format: uuid
+                        opponent:
+                          type: string
+                        player_score:
+                          type: integer
+                        opponent_score:
+                          type: integer
+                        result:
+                          type: string
+                          enum: [win, loss, tie]
+                        date:
+                          type: string
+                          format: date-time
+        '400':
+          description: Invalid player name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /leaderboard/my-matches:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get my match history
+      description: Get match history for the authenticated user
+      responses:
+        '200':
+          description: User's match history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matches:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        game_id:
+                          type: string
+                          format: uuid
+                        opponent:
+                          type: string
+                        my_score:
+                          type: integer
+                        opponent_score:
+                          type: integer
+                        result:
+                          type: string
+                          enum: [win, loss]
+                        date:
+                          type: string
+                          format: date-time
+                  total:
+                    type: integer
+        '400':
+          description: Invalid username
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized or unable to identify user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
           content:
             application/json:
               schema:
@@ -1171,7 +2672,7 @@ paths:
       tags:
         - Leaderboard
       summary: Get recent games
-      description: Get recent completed games
+      description: Get recent completed games from all players
       parameters:
         - name: limit
           in: query
@@ -1193,10 +2694,39 @@ paths:
                     type: array
                     items:
                       type: object
+                      properties:
+                        game_id:
+                          type: string
+                          format: uuid
+                        player1_name:
+                          type: string
+                        player2_name:
+                          type: string
+                        player1_score:
+                          type: integer
+                        player2_score:
+                          type: integer
+                        winner:
+                          type: string
+                          nullable: true
+                        duration_turns:
+                          type: integer
+                        started_at:
+                          type: string
+                          format: date-time
+                        completed_at:
+                          type: string
+                          format: date-time
                   total_games:
                     type: integer
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
           content:
             application/json:
               schema:
@@ -1207,10 +2737,10 @@ paths:
       tags:
         - Leaderboard
       summary: Get top players
-      description: Get top players by various metrics
+      description: Get top 5 players by various metrics. Only includes players who have enabled leaderboard visibility.
       responses:
         '200':
-          description: Top players
+          description: Top players by different categories
           content:
             application/json:
               schema:
@@ -1220,16 +2750,42 @@ paths:
                     type: array
                     items:
                       type: object
+                      properties:
+                        player:
+                          type: string
+                        wins:
+                          type: integer
                   top_by_win_percentage:
                     type: array
                     items:
                       type: object
+                      properties:
+                        player:
+                          type: string
+                        wins:
+                          type: integer
+                        games:
+                          type: integer
+                        win_percentage:
+                          type: number
+                          format: float
                   most_active:
                     type: array
                     items:
                       type: object
+                      properties:
+                        player:
+                          type: string
+                        total_games:
+                          type: integer
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
           content:
             application/json:
               schema:
@@ -1240,7 +2796,7 @@ paths:
       tags:
         - Leaderboard
       summary: Get global statistics
-      description: Get global game statistics
+      description: Get comprehensive global game statistics including totals, averages, and recent activity
       responses:
         '200':
           description: Global statistics
@@ -1251,23 +2807,184 @@ paths:
                 properties:
                   total_completed_games:
                     type: integer
+                    description: Total number of completed games
                   unique_players:
                     type: integer
+                    description: Number of unique players
                   games_with_winner:
                     type: integer
+                    description: Games that ended with a winner
                   tied_games:
                     type: integer
+                    description: Games that ended in a tie
                   average_game_turns:
                     type: number
                     format: float
+                    description: Average number of turns per game
                   shortest_game_turns:
                     type: integer
+                    description: Fewest turns in any game
                   longest_game_turns:
                     type: integer
+                    description: Most turns in any game
                   games_last_week:
+                    type: integer
+                    description: Games completed in the last 7 days
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /leaderboard/rankings:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get player rankings
+      description: Get comprehensive player rankings based on wins, total score, and games played. Only includes players who have enabled leaderboard visibility.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+          description: Maximum number of rankings to return
+      responses:
+        '200':
+          description: Player rankings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rankings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        rank:
+                          type: integer
+                        username:
+                          type: string
+                        wins:
+                          type: integer
+                        total_score:
+                          type: integer
+                        games_played:
+                          type: integer
+                  total_players:
                     type: integer
         '401':
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /leaderboard/visibility:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get leaderboard visibility preference
+      description: Get the authenticated user's leaderboard visibility preference
+      responses:
+        '200':
+          description: Visibility preference
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  show_on_leaderboard:
+                    type: boolean
+        '400':
+          description: Invalid username
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized or unable to identify user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      tags:
+        - Leaderboard
+      summary: Update leaderboard visibility
+      description: Update the authenticated user's leaderboard visibility preference. When disabled, the user will not appear in public leaderboards.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                show_on_leaderboard:
+                  type: boolean
+                  description: Whether to show user on public leaderboards
+              required:
+                - show_on_leaderboard
+      responses:
+        '200':
+          description: Visibility updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  show_on_leaderboard:
+                    type: boolean
+        '400':
+          description: Invalid input or username
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized or unable to identify user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
           content:
             application/json:
               schema:
