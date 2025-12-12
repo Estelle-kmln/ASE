@@ -16,9 +16,8 @@ from flask_jwt_extended import (
     get_jwt,
 )
 from flask_cors import CORS
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
+import requests
 
 # Add utils directory to path for input sanitizer
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "utils"))
@@ -64,34 +63,8 @@ def expired_token_callback(jwt_header, jwt_payload):
     """Handle expired token errors."""
     return jsonify({"error": "Token has expired"}), 401
 
-
-# Database configuration
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://gameuser:gamepassword@localhost:5432/battlecards",
-)
-
-
-def get_db_connection():
-    """Create and return a PostgreSQL database connection."""
-    return psycopg2.connect(DATABASE_URL)
-
-
-def log_action(action: str, username: str = None, details: str = None):
-    """Log an action to the logs table."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO logs (action, username, details) VALUES (%s, %s, %s)",
-            (action, username, details),
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        # Don't fail the main operation if logging fails
-        print(f"Failed to log action: {e}")
-
+# Database manager
+DB_MANAGER_URL = os.getenv("DB_MANAGER_URL", "http://db-manager:5005")
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
@@ -150,31 +123,18 @@ def get_device_info() -> dict:
 def get_active_sessions(user_id: int) -> list:
     """Get all active (non-revoked, non-expired) sessions for a user."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        response = requests.get(f"{DB_MANAGER_URL}/tokens/active/{user_id}", timeout=5)
+
+        if response.status_code != 200:
+            print("DB Manager returned error:", response.text)
+            return []
         
-        # First, clean up expired tokens
-        cursor.execute(
-            """UPDATE refresh_tokens 
-               SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP 
-               WHERE user_id = %s AND revoked = FALSE AND expires_at <= CURRENT_TIMESTAMP""",
-            (user_id,)
-        )
-        conn.commit()
-        
-        # Now get active sessions
-        cursor.execute(
-            """SELECT id, device_info, ip_address, created_at, last_used_at 
-               FROM refresh_tokens 
-               WHERE user_id = %s AND revoked = FALSE AND expires_at > CURRENT_TIMESTAMP
-               ORDER BY created_at DESC""",
-            (user_id,)
-        )
-        sessions = cursor.fetchall()
-        conn.close()
-        
+        data = response.json()
+        sessions = data.get("sessions", [])
+
         print(f"Active sessions for user {user_id}: {len(sessions)}")
         return sessions
+    
     except Exception as e:
         print(f"Failed to get active sessions: {e}")
         return []
@@ -189,26 +149,21 @@ def check_concurrent_session(user_id: int) -> bool:
 def store_refresh_token(user_id: int, refresh_token: str, expires_delta: timedelta, device_data: dict = None) -> bool:
     """Store a refresh token in the database with device tracking."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        expires_at = datetime.now() + expires_delta
-        
-        # Get device info if not provided
-        if device_data is None:
-            device_data = get_device_info()
-        
-        cursor.execute(
-            """INSERT INTO refresh_tokens 
-               (user_id, token, expires_at, device_info, ip_address, user_agent, last_used_at) 
-               VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)""",
-            (user_id, refresh_token, expires_at, 
-             device_data.get('device_info', 'Unknown'),
-             device_data.get('ip_address', 'Unknown'),
-             device_data.get('user_agent', 'Unknown'))
-        )
-        conn.commit()
-        conn.close()
-        return True
+        payload = {
+            "user_id": user_id,
+            "refresh_token": refresh_token,
+            "expires_delta": expires_delta.total_seconds(),
+            "device_data": device_data or get_device_info()
+        }
+
+        response = requests.post(f"{DB_MANAGER_URL}/tokens/store", json=payload, timeout=5)
+
+        if response.status_code == 200:
+            return True
+        else:
+            print("DB Manager error:", response.text)
+            return False
+
     except Exception as e:
         print(f"Failed to store refresh token: {e}")
         return False
@@ -217,38 +172,21 @@ def store_refresh_token(user_id: int, refresh_token: str, expires_delta: timedel
 def validate_refresh_token(refresh_token: str) -> dict:
     """Validate a refresh token and return user info if valid."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute(
-            """SELECT rt.id, rt.user_id, rt.expires_at, rt.revoked, u.username 
-               FROM refresh_tokens rt
-               JOIN users u ON rt.user_id = u.id
-               WHERE rt.token = %s""",
-            (refresh_token,)
+        response = requests.post(
+            f"{DB_MANAGER_URL}/tokens/validate",
+            json={"refresh_token": refresh_token},
+            timeout=5
         )
-        token_data = cursor.fetchone()
-        
-        if not token_data:
-            conn.close()
+
+        if response.status_code != 200:
+            print("DB Manager returned error:", response.text)
             return None
-        
-        if token_data["revoked"]:
-            conn.close()
-            return None
-        
-        if token_data["expires_at"] < datetime.now():
-            conn.close()
-            return None
-        
-        # Update last_used_at timestamp
-        cursor.execute(
-            "UPDATE refresh_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE id = %s",
-            (token_data["id"],)
-        )
-        conn.commit()
-        conn.close()
-        
+
+        data = response.json()
+        token_data = data.get("token_data")
+
         return token_data
+    
     except Exception as e:
         print(f"Failed to validate refresh token: {e}")
         return None
@@ -257,17 +195,19 @@ def validate_refresh_token(refresh_token: str) -> dict:
 def revoke_refresh_token(refresh_token: str) -> bool:
     """Revoke a refresh token."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE token = %s",
-            (refresh_token,)
+        response = requests.post(
+            f"{DB_MANAGER_URL}/tokens/revoke",
+            json={"refresh_token": refresh_token},
+            timeout=5
         )
-        rows_affected = cursor.rowcount
-        conn.commit()
-        conn.close()
-        print(f"Revoked refresh token - rows affected: {rows_affected}")
-        return rows_affected > 0
+
+        if response.status_code != 200:
+            print("DB Manager returned error:", response.text)
+            return False
+
+        data = response.json()
+        return data.get("success", False)
+    
     except Exception as e:
         print(f"Failed to revoke refresh token: {e}")
         return False
@@ -276,17 +216,19 @@ def revoke_refresh_token(refresh_token: str) -> bool:
 def revoke_all_user_tokens(user_id: int) -> bool:
     """Revoke all refresh tokens for a user."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE user_id = %s AND revoked = FALSE",
-            (user_id,)
+        response = requests.post(
+            f"{DB_MANAGER_URL}/tokens/revoke_all",
+            json={"user_id": user_id},
+            timeout=5
         )
-        rows_affected = cursor.rowcount
-        conn.commit()
-        conn.close()
-        print(f"Revoked all tokens for user {user_id} - rows affected: {rows_affected}")
-        return True
+
+        if response.status_code != 200:
+            print("DB Manager returned error:", response.text)
+            return False
+
+        data = response.json()
+        return data.get("success", False)
+    
     except Exception as e:
         print(f"Failed to revoke user tokens: {e}")
         return False
@@ -320,30 +262,31 @@ def register():
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
         # Check if username already exists
-        cursor.execute(
-            "SELECT COUNT(*) FROM users WHERE username = %s", (username,)
+        exists_response = requests.get(
+            f"{DB_MANAGER_URL}/users/exists/{username}", timeout=5
         )
-        if cursor.fetchone()[0] > 0:
-            conn.close()
-            # Log failed registration attempt
-            log_action(
-                "REGISTRATION_FAILED", username, "Username already exists"
-            )
-            return jsonify({"error": "Username already exists"}), 409
 
+        if exists_response.status_code != 200:
+            return jsonify({"error": "DB Manager error"}), 500
+
+        if exists_response.json().get("exists"):
+            log_action("REGISTRATION_FAILED", username, "Username already exists")
+            return jsonify({"error": "Username already exists"}), 409
+        
         # Hash password and create user
         hashed_password = hash_password(password)
-        cursor.execute(
-            "INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id",
-            (username, hashed_password),
+        
+        create_response = requests.post(
+            f"{DB_MANAGER_URL}/users/create",
+            json={"username": username, "password": hashed_password},
+            timeout=5
         )
-        user_id = cursor.fetchone()[0]
-        conn.commit()
-        conn.close()
+
+        if create_response.status_code != 201:
+            return jsonify({"error": "Failed to create user"}), 500
+
+        user_id = create_response.json().get("user_id")
 
         # Log the registration
         log_action(
@@ -414,39 +357,33 @@ def force_logout():
             return jsonify({"error": str(e)}), 400
 
         # Get user and verify password
-        log_action("FORCE_LOGOUT_DEBUG", username, "Getting user from database")
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute(
-            """SELECT id, username, password 
-               FROM users WHERE username = %s""",
-            (username,),
+        user_response = requests.get(
+            f"{DB_MANAGER_URL}/users/{username}",
+            timeout=5
         )
-        user = cursor.fetchone()
 
-        if not user:
-            conn.close()
+        if user_response.status_code != 200:
             log_action("FORCE_LOGOUT_FAILED", username, "User not found")
             return jsonify({"error": "Invalid username or password"}), 401
 
-        log_action("FORCE_LOGOUT_DEBUG", username, "User found, verifying password")
+        user = user_response.json().get("user")
+
+        if not user:
+            return jsonify({"error": "Invalid username or password"}), 401
         # Verify password
         if not bcrypt.checkpw(password.encode("utf-8"), user["password"].encode("utf-8")):
-            conn.close()
             log_action("FORCE_LOGOUT_FAILED", username, "Invalid password")
             return jsonify({"error": "Invalid username or password"}), 401
-
-        conn.close()
-
-        log_action("FORCE_LOGOUT_DEBUG", username, "Password verified, revoking tokens")
         # Revoke all sessions
         success = revoke_all_user_tokens(user["id"])
-        
+
         if success:
             log_action("FORCE_LOGOUT", username, "All sessions forcefully terminated")
-            return jsonify({"message": "All sessions have been terminated. You can now login again."}), 200
+            return jsonify({
+                "message": "All sessions have been terminated. You can now login again."
+            }), 200
+        
         else:
-            log_action("FORCE_LOGOUT_ERROR", username, "Failed to revoke tokens")
             return jsonify({"error": "Failed to terminate sessions"}), 500
 
     except Exception as e:
@@ -465,7 +402,7 @@ def login():
 
         if not data:
             return jsonify({"error": "Request body is required"}), 400
-
+        
         # Validate required fields
         if not data.get("username") or not data.get("password"):
             return jsonify({"error": "Username and password are required"}), 400
@@ -477,137 +414,107 @@ def login():
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        # Get user from database with lockout information
-        cursor.execute(
-            """SELECT id, username, password, failed_login_attempts, 
-                      account_locked_until, last_failed_login 
-               FROM users WHERE username = %s""",
-            (username,),
+        # Get username
+        user_response = requests.get(
+            f"{DB_MANAGER_URL}/auth/user/{username}",
+            timeout=5
         )
-        user = cursor.fetchone()
-
-        if not user:
-            conn.close()
-            # Log failed login attempt (user not found)
+        
+        if user_response.status_code != 200:
             log_action("LOGIN_FAILED", username, "User not found")
             return jsonify({"error": "Invalid username or password"}), 401
 
-        # Check if account is locked
+        user = user_response.json().get("user")
+        if not user:
+            log_action("LOGIN_FAILED", username, "User not found")
+            return jsonify({"error": "Invalid username or password"}), 401
+
+        # Check lockout
         if user.get("account_locked_until"):
-            if user["account_locked_until"] > datetime.now():
-                # Account is still locked
-                locked_until = user["account_locked_until"].isoformat()
-                remaining_seconds = int((user["account_locked_until"] - datetime.now()).total_seconds())
-                conn.close()
-                log_action("LOGIN_BLOCKED", username, f"Account locked until {locked_until}")
+            locked_until = datetime.fromisoformat(user["account_locked_until"])
+
+            if locked_until > datetime.now():
+                remaining = int((locked_until - datetime.now()).total_seconds())
+                log_action("LOGIN_BLOCKED", username, f"Locked until {locked_until}")
+
                 return jsonify({
-                    "error": "Account is temporarily locked due to multiple failed login attempts",
-                    "locked_until": locked_until,
-                    "retry_after": remaining_seconds
-                }), 423  # 423 Locked status code
-            else:
-                # Lock period expired, reset the lockout
-                cursor.execute(
-                    """UPDATE users 
-                       SET failed_login_attempts = 0, 
-                           account_locked_until = NULL 
-                       WHERE username = %s""",
-                    (username,)
-                )
-                conn.commit()
+                    "error": "Account is temporarily locked",
+                    "locked_until": locked_until.isoformat(),
+                    "retry_after": remaining
+                }), 423
+            
+            # Lock expired, reset it
+            requests.post(f"{DB_MANAGER_URL}/auth/reset_failures",
+                          json={"username": username})
 
         # Verify password
         if not verify_password(password, user["password"]):
-            # Increment failed login attempts
             failed_attempts = (user.get("failed_login_attempts") or 0) + 1
-            
-            # Lock account after 3 failed attempts (15 minutes lockout)
+
+            # If reached 3 attempts locks account
             if failed_attempts >= 3:
-                lockout_duration = timedelta(minutes=15)
-                locked_until = datetime.now() + lockout_duration
-                cursor.execute(
-                    """UPDATE users 
-                       SET failed_login_attempts = %s, 
-                           account_locked_until = %s,
-                           last_failed_login = CURRENT_TIMESTAMP
-                       WHERE username = %s""",
-                    (failed_attempts, locked_until, username)
-                )
-                conn.commit()
-                conn.close()
-                log_action("ACCOUNT_LOCKED", username, 
-                          f"Account locked after {failed_attempts} failed attempts until {locked_until.isoformat()}")
+                lockout_minutes = 15
+                requests.post(f"{DB_MANAGER_URL}/auth/lock",
+                              json={
+                                  "username": username,
+                                  "failed_attempts": failed_attempts,
+                                  "lock_minutes": lockout_minutes
+                              })
+
+                log_action("ACCOUNT_LOCKED", username,
+                           f"Locked after {failed_attempts} failed attempts")
+
                 return jsonify({
-                    "error": "Account locked due to multiple failed login attempts",
-                    "locked_until": locked_until.isoformat(),
-                    "retry_after": int(lockout_duration.total_seconds())
+                    "error": "Account locked due to multiple failed attempts",
+                    "locked_until": (datetime.now() + timedelta(minutes=lockout_minutes)).isoformat(),
+                    "retry_after": lockout_minutes * 60
                 }), 423
-            else:
-                # Update failed attempts count
-                cursor.execute(
-                    """UPDATE users 
-                       SET failed_login_attempts = %s,
-                           last_failed_login = CURRENT_TIMESTAMP
-                       WHERE username = %s""",
-                    (failed_attempts, username)
-                )
-                conn.commit()
-                conn.close()
-                log_action("LOGIN_FAILED", username, 
-                          f"Invalid password - attempt {failed_attempts} of 3")
-                return jsonify({
-                    "error": "Invalid username or password",
-                    "remaining_attempts": 3 - failed_attempts
-                }), 401
 
-        # Successful login - reset failed attempts
-        cursor.execute(
-            """UPDATE users 
-               SET failed_login_attempts = 0, 
-                   account_locked_until = NULL,
-                   last_failed_login = NULL
-               WHERE username = %s""",
-            (username,)
+            # Less than 3 mean just increment attempts
+            requests.post(
+                f"{DB_MANAGER_URL}/auth/fail_attempt",
+                json={"username": username, "failed_attempts": failed_attempts}
+            )
+
+            log_action("LOGIN_FAILED", username,
+                       f"Invalid password - attempt {failed_attempts} of 3")
+
+            return jsonify({
+                "error": "Invalid username or password",
+                "remaining_attempts": 3 - failed_attempts
+            }), 401
+
+        # Succesfull login restarts attempts
+        requests.post(
+            f"{DB_MANAGER_URL}/auth/reset_failures",
+            json={"username": username}
         )
-        conn.commit()
 
-        # STRICT MODE: Check for concurrent sessions
-        if check_concurrent_session(user["id"]):
-            # Get active session info for the error message
-            active_sessions = get_active_sessions(user["id"])
+        # Strict mode (active session check)
+        user_id = user["id"]
+
+        if check_concurrent_session(user_id):
+            active_sessions = get_active_sessions(user_id)
             session_info = active_sessions[0] if active_sessions else {}
-            
-            conn.close()
-            log_action("LOGIN_REJECTED", username, 
-                      f"Concurrent session detected - active session from {session_info.get('device_info', 'Unknown Device')}")
-            
+
+            log_action("LOGIN_REJECTED", username,
+                       f"Concurrent session from {session_info.get('device_info','Unknown')}")
+
             return jsonify({
                 "error": "Another session is already active",
-                "message": "You already have an active session. Please logout from your other device first.",
-                "active_session": {
-                    "device": session_info.get('device_info', 'Unknown Device'),
-                    "ip_address": session_info.get('ip_address', 'Unknown'),
-                    "created_at": session_info.get('created_at').isoformat() if session_info.get('created_at') else None
-                }
-            }), 409  # 409 Conflict
-        
-        conn.close()
+                "active_session": session_info
+            }), 409
 
-        # Log successful login
-        log_action("USER_LOGIN", username, f"User logged in successfully from {get_device_info()['device_info']}")
+        # Successfull login
+        log_action("USER_LOGIN", username,
+                   f"User logged in successfully from {get_device_info()['device_info']}")
 
-        # Create access token and refresh token
         access_token = create_access_token(identity=username)
         refresh_token = create_refresh_token(identity=username)
-        
-        # Store refresh token in database with device tracking
+
         refresh_expires = app.config["JWT_REFRESH_TOKEN_EXPIRES"]
-        store_refresh_token(user["id"], refresh_token, refresh_expires)
-        
-        # OAuth2-style metadata (support timedelta or numeric seconds)
+        store_refresh_token(user_id, refresh_token, refresh_expires)
+
         jwt_expires = app.config["JWT_ACCESS_TOKEN_EXPIRES"]
         expires_in = (
             int(jwt_expires.total_seconds())
@@ -615,19 +522,14 @@ def login():
             else int(jwt_expires)
         )
 
-        return (
-            jsonify(
-                {
-                    "message": "Login successful",
-                    "access_token": access_token,
-                    "refresh_token": refresh_token,
-                    "token_type": "bearer",
-                    "expires_in": expires_in,
-                    "user": {"id": user["id"], "username": user["username"]},
-                }
-            ),
-            200,
-        )
+        return jsonify({
+            "message": "Login successful",
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "expires_in": expires_in,
+            "user": {"id": user_id, "username": user["username"]},
+        }), 200
 
     except Exception as e:
         return jsonify({"error": f"Login failed: {str(e)}"}), 500
@@ -638,21 +540,28 @@ def login():
 def get_profile():
     """Get user profile."""
     try:
+        # Get logged-in identity from JWT
         current_user = get_jwt_identity()
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        cursor.execute(
-            "SELECT id, username, is_admin, created_at FROM users WHERE username = %s",
-            (current_user,),
+        # Request user profile from DB Manager
+        response = requests.get(
+            f"{DB_MANAGER_URL}/auth/profile/{current_user}",
+            timeout=5
         )
-        user = cursor.fetchone()
-        conn.close()
+
+        if response.status_code == 404:
+            return jsonify({"error": "User not found"}), 404
+
+        if response.status_code != 200:
+            return jsonify({"error": "DB Manager error"}), 500
+
+        data = response.json()
+        user = data.get("user")
 
         if not user:
             return jsonify({"error": "User not found"}), 404
 
+        # Return profile in same format as original version
         return (
             jsonify(
                 {
@@ -661,11 +570,7 @@ def get_profile():
                         "username": user["username"],
                         "is_admin": user.get("is_admin", False),
                         "enabled": user.get("enabled", True),
-                        "created_at": (
-                            user["created_at"].isoformat()
-                            if user["created_at"]
-                            else None
-                        ),
+                        "created_at": user.get("created_at"),
                     }
                 }
             ),
@@ -687,112 +592,111 @@ def update_profile():
         if not data:
             return jsonify({"error": "No data provided"}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        # Check if user exists and get user data
-        cursor.execute(
-            "SELECT id, username, created_at, is_admin FROM users WHERE username = %s", (current_user,)
+        # Get user
+        user_response = requests.get(
+            f"{DB_MANAGER_URL}/auth/user/{current_user}",
+            timeout=5
         )
-        user = cursor.fetchone()
-        if not user:
-            conn.close()
+
+        if user_response.status_code != 200:
             return jsonify({"error": "User not found"}), 404
 
-        # Track if any updates were made
+        user = user_response.json().get("user")
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
         updates_made = []
-        
-        # Update username if provided and different from current
+        old_username = current_user
+
+        # Update username
         if "username" in data and data["username"] and data["username"] != current_user:
             new_username = data["username"]
-            
+
             # Validate username
             try:
                 new_username = InputSanitizer.validate_username(new_username)
             except ValueError as e:
-                conn.close()
                 return jsonify({"error": str(e)}), 400
-            
-            # Check if new username already exists
-            cursor.execute(
-                "SELECT COUNT(*) FROM users WHERE username = %s AND username != %s",
-                (new_username, current_user),
-            )
-            if cursor.fetchone()["count"] > 0:
-                conn.close()
-                return jsonify({"error": "Username already exists"}), 400
-            
-            # Update username
-            cursor.execute(
-                "UPDATE users SET username = %s WHERE username = %s",
-                (new_username, current_user),
-            )
-            updates_made.append(f"username changed from '{current_user}' to '{new_username}'")
-            
-            # Update the current_user variable for subsequent operations
-            old_username = current_user
-            current_user = new_username
-            
-            # Log username change
-            log_action(
-                "USERNAME_CHANGED", new_username, f"Username changed from '{old_username}' to '{new_username}'"
+
+            # Call DB Manager to update username
+            update_resp = requests.post(
+                f"{DB_MANAGER_URL}/auth/update_username",
+                json={"old_username": current_user, "new_username": new_username},
+                timeout=5
             )
 
-        # Update password if provided
+            if update_resp.status_code != 200:
+                return jsonify({"error": update_resp.json().get("error", "Failed to update username")}), 400
+
+            updates_made.append(f"username changed from '{current_user}' to '{new_username}'")
+
+            # Update identity for remaining logic
+            current_user = new_username
+
+            # Log username change
+            log_action(
+                "USERNAME_CHANGED",
+                new_username,
+                f"Username changed from '{old_username}' to '{new_username}'"
+            )
+
+        # Update password
         if "password" in data and data["password"]:
             try:
-                new_password = InputSanitizer.validate_password(
-                    data["password"]
-                )
+                new_password = InputSanitizer.validate_password(data["password"])
             except ValueError as e:
-                conn.close()
                 return jsonify({"error": str(e)}), 400
 
             hashed_password = hash_password(new_password)
-            cursor.execute(
-                "UPDATE users SET password = %s WHERE username = %s",
-                (hashed_password, current_user),
+
+            # Call DB Manager
+            pw_resp = requests.post(
+                f"{DB_MANAGER_URL}/auth/update_password",
+                json={"username": current_user, "hashed_password": hashed_password},
+                timeout=5
             )
+
+            if pw_resp.status_code != 200:
+                return jsonify({"error": "Failed to update password"}), 500
+
             updates_made.append("password")
+
             # Log password change
             log_action(
-                "PASSWORD_CHANGED", current_user, "User changed their password"
+                "PASSWORD_CHANGED",
+                current_user,
+                "User changed their password"
             )
 
-        conn.commit()
-        
-        # Fetch updated user data to return
-        cursor.execute(
-            "SELECT id, username, created_at, is_admin FROM users WHERE username = %s",
-            (current_user,)
+        # Refresh updated user data
+        updated_user_resp = requests.get(
+            f"{DB_MANAGER_URL}/auth/user/{current_user}",
+            timeout=5
         )
-        updated_user = cursor.fetchone()
-        user_id = updated_user['id']
-        conn.close()
 
-        # Generate new tokens if username was changed
+        updated_user = updated_user_resp.json().get("user")
+        user_id = updated_user["id"]
+
+        # If username changed - generate new tokens
         response_data = {
             "message": "Profile updated successfully",
-            "user": dict(updated_user)
+            "user": updated_user
         }
-        
-        if "username" in data and data["username"] and data["username"] != get_jwt_identity():
-            # Username was changed, generate new tokens
+
+        if old_username != current_user:
             access_token = create_access_token(identity=current_user)
             refresh_token = create_refresh_token(identity=current_user)
-            
-            # Store new refresh token in database
+
             refresh_expires = app.config["JWT_REFRESH_TOKEN_EXPIRES"]
             store_refresh_token(user_id, refresh_token, refresh_expires)
-            
-            # OAuth2-style metadata
+
             jwt_expires = app.config["JWT_ACCESS_TOKEN_EXPIRES"]
             expires_in = (
                 int(jwt_expires.total_seconds())
                 if hasattr(jwt_expires, "total_seconds")
                 else int(jwt_expires)
             )
-            
+
             response_data["access_token"] = access_token
             response_data["refresh_token"] = refresh_token
             response_data["token_type"] = "bearer"
@@ -809,20 +713,25 @@ def update_profile():
 def validate_token():
     """Validate JWT token."""
     try:
+        # Extract identity from token
         current_user = get_jwt_identity()
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT COUNT(*) FROM users WHERE username = %s", (current_user,)
+        # Check if user exists
+        response = requests.get(
+            f"{DB_MANAGER_URL}/auth/user-exists/{current_user}",
+            timeout=5
         )
-        user_exists = cursor.fetchone()[0] > 0
-        conn.close()
 
-        if not user_exists:
+        if response.status_code != 200:
+            return jsonify({"error": "Token validation failed"}), 500
+
+        exists = response.json().get("exists", False)
+
+        # If user doesn't exist - token invalid
+        if not exists:
             return jsonify({"error": "Invalid token"}), 401
 
+        # Token is valid
         return jsonify({"valid": True, "username": current_user}), 200
 
     except Exception as e:
@@ -844,6 +753,7 @@ def refresh():
         token_data = validate_refresh_token(refresh_token)
         
         if not token_data:
+            # Log failed refresh
             log_action("TOKEN_REFRESH_FAILED", None, "Invalid or expired refresh token")
             return jsonify({"error": "Invalid or expired refresh token"}), 401
         
@@ -855,6 +765,7 @@ def refresh():
         # Log token refresh
         log_action("TOKEN_REFRESHED", username, "Access token refreshed successfully")
         
+        # OAuth2-style expiration format
         jwt_expires = app.config["JWT_ACCESS_TOKEN_EXPIRES"]
         expires_in = (
             int(jwt_expires.total_seconds())
@@ -880,31 +791,50 @@ def logout():
         current_user = get_jwt_identity()
         data = request.get_json() or {}
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
-        user = cursor.fetchone()
-        conn.close()
+        #Get user_id
+        response = requests.get(
+            f"{DB_MANAGER_URL}/auth/user-id/{current_user}",
+            timeout=5
+        )
+
+        if response.status_code != 200:
+            return jsonify({"error": "Failed to retrieve user"}), 500
         
-        if not user:
+        user_id = response.json().get("user_id")
+        
+        if user_id is None:
             return jsonify({"error": "User not found"}), 404
         
-        user_id = user[0]
-        
+        # If refresh token provided - revoke only that one
         if data.get("refresh_token"):
-            # Revoke specific refresh token
             refresh_token = data["refresh_token"]
+
             success = revoke_refresh_token(refresh_token)
-            log_action("USER_LOGOUT", current_user, f"User logged out - specific token revoked (success: {success})")
+
+            log_action(
+                "USER_LOGOUT",
+                current_user,
+                f"User logged out - specific token revoked (success: {success})"
+            )
+        
         else:
-            # Revoke all refresh tokens for this user
+            # Revoke ALL tokens for this user
             success = revoke_all_user_tokens(user_id)
-            log_action("USER_LOGOUT", current_user, f"User logged out - all tokens revoked (success: {success})")
+
+            log_action(
+                "USER_LOGOUT",
+                current_user,
+                f"User logged out - all tokens revoked (success: {success})"
+            )
         
         return jsonify({"message": "Logged out successfully"}), 200
         
     except Exception as e:
-        log_action("LOGOUT_ERROR", current_user if 'current_user' in locals() else None, f"Logout failed: {str(e)}")
+        log_action(
+            "LOGOUT_ERROR",
+            current_user if 'current_user' in locals() else None,
+            f"Logout failed: {str(e)}"
+        )
         return jsonify({"error": f"Logout failed: {str(e)}"}), 500
 
 
@@ -915,17 +845,23 @@ def get_sessions():
     try:
         current_user = get_jwt_identity()
         
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
-        user = cursor.fetchone()
-        conn.close()
+        # Get user_id
+        response = requests.get(
+            f"{DB_MANAGER_URL}/auth/user-id/{current_user}",
+            timeout=5
+        )
+
+        if response.status_code != 200:
+            return jsonify({"error": "Failed to retrieve user"}), 500
         
-        if not user:
+        user_id = response.json().get("user_id")
+        
+        if user_id is None:
             return jsonify({"error": "User not found"}), 404
         
-        sessions = get_active_sessions(user["id"])
-        
+        # Get active sessions
+        sessions = get_active_sessions(user_id)
+
         # Format sessions for response
         formatted_sessions = []
         for session in sessions:
@@ -953,45 +889,48 @@ def revoke_session(session_id):
     try:
         current_user = get_jwt_identity()
         
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Get user ID
-        cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
-        user = cursor.fetchone()
-        
-        if not user:
-            conn.close()
+        # Get user id
+        response = requests.get(
+            f"{DB_MANAGER_URL}/auth/user-id/{current_user}",
+            timeout=5
+        )
+        user_id = response.json().get("user_id")
+
+        if user_id is None:
             return jsonify({"error": "User not found"}), 404
         
-        # Verify the session belongs to this user
-        cursor.execute(
-            "SELECT id, user_id FROM refresh_tokens WHERE id = %s",
-            (session_id,)
+        # Get session owner from DB Manager
+        session_response = requests.get(
+            f"{DB_MANAGER_URL}/tokens/session/{session_id}",
+            timeout=5
         )
-        session = cursor.fetchone()
-        
+        session = session_response.json().get("session")
+
         if not session:
-            conn.close()
             return jsonify({"error": "Session not found"}), 404
         
-        if session["user_id"] != user["id"]:
-            conn.close()
-            log_action("UNAUTHORIZED_SESSION_REVOKE", current_user, 
-                      f"Attempted to revoke session {session_id} belonging to another user")
+        # Verify the session belongs to current user
+        if session["user_id"] != user_id:
+            log_action(
+                "UNAUTHORIZED_SESSION_REVOKE",
+                current_user,
+                f"Attempted to revoke session {session_id} belonging to another user"
+            )
             return jsonify({"error": "Unauthorized"}), 403
         
-        # Revoke the session
-        cursor.execute(
-            "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = CURRENT_TIMESTAMP WHERE id = %s",
-            (session_id,)
+        # Revoke session in DB Manager
+        revoke_response = requests.delete(
+            f"{DB_MANAGER_URL}/tokens/revoke-session/{session_id}",
+            timeout=5
         )
-        conn.commit()
-        conn.close()
         
-        log_action("SESSION_REVOKED", current_user, f"User revoked session {session_id}")
+        success = revoke_response.json().get("success", False)
         
-        return jsonify({"message": "Session revoked successfully"}), 200
+        if success:
+            log_action("SESSION_REVOKED", current_user, f"User revoked session {session_id}")
+            return jsonify({"message": "Session revoked successfully"}), 200
+        else:
+            return jsonify({"error": "Failed to revoke session"}), 500
         
     except Exception as e:
         return jsonify({"error": f"Failed to revoke session: {str(e)}"}), 500
@@ -1005,21 +944,39 @@ def revoke_all_sessions():
         current_user = get_jwt_identity()
         data = request.get_json() or {}
         
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT id FROM users WHERE username = %s", (current_user,))
-        user = cursor.fetchone()
-        conn.close()
+        # Get user_id from DB Manager
+        response = requests.get(
+            f"{DB_MANAGER_URL}/auth/user-id/{current_user}",
+            timeout=5
+        )
         
-        if not user:
+        if response.status_code != 200:
+            return jsonify({"error": "Failed to retrieve user"}), 500
+        
+        user_id = response.json().get("user_id")
+
+        if not user_id:
             return jsonify({"error": "User not found"}), 404
         
-        # Revoke all tokens
-        revoke_all_user_tokens(user["id"])
+        # Revoke all tokens for this user via DB Manager
+        revoke_response = requests.post(
+            f"{DB_MANAGER_URL}/tokens/revoke_all",
+            json={"user_id": user_id},
+            timeout=5
+        )
+
+        if revoke_response.status_code != 200:
+            return jsonify({"error": "Failed to revoke sessions"}), 500
         
+        success = revoke_response.json().get("success", False)
+
+        # Log the action (keep your original log)
         log_action("ALL_SESSIONS_REVOKED", current_user, "User revoked all sessions")
         
-        return jsonify({"message": "All sessions revoked successfully"}), 200
+        if success:
+            return jsonify({"message": "All sessions revoked successfully"}), 200
+        else:
+            return jsonify({"error": "Failed to revoke sessions"}), 500
         
     except Exception as e:
         return jsonify({"error": f"Failed to revoke all sessions: {str(e)}"}), 500
@@ -1034,25 +991,30 @@ def require_admin():
         def decorator(*args, **kwargs):
             current_user = get_jwt_identity()
 
-            conn = get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute(
-                "SELECT is_admin FROM users WHERE username = %s",
-                (current_user,),
-            )
-            user = cursor.fetchone()
-            conn.close()
-
-            if not user or not user.get("is_admin"):
-                # Log unauthorized admin access attempt
-                log_action(
-                    "UNAUTHORIZED_ADMIN_ACCESS",
-                    current_user,
-                    f"Attempted to access admin endpoint: {fn.__name__}",
+            try:
+                response = requests.get(
+                    f"{DB_MANAGER_URL}/auth/is-admin/{current_user}",
+                    timeout=5
                 )
-                return jsonify({"error": "Admin privileges required"}), 403
+                
+                if response.status_code != 200:
+                    return jsonify({"error": "Failed to verify admin status"}), 500
+                
+                is_admin = response.json().get("is_admin", False)
+                
+                if not is_admin:
+                    # Log unauthorized admin access attempt
+                    log_action(
+                        "UNAUTHORIZED_ADMIN_ACCESS",
+                        current_user,
+                        f"Attempted to access admin endpoint: {fn.__name__}",
+                    )
+                    return jsonify({"error": "Admin privileges required"}), 403
 
-            return fn(*args, **kwargs)
+                return fn(*args, **kwargs)
+            
+            except Exception as e:
+                return jsonify({"error": f"Failed to check admin status: {str(e)}"}), 500
 
         decorator.__name__ = fn.__name__
         return decorator
@@ -1068,27 +1030,22 @@ def list_users():
         current_user = get_jwt_identity()
         page = int(request.args.get("page", 0))
         size = int(request.args.get("size", 10))
-        offset = page * size
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        # Get total count
-        cursor.execute("SELECT COUNT(*) as count FROM users")
-        total = cursor.fetchone()["count"]
-
-        # Get paginated users
-        cursor.execute(
-            """SELECT id, username, is_admin, created_at 
-               FROM users 
-               ORDER BY created_at DESC 
-               LIMIT %s OFFSET %s""",
-            (size, offset),
+        # Call db-manager to get users
+        response = requests.get(
+            f"{DB_MANAGER_URL}/admin/users",
+            params={"page": page, "size": size},
+            timeout=5
         )
-        users = cursor.fetchall()
-        conn.close()
 
-        # Format users
+        if response.status_code != 200:
+            return jsonify({"error": "Failed to retrieve users"}), 500
+
+        data = response.json()
+        users = data.get("users", [])
+        total = data.get("total", 0)
+
+        # Format users response
         formatted_users = []
         for user in users:
             formatted_users.append(
@@ -1100,8 +1057,8 @@ def list_users():
                     ],
                     "created_at": (
                         user["created_at"].isoformat()
-                        if user["created_at"]
-                        else None
+                        if isinstance(user.get("created_at"), str)
+                        else user["created_at"]
                     ),
                 }
             )
@@ -1132,33 +1089,22 @@ def search_users():
         query = request.args.get("query", "")
         page = int(request.args.get("page", 0))
         size = int(request.args.get("size", 10))
-        offset = page * size
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        search_pattern = f"%{query}%"
-
-        # Get total count
-        cursor.execute(
-            "SELECT COUNT(*) as count FROM users WHERE username ILIKE %s",
-            (search_pattern,),
+        # Call db-manager to search users
+        response = requests.get(
+            f"{DB_MANAGER_URL}/admin/users/search",
+            params={"query": query, "page": page, "size": size},
+            timeout=5
         )
-        total = cursor.fetchone()["count"]
 
-        # Get paginated results
-        cursor.execute(
-            """SELECT id, username, is_admin, created_at 
-               FROM users 
-               WHERE username ILIKE %s
-               ORDER BY created_at DESC 
-               LIMIT %s OFFSET %s""",
-            (search_pattern, size, offset),
-        )
-        users = cursor.fetchall()
-        conn.close()
+        if response.status_code != 200:
+            return jsonify({"error": "Failed to search users"}), 500
 
-        # Format users
+        data = response.json()
+        users = data.get("users", [])
+        total = data.get("total", 0)
+
+        # Format users response
         formatted_users = []
         for user in users:
             formatted_users.append(
@@ -1170,8 +1116,8 @@ def search_users():
                     ],
                     "created_at": (
                         user["created_at"].isoformat()
-                        if user["created_at"]
-                        else None
+                        if isinstance(user.get("created_at"), str)
+                        else user["created_at"]
                     ),
                 }
             )

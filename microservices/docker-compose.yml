@@ -46,6 +46,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
       - JWT_SECRET_KEY=your-super-secret-key-change-in-production
+      - DB_MANAGER_URL=http://db-manager:5005
     ports:
       - "5001:5001"
     depends_on:
