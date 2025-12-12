@@ -156,10 +156,12 @@ jobs:
     - name: Run Postman tests with Newman
       run: |
         echo "Running Postman/Newman tests..."
-        newman run tests/microservices_postman_collection.json\
-          --environment <(echo '{}') \
+        newman run tests/microservices_postman_collection.json \
+          --environment tests/postman_environment.json \
           --reporters cli,htmlextra \
           --reporter-htmlextra-export newman-report.html \
+          --insecure \
+          --delay-request 100 \
           --color on
 
     - name: Upload Newman report
