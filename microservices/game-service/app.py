@@ -26,7 +26,7 @@ from input_sanitizer import (
     SecurityMiddleware,
     require_sanitized_input,
 )
-from utils.service_auth import ServiceAuth
+from service_auth import ServiceAuth
 
 # Load environment variables
 load_dotenv()
