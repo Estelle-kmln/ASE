@@ -19,13 +19,16 @@ import requests
 
 from security import get_history_security
 
-# Add utils directory to path for input sanitizer
+# Add utils directory to path for input sanitizer and mTLS
+sys.path.insert(0, "/app/utils")
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "utils"))
 from input_sanitizer import (
     InputSanitizer,
     SecurityMiddleware,
     require_sanitized_input,
 )
+from mtls_auth import make_mtls_request, get_cert_paths
+from service_auth import get_service_api_key_header
 
 # Load environment variables
 load_dotenv()
@@ -86,8 +89,10 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://gameuser:gamepassword@localhost:5432/battlecards",
 )
-CARD_SERVICE_URL = os.getenv("CARD_SERVICE_URL", "http://localhost:5002")
-AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:5001")
+CARD_SERVICE_URL = os.getenv("CARD_SERVICE_URL", "https://card-service:5002")
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "https://auth-service:5001")
+SERVICE_NAME = os.getenv("SERVICE_NAME", "game-service")
+CARD_SERVICE_API_KEY = os.getenv("CARD_SERVICE_API_KEY", "")
 
 
 def get_db_connection():
@@ -136,18 +141,28 @@ class Card:
 
 
 def get_cards_from_service(token):
-    """Get cards from card service."""
+    """Get cards from card service using mTLS."""
     try:
         headers = {"Authorization": f"Bearer {token}"}
-        response = requests.post(
+        # Add service API key for service-to-service authentication
+        service_headers = get_service_api_key_header("card-service")
+        headers.update(service_headers)
+        if CARD_SERVICE_API_KEY:
+            headers["X-Service-API-Key"] = CARD_SERVICE_API_KEY
+
+        # Use mTLS for secure service-to-service communication
+        response = make_mtls_request(
+            "post",
             f"{CARD_SERVICE_URL}/api/cards/random-deck",
+            SERVICE_NAME,
             headers=headers,
             json={"size": 22},
         )
         if response.status_code == 200:
             return response.json()["deck"]
         return None
-    except:
+    except Exception as e:
+        print(f"Error calling card service: {e}")
         return None
 
 
@@ -160,16 +175,23 @@ def check_both_played(game):
 
 def get_game_end_status(p1_deck, p2_deck, p1_score, p2_score, turn_number=0):
     """Determine game end status and winner.
-    
+
     Returns: (game_should_end, winner, is_tie, tie_breaker_possible, awaiting_tiebreaker_decision)
     """
     # SPECIAL CASE: Check for 7th round tie FIRST (before checking if players can continue)
     # If turn is 7 and scores are tied and both have 1 card left (22nd card), trigger tiebreaker
-    if turn_number == 7 and p1_score == p2_score and len(p1_deck) > 0 and len(p2_deck) > 0:
-        print("7th round tie with cards remaining - awaiting tiebreaker decision")
+    if (
+        turn_number == 7
+        and p1_score == p2_score
+        and len(p1_deck) > 0
+        and len(p2_deck) > 0
+    ):
+        print(
+            "7th round tie with cards remaining - awaiting tiebreaker decision"
+        )
         # 7th round tie with cards remaining - await tiebreaker decision
         return False, None, True, True, True
-    
+
     # Check if either player has less than 3 cards (cannot draw another hand)
     p1_can_continue = len(p1_deck) >= 3
     p2_can_continue = len(p2_deck) >= 3
@@ -344,16 +366,19 @@ def create_game():
         # Verify that player2 exists in the database
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
+
         cursor.execute(
             "SELECT id, username FROM users WHERE username = %s",
-            (player2_name,)
+            (player2_name,),
         )
         player2_user = cursor.fetchone()
-        
+
         if not player2_user:
             conn.close()
-            return jsonify({"error": f"User '{player2_name}' could not be found"}), 404
+            return (
+                jsonify({"error": f"User '{player2_name}' could not be found"}),
+                404,
+            )
 
         # Create game with empty decks - players will select their decks
         game_id = str(uuid.uuid4())
@@ -484,9 +509,15 @@ def get_game(game_id):
                     },
                     "last_round": last_round,
                     "winner": game["winner"],
-                    "awaiting_tiebreaker_response": game.get("awaiting_tiebreaker_response", False),
-                    "player1_tiebreaker_decision": game.get("player1_tiebreaker_decision"),
-                    "player2_tiebreaker_decision": game.get("player2_tiebreaker_decision"),
+                    "awaiting_tiebreaker_response": game.get(
+                        "awaiting_tiebreaker_response", False
+                    ),
+                    "player1_tiebreaker_decision": game.get(
+                        "player1_tiebreaker_decision"
+                    ),
+                    "player2_tiebreaker_decision": game.get(
+                        "player2_tiebreaker_decision"
+                    ),
                     "created_at": (
                         game["created_at"].isoformat()
                         if game["created_at"]
@@ -1037,8 +1068,10 @@ def auto_resolve_round(game, conn):
             print(f"Error parsing decks: {e}")
             p1_deck = p2_deck = []
 
-        game_over, winner, is_tie, tie_breaker_possible, awaiting_tiebreaker = get_game_end_status(
-            p1_deck, p2_deck, new_p1_score, new_p2_score, game["turn"]
+        game_over, winner, is_tie, tie_breaker_possible, awaiting_tiebreaker = (
+            get_game_end_status(
+                p1_deck, p2_deck, new_p1_score, new_p2_score, game["turn"]
+            )
         )
 
         # Prepare winner name if game is over
@@ -1256,8 +1289,10 @@ def resolve_round(game_id):
         except:
             p1_deck = p2_deck = []
 
-        game_over, winner, is_tie, tie_breaker_possible, awaiting_tiebreaker = get_game_end_status(
-            p1_deck, p2_deck, new_p1_score, new_p2_score, game["turn"]
+        game_over, winner, is_tie, tie_breaker_possible, awaiting_tiebreaker = (
+            get_game_end_status(
+                p1_deck, p2_deck, new_p1_score, new_p2_score, game["turn"]
+            )
         )
 
         # Prepare winner name if game is over
@@ -1627,7 +1662,7 @@ def submit_tiebreaker_decision(game_id):
         # Check if user is a player
         is_player1 = current_user == game["player1_name"]
         is_player2 = current_user == game["player2_name"]
-        
+
         if not is_player1 and not is_player2:
             conn.close()
             return jsonify({"error": "Unauthorized"}), 403
@@ -1635,7 +1670,10 @@ def submit_tiebreaker_decision(game_id):
         # Check if game is awaiting tiebreaker decision
         if not game.get("awaiting_tiebreaker_response", False):
             conn.close()
-            return jsonify({"error": "Game is not awaiting tiebreaker decision"}), 400
+            return (
+                jsonify({"error": "Game is not awaiting tiebreaker decision"}),
+                400,
+            )
 
         # Update player's decision
         cursor = conn.cursor()
@@ -1667,7 +1705,7 @@ def submit_tiebreaker_decision(game_id):
 
         p1_decision = updated_game.get("player1_tiebreaker_decision")
         p2_decision = updated_game.get("player2_tiebreaker_decision")
-        
+
         response_data = {
             "decision_recorded": True,
         }
@@ -1686,7 +1724,7 @@ def submit_tiebreaker_decision(game_id):
             """,
                 (game_id,),
             )
-            
+
             # Archive the game
             try:
                 p1_deck = json.loads(updated_game["player1_deck_cards"] or "[]")
@@ -1711,17 +1749,21 @@ def submit_tiebreaker_decision(game_id):
                 p1_deck,
                 p2_deck,
             )
-            
+
             conn.commit()
             response_data["proceed_to_tiebreaker"] = False
             response_data["game_ended"] = True
             response_data["both_players_decided"] = True
-            response_data["message"] = "Game ended as a tie (tiebreaker declined)"
+            response_data["message"] = (
+                "Game ended as a tie (tiebreaker declined)"
+            )
         elif p1_decision == "yes" and p2_decision == "yes":
             # Both players said yes - proceed to tiebreaker
             response_data["proceed_to_tiebreaker"] = True
             response_data["both_players_decided"] = True
-            response_data["message"] = "Both players agreed to play the tiebreaker round!"
+            response_data["message"] = (
+                "Both players agreed to play the tiebreaker round!"
+            )
         else:
             # Current player said yes, but waiting for other player
             response_data["both_players_decided"] = False
@@ -1732,7 +1774,9 @@ def submit_tiebreaker_decision(game_id):
 
     except Exception as e:
         return (
-            jsonify({"error": f"Failed to submit tiebreaker decision: {str(e)}"}),
+            jsonify(
+                {"error": f"Failed to submit tiebreaker decision: {str(e)}"}
+            ),
             500,
         )
 
@@ -1761,7 +1805,7 @@ def play_tiebreaker_card(game_id):
         # Check if user is a player
         is_player1 = current_user == game["player1_name"]
         is_player2 = current_user == game["player2_name"]
-        
+
         if not is_player1 and not is_player2:
             conn.close()
             return jsonify({"error": "Unauthorized"}), 403
@@ -1772,17 +1816,29 @@ def play_tiebreaker_card(game_id):
 
         if p1_decision != "yes" or p2_decision != "yes":
             conn.close()
-            return jsonify({"error": "Both players must agree to tiebreaker"}), 400
+            return (
+                jsonify({"error": "Both players must agree to tiebreaker"}),
+                400,
+            )
 
         # Check if player already played their tiebreaker card
-        tiebreaker_field = "player1_played_card" if is_player1 else "player2_played_card"
+        tiebreaker_field = (
+            "player1_played_card" if is_player1 else "player2_played_card"
+        )
         if game.get(tiebreaker_field):
             conn.close()
-            return jsonify({"error": "You have already played your tiebreaker card"}), 400
+            return (
+                jsonify(
+                    {"error": "You have already played your tiebreaker card"}
+                ),
+                400,
+            )
 
         # Get the last card from player's deck (the 22nd card)
         try:
-            deck_field = "player1_deck_cards" if is_player1 else "player2_deck_cards"
+            deck_field = (
+                "player1_deck_cards" if is_player1 else "player2_deck_cards"
+            )
             deck = json.loads(game[deck_field] or "[]")
         except:
             deck = []
@@ -1855,7 +1911,9 @@ def play_tiebreaker_card(game_id):
 
             # Add tiebreaker to round history
             try:
-                existing_history = json.loads(updated_game.get("round_history") or "[]")
+                existing_history = json.loads(
+                    updated_game.get("round_history") or "[]"
+                )
             except Exception:
                 existing_history = []
 
@@ -1865,8 +1923,13 @@ def play_tiebreaker_card(game_id):
                 "player1_card": p1_card_data,
                 "player2_card": p2_card_data,
                 "round_winner": (
-                    1 if winner_name == updated_game["player1_name"]
-                    else (2 if winner_name == updated_game["player2_name"] else None)
+                    1
+                    if winner_name == updated_game["player1_name"]
+                    else (
+                        2
+                        if winner_name == updated_game["player2_name"]
+                        else None
+                    )
                 ),
                 "round_tied": is_tied,
                 "player1_score_after": updated_game["player1_score"],
@@ -2536,8 +2599,18 @@ def select_deck(game_id):
         # Get all available cards from card service to assign powers
         try:
             headers = {"Authorization": f"Bearer {token}"}
-            response = requests.get(
-                f"{CARD_SERVICE_URL}/api/cards", headers=headers
+            # Add service API key for service-to-service authentication
+            service_headers = get_service_api_key_header("card-service")
+            headers.update(service_headers)
+            if CARD_SERVICE_API_KEY:
+                headers["X-Service-API-Key"] = CARD_SERVICE_API_KEY
+
+            # Use mTLS for secure service-to-service communication
+            response = make_mtls_request(
+                "get",
+                f"{CARD_SERVICE_URL}/api/cards",
+                SERVICE_NAME,
+                headers=headers,
             )
             if response.status_code == 200:
                 all_cards = response.json()["cards"]

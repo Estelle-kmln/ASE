@@ -10,15 +10,23 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
-COPY requirements.txt .
+COPY logs-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY app.py .
-COPY input_sanitizer.py .
+COPY logs-service/app.py .
+COPY logs-service/input_sanitizer.py .
+
+# Copy utils directory for mTLS utilities (if needed in future)
+COPY utils /app/utils
+
+# Create certs directory (certificates will be mounted as volume)
+RUN mkdir -p /app/certs
 
 # Expose port
 EXPOSE 5006
 
-# Run the application
-CMD ["python", "app.py"]
+# Use HTTPS with server certificate for mTLS
+# Certificates are mounted from docker-compose volume
+# Client certificate verification handled via service API key middleware
+CMD ["gunicorn", "--bind", "0.0.0.0:5006", "--workers", "4", "--certfile", "/app/certs/logs-service-server-cert.pem", "--keyfile", "/app/certs/logs-service-key.pem", "app:app"]

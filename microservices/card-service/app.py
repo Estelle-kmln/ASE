@@ -13,13 +13,16 @@ from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 import requests
 
-# Add utils directory to path for input sanitizer
+# Add utils directory to path for input sanitizer and mTLS
+sys.path.insert(0, "/app/utils")
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "utils"))
 from input_sanitizer import (
     InputSanitizer,
     SecurityMiddleware,
     require_sanitized_input,
 )
+from mtls_auth import make_mtls_request, get_cert_paths
+from service_auth import get_service_api_key_header
 
 # Load environment variables
 load_dotenv()
@@ -61,7 +64,9 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://gameuser:gamepassword@localhost:5432/battlecards",
 )
-AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:5001")
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "https://auth-service:5001")
+SERVICE_NAME = os.getenv("SERVICE_NAME", "card-service")
+AUTH_SERVICE_API_KEY = os.getenv("AUTH_SERVICE_API_KEY", "")
 
 
 def get_db_connection():
@@ -70,14 +75,25 @@ def get_db_connection():
 
 
 def validate_token(token):
-    """Validate token with auth service."""
+    """Validate token with auth service using mTLS."""
     try:
         headers = {"Authorization": f"Bearer {token}"}
-        response = requests.post(
-            f"{AUTH_SERVICE_URL}/api/auth/validate", headers=headers
+        # Add service API key for service-to-service authentication
+        service_headers = get_service_api_key_header("auth-service")
+        headers.update(service_headers)
+        if AUTH_SERVICE_API_KEY:
+            headers["X-Service-API-Key"] = AUTH_SERVICE_API_KEY
+
+        # Use mTLS for secure service-to-service communication
+        response = make_mtls_request(
+            "post",
+            f"{AUTH_SERVICE_URL}/api/auth/validate",
+            SERVICE_NAME,
+            headers=headers,
         )
         return response.status_code == 200
-    except:
+    except Exception as e:
+        print(f"Error validating token with auth service: {e}")
         return False
 
 
