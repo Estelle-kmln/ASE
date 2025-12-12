@@ -20,7 +20,8 @@ import requests
 from security import get_history_security
 
 # Add utils directory to path for input sanitizer
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "utils"))
+# In Docker container, utils/ is copied to ./utils/ relative to app.py
+sys.path.append(os.path.join(os.path.dirname(__file__), "utils"))
 from input_sanitizer import (
     InputSanitizer,
     SecurityMiddleware,

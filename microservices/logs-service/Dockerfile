@@ -10,12 +10,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
-COPY requirements.txt .
+COPY logs-service/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY app.py .
-COPY input_sanitizer.py .
+COPY logs-service/ .
+# Copy utils directory for shared modules
+COPY utils/ ./utils/
 
 # Expose port
 EXPOSE 5006

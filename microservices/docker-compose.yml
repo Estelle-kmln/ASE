@@ -137,7 +137,8 @@ services:
   # Logs Service
   logs-service:
     build:
-      context: ./logs-service
+      context: .
+      dockerfile: ./logs-service/Dockerfile
     environment:
       - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
       - JWT_SECRET_KEY=your-super-secret-key-change-in-production

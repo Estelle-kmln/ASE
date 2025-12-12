@@ -13,7 +13,8 @@ from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
 # Add utils directory to path for input sanitizer
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'utils'))
+# In Docker container, utils/ is copied to ./utils/ relative to app.py
+sys.path.append(os.path.join(os.path.dirname(__file__), "utils"))
 from input_sanitizer import InputSanitizer, SecurityMiddleware, require_sanitized_input
 
 # Load environment variables
