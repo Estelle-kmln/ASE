@@ -29,4 +29,9 @@ EXPOSE 5006
 # Use HTTPS with server certificate for mTLS
 # Certificates are mounted from docker-compose volume
 # Client certificate verification handled via service API key middleware
-CMD ["gunicorn", "--bind", "0.0.0.0:5006", "--workers", "4", "--certfile", "/app/certs/logs-service-server-cert.pem", "--keyfile", "/app/certs/logs-service-key.pem", "app:app"]
+# Use SSL server wrapper since gunicorn doesn't support SSL natively
+ENV HOST=0.0.0.0
+ENV PORT=5006
+ENV CERTFILE=/app/certs/logs-service-server-cert.pem
+ENV KEYFILE=/app/certs/logs-service-key.pem
+CMD ["python", "/app/utils/ssl_server.py"]

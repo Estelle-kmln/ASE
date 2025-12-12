@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Build and Start Script for Battle Cards Microservices
-# Automatically generates GAME_HISTORY_KEY and SSL certificates if not present
+# Automatically generates GAME_HISTORY_KEY, SSL certificates, and mTLS certificates if not present
 
 set -e
 
@@ -10,6 +10,9 @@ ENV_FILE="${SCRIPT_DIR}/.env"
 SSL_DIR="${SCRIPT_DIR}/nginx/ssl"
 SSL_CERT="${SSL_DIR}/battlecards.crt"
 SSL_KEY="${SSL_DIR}/battlecards.key"
+CERTS_DIR="${SCRIPT_DIR}/certs"
+CERTS_GENERATED_DIR="${CERTS_DIR}/generated"
+CERTS_SCRIPT="${CERTS_DIR}/generate-certs.sh"
 
 # Function to generate a secure GAME_HISTORY_KEY (32-byte urlsafe base64)
 generate_history_key() {
@@ -84,6 +87,31 @@ if [ ! -f "$SSL_CERT" ] || [ ! -f "$SSL_KEY" ]; then
     echo "✓ Generated SSL certificates at ${SSL_DIR}/"
 else
     echo "✓ Found existing SSL certificates at ${SSL_DIR}/"
+fi
+
+# Generate mTLS certificates if they don't exist
+if [ ! -d "$CERTS_GENERATED_DIR" ] || [ -z "$(ls -A "$CERTS_GENERATED_DIR" 2>/dev/null)" ]; then
+    echo "Generating mTLS certificates for zero-trust networking..."
+    
+    if ! command -v openssl &> /dev/null; then
+        echo "Error: openssl not found. Please install openssl to generate mTLS certificates." >&2
+        exit 1
+    fi
+    
+    if [ ! -f "$CERTS_SCRIPT" ]; then
+        echo "Error: Certificate generation script not found at ${CERTS_SCRIPT}" >&2
+        exit 1
+    fi
+    
+    # Make sure the script is executable
+    chmod +x "$CERTS_SCRIPT"
+    
+    # Run the certificate generation script
+    "$CERTS_SCRIPT"
+    
+    echo "✓ Generated mTLS certificates at ${CERTS_GENERATED_DIR}/"
+else
+    echo "✓ Found existing mTLS certificates at ${CERTS_GENERATED_DIR}/"
 fi
 
 echo ""
