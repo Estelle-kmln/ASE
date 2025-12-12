@@ -20,6 +20,7 @@ from input_sanitizer import (
     SecurityMiddleware,
     require_sanitized_input,
 )
+from utils.service_auth import ServiceAuth
 
 # Load environment variables
 load_dotenv()
@@ -70,9 +71,13 @@ def get_db_connection():
 
 
 def validate_token(token):
-    """Validate token with auth service."""
+    """Validate token with auth service using service-to-service authentication."""
     try:
-        headers = {"Authorization": f"Bearer {token}"}
+        # Zero-trust: Include service API key for service-to-service call
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "X-Service-API-Key": ServiceAuth.get_service_key("card-service"),
+        }
         response = requests.post(
             f"{AUTH_SERVICE_URL}/api/auth/validate", headers=headers
         )
@@ -186,8 +191,26 @@ def get_card_by_id(card_id):
 @jwt_required()
 @require_sanitized_input({"size": "int"})
 def create_random_deck():
-    """Create a random deck of 22 cards."""
+    """Create a random deck of 22 cards.
+
+    Zero-trust: If called by another service, X-Service-API-Key header must be present and valid.
+    User calls through API gateway don't require service key.
+    """
     try:
+        # Zero-trust: Validate service API key if present (for service-to-service calls)
+        service_key = request.headers.get("X-Service-API-Key", "")
+        if service_key:
+            # If service key is provided, it must be valid
+            if not ServiceAuth.validate_service_key(service_key):
+                return (
+                    jsonify(
+                        {
+                            "error": "Invalid service credentials",
+                            "message": "Service API key is invalid",
+                        }
+                    ),
+                    403,
+                )
         data = request.get_json() or {}
 
         # Validate deck size

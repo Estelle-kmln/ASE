@@ -66,6 +66,7 @@ jobs:
         pytest tests/test_card_service.py -v --tb=short
         pytest tests/test_game_service.py -v --tb=short
         pytest tests/test_leaderboard_service.py -v --tb=short
+        pytest tests/test_zero_trust.py -v --tb=short
 
     - name: Show service logs on failure
       if: failure()
