@@ -141,6 +141,20 @@ fi
 # Build and start services
 cd "$SCRIPT_DIR"
 
+# Ensure we're in the right directory (microservices)
+if [ ! -f "docker-compose.yml" ]; then
+    echo "Error: docker-compose.yml not found. Current directory: $(pwd)" >&2
+    exit 1
+fi
+
+# Verify required directories exist
+if [ ! -d "auth-service" ] || [ ! -d "utils" ]; then
+    echo "Error: Required directories not found. Current directory: $(pwd)" >&2
+    echo "Expected: auth-service/, utils/" >&2
+    ls -la
+    exit 1
+fi
+
 # Try docker-compose first, fallback to docker compose (v2)
 if command -v docker-compose &> /dev/null; then
     DOCKER_COMPOSE_CMD="docker-compose"
