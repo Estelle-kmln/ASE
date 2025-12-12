@@ -55,19 +55,7 @@ def expired_token_callback(jwt_header, jwt_payload):
     """Handle expired token errors."""
     return jsonify({"error": "Token has expired"}), 401
 
-
-# Database configuration
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://gameuser:gamepassword@localhost:5432/battlecards",
-)
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://localhost:5001")
-
-
-def get_db_connection():
-    """Create and return a PostgreSQL database connection."""
-    return psycopg2.connect(DATABASE_URL)
-
 
 def validate_token(token):
     """Validate token with auth service."""
@@ -93,12 +81,10 @@ def health_check():
 def get_all_cards():
     """Get all available cards."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        response = requests.get("http://db-manager:5005/cards")
+        data = response.json()
 
-        cursor.execute("SELECT * FROM cards ORDER BY type, power")
-        cards = cursor.fetchall()
-        conn.close()
+        cards = data["cards"]
 
         # Convert to list of dicts
         card_list = []
@@ -124,15 +110,10 @@ def get_cards_by_type(card_type):
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        response = requests.get(f"http://db-manager:5005/cards/by-type/{card_type}")
+        data = response.json()
 
-        cursor.execute(
-            "SELECT * FROM cards WHERE LOWER(type) = LOWER(%s) ORDER BY power",
-            (card_type,),
-        )
-        cards = cursor.fetchall()
-        conn.close()
+        cards = data["cards"]
 
         card_list = []
         for card in cards:
@@ -155,28 +136,23 @@ def get_card_by_id(card_id):
         if not isinstance(card_id, int) or card_id < 0:
             return jsonify({"error": "Invalid card ID format"}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        response = requests.get(f"http://db-manager:5005/cards/{card_id}")
 
-        cursor.execute("SELECT * FROM cards WHERE id = %s", (card_id,))
-        card = cursor.fetchone()
-        conn.close()
-
-        if not card:
+        if response.status_code == 404:
             return jsonify({"error": "Card not found"}), 404
 
-        return (
-            jsonify(
-                {
-                    "card": {
-                        "id": card["id"],
-                        "type": card["type"],
-                        "power": card["power"],
-                    }
-                }
-            ),
-            200,
-        )
+        data = response.json()
+
+        card = data.get("card")
+
+        # Format into frontend-friendly response
+        card_output = {
+            "id": card["id"],
+            "type": card["type"],
+            "power": card["power"]
+        }
+
+        return jsonify({"card": card_output}), 200
 
     except Exception as e:
         return jsonify({"error": f"Failed to get card: {str(e)}"}), 500
@@ -199,13 +175,8 @@ def create_random_deck():
             # Return error message that matches test expectations
             return jsonify({"error": "Deck size must be between 1 and 50"}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        # Get all available cards
-        cursor.execute("SELECT * FROM cards ORDER BY type, power")
-        all_cards = cursor.fetchall()
-        conn.close()
+        response = requests.get("http://db-manager:5005/cards")
+        all_cards = response.json()["cards"]
 
         if len(all_cards) < deck_size:
             return (
@@ -240,13 +211,13 @@ def create_random_deck():
 def get_card_statistics():
     """Get card database statistics."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         # Get all cards for analysis
-        cursor.execute("SELECT type, power FROM cards")
-        cards = cursor.fetchall()
-        conn.close()
+        response = requests.get("http://db-manager:5005/cards")
+        data = response.json()
+
+        cards = data.get("cards", [])
+        
 
         if not cards:
             return jsonify({"error": "No cards found"}), 404
@@ -300,32 +271,6 @@ def get_card_statistics():
 
     except Exception as e:
         return jsonify({"error": f"Failed to get statistics: {str(e)}"}), 500
-
-
-@app.route("/api/cards/types", methods=["GET"])
-@jwt_required()
-def get_card_types():
-    """Get all available card types."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT DISTINCT type FROM cards ORDER BY type")
-        types_result = cursor.fetchall()
-
-        cursor.execute("SELECT DISTINCT power FROM cards ORDER BY power")
-        powers_result = cursor.fetchall()
-
-        conn.close()
-
-        types = [row[0] for row in types_result]
-        powers = [row[0] for row in powers_result]
-
-        return jsonify({"types": types, "powers": powers}), 200
-
-    except Exception as e:
-        return jsonify({"error": f"Failed to get card types: {str(e)}"}), 500
-
 
 if __name__ == "__main__":
     # For development only - debug mode controlled by environment variable
