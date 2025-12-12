@@ -24,7 +24,7 @@ def get_db_connection():
     """Creates and returns a PostgreSQL connection."""
     return psycopg2.connect(DATABASE_URL)
 
-
+# Health check
 @app.route("/health", methods=["GET"])
 def health_check():
     """Health check endpoint."""

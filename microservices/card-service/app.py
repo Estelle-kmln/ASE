@@ -138,7 +138,6 @@ def get_card_by_id(card_id):
 
         response = requests.get(f"http://db-manager:5005/cards/{card_id}")
 
-        # If DB manager returns 404, propagate it
         if response.status_code == 404:
             return jsonify({"error": "Card not found"}), 404
 
@@ -272,7 +271,6 @@ def get_card_statistics():
 
     except Exception as e:
         return jsonify({"error": f"Failed to get statistics: {str(e)}"}), 500
-
 
 if __name__ == "__main__":
     # For development only - debug mode controlled by environment variable
