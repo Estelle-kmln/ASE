@@ -779,6 +779,624 @@ def admin_list_roles():
         {"id": "ROLE_ADMIN", "name": "Administrator"}
     ]), 200
 
+
+
+
+# Leaderboard requests
+
+
+# Routes
+
+@app.route("/db/leaderboard", methods=["GET"])
+def db_get_leaderboard():
+    """
+    DB MANAGER endpoint
+    Samo vadi podatke iz baze – BEZ biznis logike
+    """
+    try:
+        limit = int(request.args.get("limit", 10))
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            """
+            WITH player_stats AS (
+                SELECT player1_name as player, COUNT(*) as wins
+                FROM games
+                WHERE game_status IN ('completed', 'abandoned')
+                  AND winner = player1_name
+                GROUP BY player1_name
+
+                UNION ALL
+
+                SELECT player2_name as player, COUNT(*) as wins
+                FROM games
+                WHERE game_status IN ('completed', 'abandoned')
+                  AND winner = player2_name
+                GROUP BY player2_name
+            ),
+            total_games AS (
+                SELECT player1_name as player, COUNT(*) as total_games
+                FROM games
+                WHERE game_status IN ('completed', 'abandoned')
+                GROUP BY player1_name
+
+                UNION ALL
+
+                SELECT player2_name as player, COUNT(*) as total_games
+                FROM games
+                WHERE game_status IN ('completed', 'abandoned')
+                GROUP BY player2_name
+            ),
+            aggregated_stats AS (
+                SELECT
+                    COALESCE(p.player, t.player) as player,
+                    SUM(p.wins) as wins,
+                    SUM(t.total_games) as games
+                FROM player_stats p
+                FULL OUTER JOIN total_games t ON p.player = t.player
+                GROUP BY COALESCE(p.player, t.player)
+            )
+            SELECT
+                player,
+                COALESCE(wins, 0) as wins,
+                COALESCE(games, 0) as games,
+                CASE
+                    WHEN COALESCE(games, 0) = 0 THEN 0
+                    ELSE ROUND((COALESCE(wins, 0)::decimal / games) * 100, 2)
+                END as win_percentage
+            FROM aggregated_stats
+            WHERE player IS NOT NULL
+            ORDER BY wins DESC, win_percentage DESC, games DESC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+
+        results = cursor.fetchall()
+        conn.close()
+
+        return jsonify(results), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5005)
+
+@app.route("/db/my-matches", methods=["GET"])
+def db_get_my_matches():
+    """
+    DB manager – samo vadi mečeve iz baze
+    """
+    try:
+        username = request.args.get("username")
+
+        if not username:
+            return jsonify({"error": "Missing username"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            """
+            SELECT
+                game_id,
+                player1_name,
+                player2_name,
+                player1_score,
+                player2_score,
+                winner,
+                created_at
+            FROM games
+            WHERE game_status IN ('completed', 'abandoned')
+              AND game_status != 'ignored'
+              AND (player1_name = %s OR player2_name = %s)
+            ORDER BY created_at DESC
+            """,
+            (username, username),
+        )
+
+        games = cursor.fetchall()
+        conn.close()
+
+        return jsonify(games), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/db/player/stats", methods=["GET"])
+def db_player_stats():
+    try:
+        player = request.args.get("player")
+
+        if not player:
+            return jsonify({"error": "Missing player"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            """
+            WITH player_wins AS (
+                SELECT COUNT(*) as wins
+                FROM games
+                WHERE game_status IN ('completed', 'abandoned')
+                AND (
+                    (winner = player1_name AND player1_name = %s) OR
+                    (winner = player2_name AND player2_name = %s)
+                )
+            ),
+            player_games AS (
+                SELECT COUNT(*) as total_games
+                FROM games
+                WHERE game_status IN ('completed', 'abandoned')
+                AND (player1_name = %s OR player2_name = %s)
+            )
+            SELECT
+                p.wins,
+                g.total_games,
+                (g.total_games - p.wins) as losses,
+                CASE
+                    WHEN g.total_games = 0 THEN 0
+                    ELSE ROUND((p.wins::decimal / g.total_games) * 100, 2)
+                END as win_percentage
+            FROM player_wins p, player_games g
+            """,
+            (player, player, player, player),
+        )
+
+        stats = cursor.fetchone()
+        conn.close()
+
+        return jsonify(stats), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/db/player/recent-games", methods=["GET"])
+def db_player_recent_games():
+    try:
+        player = request.args.get("player")
+
+        if not player:
+            return jsonify({"error": "Missing player"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            """
+            SELECT
+                game_id,
+                player1_name,
+                player2_name,
+                player1_score,
+                player2_score,
+                winner,
+                created_at
+            FROM games
+            WHERE game_status IN ('completed', 'abandoned')
+            AND (player1_name = %s OR player2_name = %s)
+            ORDER BY created_at DESC
+            LIMIT 10
+            """,
+            (player, player),
+        )
+
+        games = cursor.fetchall()
+        conn.close()
+
+        return jsonify(games), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/db/recent-games", methods=["GET"])
+def db_recent_games():
+    """
+    DB manager – vraca sirove game redove iz baze
+    """
+    try:
+        limit = int(request.args.get("limit", 10))
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            """
+            SELECT
+                game_id,
+                player1_name,
+                player2_name,
+                player1_score,
+                player2_score,
+                winner,
+                turn,
+                created_at,
+                updated_at
+            FROM games
+            WHERE game_status IN ('completed', 'abandoned')
+            ORDER BY updated_at DESC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+
+        games = cursor.fetchall()
+        conn.close()
+
+        return jsonify(games), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/db/top-players", methods=["GET"])
+def db_top_players():
+    """
+    DB manager – vraca top igrace po razlicitim metrikama
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # 🔹 Top by wins
+        cursor.execute(
+            """
+            WITH player_stats AS (
+                SELECT g.player1_name as player, COUNT(*) as wins
+                FROM games g
+                INNER JOIN users u ON g.player1_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND g.winner = g.player1_name
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player1_name
+
+                UNION ALL
+
+                SELECT g.player2_name as player, COUNT(*) as wins
+                FROM games g
+                INNER JOIN users u ON g.player2_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND g.winner = g.player2_name
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player2_name
+            )
+            SELECT
+                player,
+                SUM(wins) as total_wins
+            FROM player_stats
+            WHERE player IS NOT NULL
+            GROUP BY player
+            ORDER BY total_wins DESC
+            LIMIT 5
+            """
+        )
+        top_by_wins = cursor.fetchall()
+
+        # 🔹 Top by win percentage
+        cursor.execute(
+            """
+            WITH visible_players AS (
+                SELECT username
+                FROM users
+                WHERE show_on_leaderboard = TRUE
+            ),
+            player_wins AS (
+                SELECT player, SUM(wins) as total_wins
+                FROM (
+                    SELECT player1_name as player, COUNT(*) as wins
+                    FROM games
+                    WHERE game_status IN ('completed', 'abandoned')
+                    AND winner = player1_name
+                    AND player1_name IN (SELECT username FROM visible_players)
+                    GROUP BY player1_name
+
+                    UNION ALL
+
+                    SELECT player2_name as player, COUNT(*) as wins
+                    FROM games
+                    WHERE game_status IN ('completed', 'abandoned')
+                    AND winner = player2_name
+                    AND player2_name IN (SELECT username FROM visible_players)
+                    GROUP BY player2_name
+                ) wins_subquery
+                GROUP BY player
+            ),
+            player_games AS (
+                SELECT player, SUM(games) as total_games
+                FROM (
+                    SELECT player1_name as player, COUNT(*) as games
+                    FROM games
+                    WHERE game_status IN ('completed', 'abandoned')
+                    AND player1_name IN (SELECT username FROM visible_players)
+                    GROUP BY player1_name
+
+                    UNION ALL
+
+                    SELECT player2_name as player, COUNT(*) as games
+                    FROM games
+                    WHERE game_status IN ('completed', 'abandoned')
+                    AND player2_name IN (SELECT username FROM visible_players)
+                    GROUP BY player2_name
+                ) games_subquery
+                GROUP BY player
+            )
+            SELECT
+                pg.player,
+                COALESCE(pw.total_wins, 0) as wins,
+                pg.total_games as games,
+                ROUND((COALESCE(pw.total_wins, 0)::decimal / pg.total_games) * 100, 2) as win_percentage
+            FROM player_games pg
+            LEFT JOIN player_wins pw ON pg.player = pw.player
+            WHERE pg.total_games >= 1
+            ORDER BY win_percentage DESC
+            LIMIT 5
+            """
+        )
+        top_by_percentage = cursor.fetchall()
+
+        # 🔹 Most active players
+        cursor.execute(
+            """
+            WITH total_games AS (
+                SELECT g.player1_name as player, COUNT(*) as total_games
+                FROM games g
+                INNER JOIN users u ON g.player1_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player1_name
+
+                UNION ALL
+
+                SELECT g.player2_name as player, COUNT(*) as total_games
+                FROM games g
+                INNER JOIN users u ON g.player2_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player2_name
+            )
+            SELECT
+                player,
+                SUM(total_games) as total_games
+            FROM total_games
+            WHERE player IS NOT NULL
+            GROUP BY player
+            ORDER BY total_games DESC
+            LIMIT 5
+            """
+        )
+        most_active = cursor.fetchall()
+
+        conn.close()
+
+        return jsonify(
+            {
+                "top_by_wins": top_by_wins,
+                "top_by_win_percentage": top_by_percentage,
+                "most_active": most_active,
+            }
+        ), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/db/statistics", methods=["GET"])
+def db_global_statistics():
+    """
+    DB manager – vraca globalne statistike iz baze
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Total games and unique players
+        cursor.execute(
+            """
+            SELECT
+                COUNT(*) as total_games,
+                COUNT(DISTINCT player1_name) + COUNT(DISTINCT player2_name) as unique_players
+            FROM games
+            WHERE game_status IN ('completed', 'abandoned')
+            """
+        )
+        basic_stats = cursor.fetchone()
+
+        # Games by outcome
+        cursor.execute(
+            """
+            SELECT
+                COUNT(CASE WHEN winner IS NOT NULL THEN 1 END) as games_with_winner,
+                COUNT(CASE WHEN winner IS NULL THEN 1 END) as tied_games
+            FROM games
+            WHERE game_status IN ('completed', 'abandoned')
+            """
+        )
+        outcome_stats = cursor.fetchone()
+
+        # Average / min / max game duration
+        cursor.execute(
+            """
+            SELECT
+                AVG(turn) as avg_game_turns,
+                MIN(turn) as shortest_game,
+                MAX(turn) as longest_game
+            FROM games
+            WHERE game_status IN ('completed', 'abandoned')
+            """
+        )
+        duration_stats = cursor.fetchone()
+
+        # Recent activity (last 7 days)
+        cursor.execute(
+            """
+            SELECT COUNT(*) as games_last_week
+            FROM games
+            WHERE game_status IN ('completed', 'abandoned')
+            AND created_at >= %s
+            """,
+            (datetime.now() - timedelta(days=7),),
+        )
+        recent_activity = cursor.fetchone()
+
+        conn.close()
+
+        return jsonify(
+            {
+                "basic": basic_stats,
+                "outcome": outcome_stats,
+                "duration": duration_stats,
+                "recent": recent_activity,
+            }
+        ), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/db/rankings", methods=["GET"])
+def db_rankings():
+    """
+    DB manager – vraca raw ranking podatke iz baze
+    """
+    try:
+        limit = int(request.args.get("limit", 100))
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            """
+            WITH player_stats AS (
+                -- Player 1 stats
+                SELECT
+                    g.player1_name as player,
+                    SUM(CASE WHEN g.winner = g.player1_name THEN 1 ELSE 0 END) as wins,
+                    SUM(g.player1_score) as total_score,
+                    COUNT(*) as games_played
+                FROM games g
+                INNER JOIN users u ON g.player1_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player1_name
+
+                UNION ALL
+
+                -- Player 2 stats
+                SELECT
+                    g.player2_name as player,
+                    SUM(CASE WHEN g.winner = g.player2_name THEN 1 ELSE 0 END) as wins,
+                    SUM(g.player2_score) as total_score,
+                    COUNT(*) as games_played
+                FROM games g
+                INNER JOIN users u ON g.player2_name = u.username
+                WHERE g.game_status IN ('completed', 'abandoned')
+                AND u.show_on_leaderboard = TRUE
+                GROUP BY g.player2_name
+            )
+            SELECT
+                player,
+                SUM(wins) as total_wins,
+                SUM(total_score) as total_score,
+                SUM(games_played) as total_games
+            FROM player_stats
+            WHERE player IS NOT NULL
+            GROUP BY player
+            ORDER BY total_wins DESC, total_score DESC, total_games DESC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return jsonify(rows), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Visibility
+
+@app.route("/db/visibility", methods=["PUT"])
+def db_update_visibility():
+    """
+    DB manager – update show_on_leaderboard flag
+    """
+    try:
+        data = request.get_json()
+
+        if not data or "username" not in data or "show_on_leaderboard" not in data:
+            return jsonify({"error": "Missing parameters"}), 400
+
+        username = data["username"]
+        show_on_leaderboard = data["show_on_leaderboard"]
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE users
+            SET show_on_leaderboard = %s
+            WHERE username = %s
+            """,
+            (show_on_leaderboard, username),
+        )
+
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({"error": "User not found"}), 404
+
+        conn.commit()
+        conn.close()
+
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/db/visibility", methods=["GET"])
+def db_get_visibility():
+    """
+    DB manager – get show_on_leaderboard flag
+    """
+    try:
+        username = request.args.get("username")
+
+        if not username:
+            return jsonify({"error": "Missing username"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            """
+            SELECT show_on_leaderboard
+            FROM users
+            WHERE username = %s
+            """,
+            (username,),
+        )
+
+        result = cursor.fetchone()
+        conn.close()
+
+        if not result:
+            return jsonify({"error": "User not found"}), 404
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+
+
 if __name__ == "__main__":
     # For development only - debug mode controlled by environment variable
     debug_mode = os.getenv("FLASK_DEBUG", "False").lower() in ("true", "1", "t")
