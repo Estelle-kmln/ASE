@@ -1,0 +1,92 @@
+name: Bandit Security Analysis
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run weekly on Tuesdays at 9:00 AM UTC
+    - cron: '0 9 * * 2'
+  workflow_dispatch:
+
+jobs:
+  bandit-scan:
+    name: Bandit Python Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install Bandit
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit[sarif]
+
+      - name: Run Bandit scan on root
+        continue-on-error: true
+        run: |
+          bandit -r . -f sarif -o bandit-root-results.sarif \
+            --exclude ./tests,./venv,./env,./.venv \
+            --severity-level medium \
+            --confidence-level medium
+
+      - name: Run Bandit scan on microservices
+        continue-on-error: true
+        run: |
+          bandit -r microservices/ -f sarif -o bandit-microservices-results.sarif \
+            --severity-level medium \
+            --confidence-level medium
+
+      - name: Upload Bandit root results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: bandit-root-results.sarif
+          category: bandit-root
+
+      - name: Upload Bandit microservices results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: bandit-microservices-results.sarif
+          category: bandit-microservices
+
+      - name: Run Bandit scan (fail on high severity)
+        run: |
+          echo "=== Scanning root directory ==="
+          bandit -r . -f txt \
+            --exclude ./tests,./venv,./env,./.venv \
+            --severity-level high \
+            --confidence-level medium || true
+          
+          echo ""
+          echo "=== Scanning microservices ==="
+          bandit -r microservices/ -f txt \
+            --severity-level high \
+            --confidence-level medium
+
+      - name: Generate Bandit HTML report
+        if: always()
+        run: |
+          bandit -r microservices/ -f html -o bandit-report.html \
+            --severity-level medium \
+            --confidence-level medium || true
+
+      - name: Upload Bandit HTML report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: bandit-security-report
+          path: bandit-report.html
+          retention-days: 30
