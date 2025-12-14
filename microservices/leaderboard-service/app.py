@@ -8,8 +8,6 @@ from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from flask_jwt_extended import JWTManager, jwt_required
 from flask_cors import CORS
-import psycopg2
-from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 import requests
 
