@@ -29,8 +29,9 @@ docker compose down -v
 - ✅ Before running tests that need clean data
 
 ### 1. Navigate to the microservices directory
+Stay in the root of the project and move to
 ```powershell
-cd "C:\Users\estel\OneDrive\Advanced software engineering\project\ASE\microservices"
+cd microservices
 ```
 
 ### 2. Start all services
@@ -65,8 +66,6 @@ https://localhost:8443
 
 You'll see the login page as the default entry point.
 
-**Note**: HTTP requests to `http://localhost:8080` will automatically redirect to HTTPS on port 8443.
-
 ## First Time Setup
 
 ### Create an Account
@@ -75,20 +74,18 @@ You'll see the login page as the default entry point.
    - Username
    - Password (confirm it)
 3. Click "Register"
-4. After successful registration, login with your credentials
+4. After successful registration, you will be automatically directed to the main page
 
 ## Playing the Game
+### You need an opponent, open a another web browser. Must be a different one than the one you are using. Create an account for you opponent as well.
 
 ### Launch a Game
-1. From the homepage, click **"🚀 LAUNCH A GAME!"**
-2. A game code will be displayed (e.g., "ABC123")
-3. Share this code with a friend
-4. Wait for them to join
+1. From the homepage, click **"🎮PLAY!"**
+2. You enter your opponents username
+3. Wait for them to join
 
 ### Join a Game
-1. From the homepage, click **"🎮 JOIN A GAME!"**
-2. Enter the game code you received
-3. Click "Join Game"
+1. From the homepage, it will appear a "pending invitation". Click "Join Game"
 
 ### Build Your Deck
 1. Choose **Manual Selection** or **Random Deck**
@@ -100,7 +97,8 @@ You'll see the login page as the default entry point.
 4. Wait for your opponent to also select their deck
 
 ### Play the Game
-1. Select a card from your hand by clicking it
+1. Click on a "Draw card"
+2. Select card from your hand by clicking it
 2. Click "Play Card" button
 3. Wait for your opponent to play
 4. Both cards are revealed with the winner determined by:
@@ -116,8 +114,9 @@ You'll see the login page as the default entry point.
 ### Homepage Menu (☰)
 Click the menu button in the top-right to access:
 - **Profile** - View/edit your account details and manage sessions
-- **Leaderboard** - View your game history and rankings
-- **Game Statistics** - Coming soon!
+- **Game history** - View your game history and rankings
+- **Leaderboard** - View the leaderbord of users 
+- **Game Statistics** - Shows game statistics
 - **Game Rules** - Learn how to play
 - **Admin Panel** - View logs and monitor system (admin only)
 - **Logout** - Sign out (invalidates current session)
