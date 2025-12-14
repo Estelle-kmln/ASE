@@ -66,8 +66,6 @@ https://localhost:8443
 
 You'll see the login page as the default entry point.
 
-**Note**: HTTP requests to `http://localhost:8080` will automatically redirect to HTTPS on port 8443. #TODO, eiter fix or remove this?
-
 ## First Time Setup
 
 ### Create an Account
@@ -84,8 +82,7 @@ You'll see the login page as the default entry point.
 ### Launch a Game
 1. From the homepage, click **"🎮PLAY!"**
 2. You enter your opponents username
-3. Share this code with a friend
-4. Wait for them to join
+3. Wait for them to join
 
 ### Join a Game
 1. From the homepage, it will appear a "pending invitation". Click "Join Game"
@@ -118,7 +115,8 @@ You'll see the login page as the default entry point.
 Click the menu button in the top-right to access:
 - **Profile** - View/edit your account details and manage sessions
 - **Game history** - View your game history and rankings
-- **Game Statistics** - Coming soon! #TODO
+- **Leaderboard** - View the leaderbord of users 
+- **Game Statistics** - Shows game statistics
 - **Game Rules** - Learn how to play
 - **Admin Panel** - View logs and monitor system (admin only)
 - **Logout** - Sign out (invalidates current session)
