@@ -177,6 +177,10 @@ async function confirmDeck() {
         if (response.ok) {
             // Start polling to check if both players have selected decks
             startPollingForGameStart();
+        } else if (response.status === 401 || response.status === 404) {
+            console.error('Unauthorized or user not found - clearing session');
+            localStorage.clear();
+            window.location.href = 'login.html';
         } else {
             alert('Failed to select deck: ' + (data.error || 'Unknown error'));
         }
@@ -214,7 +218,13 @@ function startPollingForGameStart() {
                 }
             });
             
-            if (!response.ok) {
+            if (response.status === 401 || response.status === 404) {
+                console.error('Unauthorized or user not found - clearing session');
+                clearInterval(pollInterval);
+                localStorage.clear();
+                window.location.href = 'login.html';
+                return;
+            } else if (!response.ok) {
                 // Game might have been cancelled/ignored
                 clearInterval(pollInterval);
                 alert('The game invitation was cancelled or declined by your opponent.');

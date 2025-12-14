@@ -18,6 +18,7 @@
             <div class="dropdown-divider"></div>
             <div class="dropdown-item" onclick="quitAndNavigate('profile.html')">Profile</div>
             <div class="dropdown-item" onclick="quitAndNavigate('game-history.html')">Game History</div>
+            <div class="dropdown-item" onclick="quitAndNavigate('leaderboard.html')">Leaderboard</div>
             <div class="dropdown-item" onclick="quitAndNavigate('statistics.html')">Game Statistics</div>
             <div class="dropdown-item" onclick="quitAndNavigate('rules.html')">Game Rules</div>
             <div class="dropdown-divider"></div>
@@ -121,6 +122,31 @@
             <h2 id="game-result">Victory!</h2>
             <div class="final-score" id="final-score"></div>
             <button class="btn" onclick="returnToHome()">Return to Home</button>
+        </div>
+    </div>
+    
+    <!-- Tiebreaker Decision Modal -->
+    <div class="modal" id="tiebreaker-modal">
+        <div class="modal-content tiebreaker-modal">
+            <div class="victory-icon">🤝</div>
+            <h2 style="color: #f39c12;">Game is Tied!</h2>
+            <p style="font-size: 1.2rem; margin: 20px 0; color: #2c3e50;">
+                The game ended in a tie after 7 rounds.
+            </p>
+            <p style="font-size: 1.4rem; margin: 20px 0; font-weight: bold; color: #e74c3c;">
+                Do you want to take your chance and play your last card?
+            </p>
+            <p style="font-size: 1rem; margin: 20px 0; color: #7f8c8d;">
+                If both players agree, you'll each play your 22nd card to determine the winner!
+            </p>
+            <div style="display: flex; gap: 20px; justify-content: center; margin-top: 30px;">
+                <button class="btn" onclick="declineTiebreaker()" style="background: #95a5a6;">
+                    No, End Game
+                </button>
+                <button class="btn btn-primary" onclick="acceptTiebreaker()" style="background: #27ae60; font-size: 1.2rem; padding: 15px 30px;">
+                    Yes, Take My Chance! 🎲
+                </button>
+            </div>
         </div>
     </div>
     

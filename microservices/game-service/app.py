@@ -20,12 +20,14 @@ import requests
 from security import get_history_security
 
 # Add utils directory to path for input sanitizer
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "utils"))
+# In Docker container, utils/ is copied to ./utils/ relative to app.py
+sys.path.append(os.path.join(os.path.dirname(__file__), "utils"))
 from input_sanitizer import (
     InputSanitizer,
     SecurityMiddleware,
     require_sanitized_input,
 )
+from service_auth import ServiceAuth
 
 # Load environment variables
 load_dotenv()
@@ -136,9 +138,13 @@ class Card:
 
 
 def get_cards_from_service(token):
-    """Get cards from card service."""
+    """Get cards from card service with service-to-service authentication."""
     try:
-        headers = {"Authorization": f"Bearer {token}"}
+        # Zero-trust: Include both user JWT and service API key
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "X-Service-API-Key": ServiceAuth.get_service_key("game-service"),
+        }
         response = requests.post(
             f"{CARD_SERVICE_URL}/api/cards/random-deck",
             headers=headers,
@@ -158,8 +164,25 @@ def check_both_played(game):
     )
 
 
-def get_game_end_status(p1_deck, p2_deck, p1_score, p2_score):
-    """Determine game end status and winner."""
+def get_game_end_status(p1_deck, p2_deck, p1_score, p2_score, turn_number=0):
+    """Determine game end status and winner.
+
+    Returns: (game_should_end, winner, is_tie, tie_breaker_possible, awaiting_tiebreaker_decision)
+    """
+    # SPECIAL CASE: Check for 7th round tie FIRST (before checking if players can continue)
+    # If turn is 7 and scores are tied and both have 1 card left (22nd card), trigger tiebreaker
+    if (
+        turn_number == 7
+        and p1_score == p2_score
+        and len(p1_deck) > 0
+        and len(p2_deck) > 0
+    ):
+        print(
+            "7th round tie with cards remaining - awaiting tiebreaker decision"
+        )
+        # 7th round tie with cards remaining - await tiebreaker decision
+        return False, None, True, True, True
+
     # Check if either player has less than 3 cards (cannot draw another hand)
     p1_can_continue = len(p1_deck) >= 3
     p2_can_continue = len(p2_deck) >= 3
@@ -167,19 +190,18 @@ def get_game_end_status(p1_deck, p2_deck, p1_score, p2_score):
     game_should_end = not p1_can_continue or not p2_can_continue
 
     if not game_should_end:
-        return False, None, False, False
+        return False, None, False, False, False
 
     # Game is ending - determine winner
     if p1_score > p2_score:
-        return True, "player1", False, False
+        return True, "player1", False, False, False
     elif p2_score > p1_score:
-        return True, "player2", False, False
+        return True, "player2", False, False, False
     else:
-        # It's a tie - check if tie-breaker is possible
-        p1_has_cards = len(p1_deck) > 0
-        p2_has_cards = len(p2_deck) > 0
-        tie_breaker_possible = p1_has_cards and p2_has_cards
-        return True, None, True, tie_breaker_possible
+        # It's a tie at the end of the game
+        # No tiebreaker possible (either not round 7 or no cards left)
+        tie_breaker_possible = len(p1_deck) > 0 and len(p2_deck) > 0
+        return True, None, True, tie_breaker_possible, False
 
 
 HISTORY_LOCK_MESSAGE = "Game history is archived and cannot be modified"
@@ -335,16 +357,19 @@ def create_game():
         # Verify that player2 exists in the database
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
+
         cursor.execute(
             "SELECT id, username FROM users WHERE username = %s",
-            (player2_name,)
+            (player2_name,),
         )
         player2_user = cursor.fetchone()
-        
+
         if not player2_user:
             conn.close()
-            return jsonify({"error": f"User '{player2_name}' could not be found"}), 404
+            return (
+                jsonify({"error": f"User '{player2_name}' could not be found"}),
+                404,
+            )
 
         # Create game with empty decks - players will select their decks
         game_id = str(uuid.uuid4())
@@ -475,6 +500,15 @@ def get_game(game_id):
                     },
                     "last_round": last_round,
                     "winner": game["winner"],
+                    "awaiting_tiebreaker_response": game.get(
+                        "awaiting_tiebreaker_response", False
+                    ),
+                    "player1_tiebreaker_decision": game.get(
+                        "player1_tiebreaker_decision"
+                    ),
+                    "player2_tiebreaker_decision": game.get(
+                        "player2_tiebreaker_decision"
+                    ),
                     "created_at": (
                         game["created_at"].isoformat()
                         if game["created_at"]
@@ -1025,8 +1059,10 @@ def auto_resolve_round(game, conn):
             print(f"Error parsing decks: {e}")
             p1_deck = p2_deck = []
 
-        game_over, winner, is_tie, tie_breaker_possible = get_game_end_status(
-            p1_deck, p2_deck, new_p1_score, new_p2_score
+        game_over, winner, is_tie, tie_breaker_possible, awaiting_tiebreaker = (
+            get_game_end_status(
+                p1_deck, p2_deck, new_p1_score, new_p2_score, game["turn"]
+            )
         )
 
         # Prepare winner name if game is over
@@ -1057,8 +1093,11 @@ def auto_resolve_round(game, conn):
         # Update database - reset played cards, hands, and turn flags for next round
         cursor = conn.cursor()
 
-        # Determine game_status based on whether game is over
-        if game_over:
+        # Determine game_status based on whether game is over or awaiting tiebreaker
+        if awaiting_tiebreaker:
+            # 7th round tie - don't end game yet, wait for player decisions
+            new_game_status = "active"
+        elif game_over:
             new_game_status = "completed"
         else:
             # If game was pending and player2 just played, it should already be active
@@ -1078,6 +1117,7 @@ def auto_resolve_round(game, conn):
                 player1_has_played = FALSE, player2_has_played = FALSE,
                 game_status = %s, winner = %s, turn = turn + 1,
                 round_history = %s,
+                awaiting_tiebreaker_response = %s,
                 updated_at = CURRENT_TIMESTAMP
             WHERE game_id = %s
         """,
@@ -1087,6 +1127,7 @@ def auto_resolve_round(game, conn):
                 new_game_status,
                 winner_name,
                 json.dumps(existing_history),
+                awaiting_tiebreaker,
                 game["game_id"],
             ),
         )
@@ -1130,6 +1171,7 @@ def auto_resolve_round(game, conn):
             "winner": winner_name,
             "is_tie": is_tie,
             "tie_breaker_possible": tie_breaker_possible,
+            "awaiting_tiebreaker": awaiting_tiebreaker,
         }
     except Exception as e:
         print(f"Error in auto_resolve_round: {e}")
@@ -1238,8 +1280,10 @@ def resolve_round(game_id):
         except:
             p1_deck = p2_deck = []
 
-        game_over, winner, is_tie, tie_breaker_possible = get_game_end_status(
-            p1_deck, p2_deck, new_p1_score, new_p2_score
+        game_over, winner, is_tie, tie_breaker_possible, awaiting_tiebreaker = (
+            get_game_end_status(
+                p1_deck, p2_deck, new_p1_score, new_p2_score, game["turn"]
+            )
         )
 
         # Prepare winner name if game is over
@@ -1270,10 +1314,13 @@ def resolve_round(game_id):
         # Update database
         cursor = conn.cursor()
 
-        # Determine game_status based on whether game is over
-        new_game_status = (
-            "completed" if game_over else game.get("game_status", "active")
-        )
+        # Determine game_status based on whether game is over or awaiting tiebreaker
+        if awaiting_tiebreaker:
+            new_game_status = "active"
+        elif game_over:
+            new_game_status = "completed"
+        else:
+            new_game_status = game.get("game_status", "active")
 
         cursor.execute(
             """
@@ -1283,6 +1330,7 @@ def resolve_round(game_id):
                 player1_hand_cards = '[]', player2_hand_cards = '[]',
                 game_status = %s, winner = %s, turn = turn + 1,
                 round_history = %s,
+                awaiting_tiebreaker_response = %s,
                 updated_at = CURRENT_TIMESTAMP
             WHERE game_id = %s
         """,
@@ -1292,6 +1340,7 @@ def resolve_round(game_id):
                 new_game_status,
                 winner_name,
                 json.dumps(existing_history),
+                awaiting_tiebreaker,
                 game_id,
             ),
         )
@@ -1331,6 +1380,7 @@ def resolve_round(game_id):
                     "winner": winner_name,
                     "is_tie": is_tie,
                     "tie_breaker_possible": tie_breaker_possible,
+                    "awaiting_tiebreaker": awaiting_tiebreaker,
                 }
             ),
             200,
@@ -1567,6 +1617,370 @@ def tie_breaker_round(game_id):
     except Exception as e:
         return (
             jsonify({"error": f"Failed to resolve tie-breaker: {str(e)}"}),
+            500,
+        )
+
+
+@app.route("/api/games/<game_id>/tiebreaker-decision", methods=["POST"])
+@jwt_required()
+def submit_tiebreaker_decision(game_id):
+    """Submit player's decision on whether to play the 22nd card for tiebreaker after 7th round tie."""
+    try:
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
+        current_user = get_jwt_identity()
+        data = request.get_json()
+
+        if not data or "decision" not in data:
+            return jsonify({"error": "Decision is required (yes or no)"}), 400
+
+        decision = data["decision"].lower()
+        if decision not in ["yes", "no"]:
+            return jsonify({"error": "Decision must be 'yes' or 'no'"}), 400
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+        game = cursor.fetchone()
+
+        if not game:
+            conn.close()
+            return jsonify({"error": "Game not found"}), 404
+
+        # Check if user is a player
+        is_player1 = current_user == game["player1_name"]
+        is_player2 = current_user == game["player2_name"]
+
+        if not is_player1 and not is_player2:
+            conn.close()
+            return jsonify({"error": "Unauthorized"}), 403
+
+        # Check if game is awaiting tiebreaker decision
+        if not game.get("awaiting_tiebreaker_response", False):
+            conn.close()
+            return (
+                jsonify({"error": "Game is not awaiting tiebreaker decision"}),
+                400,
+            )
+
+        # Update player's decision
+        cursor = conn.cursor()
+        if is_player1:
+            cursor.execute(
+                """
+                UPDATE games 
+                SET player1_tiebreaker_decision = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE game_id = %s
+            """,
+                (decision, game_id),
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE games 
+                SET player2_tiebreaker_decision = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE game_id = %s
+            """,
+                (decision, game_id),
+            )
+
+        conn.commit()
+
+        # Refresh game state to check decisions
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+        updated_game = cursor.fetchone()
+
+        p1_decision = updated_game.get("player1_tiebreaker_decision")
+        p2_decision = updated_game.get("player2_tiebreaker_decision")
+
+        response_data = {
+            "decision_recorded": True,
+        }
+
+        # Check if either player said "no" - game ends immediately
+        if decision == "no":
+            # Current player declined - end game as tie immediately
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE games 
+                SET game_status = 'completed', 
+                    awaiting_tiebreaker_response = FALSE,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE game_id = %s
+            """,
+                (game_id,),
+            )
+
+            # Archive the game
+            try:
+                p1_deck = json.loads(updated_game["player1_deck_cards"] or "[]")
+                p2_deck = json.loads(updated_game["player2_deck_cards"] or "[]")
+            except:
+                p1_deck = p2_deck = []
+
+            # Refresh once more to get final state
+            dict_cursor = conn.cursor(cursor_factory=RealDictCursor)
+            dict_cursor.execute(
+                "SELECT * FROM games WHERE game_id = %s", (game_id,)
+            )
+            final_game = dict_cursor.fetchone()
+            dict_cursor.close()
+
+            archive_game_history(
+                conn,
+                final_game,
+                updated_game["player1_score"],
+                updated_game["player2_score"],
+                None,  # No winner
+                p1_deck,
+                p2_deck,
+            )
+
+            conn.commit()
+            response_data["proceed_to_tiebreaker"] = False
+            response_data["game_ended"] = True
+            response_data["both_players_decided"] = True
+            response_data["message"] = (
+                "Game ended as a tie (tiebreaker declined)"
+            )
+        elif p1_decision == "yes" and p2_decision == "yes":
+            # Both players said yes - proceed to tiebreaker
+            response_data["proceed_to_tiebreaker"] = True
+            response_data["both_players_decided"] = True
+            response_data["message"] = (
+                "Both players agreed to play the tiebreaker round!"
+            )
+        else:
+            # Current player said yes, but waiting for other player
+            response_data["both_players_decided"] = False
+            response_data["message"] = "Waiting for other player's decision..."
+
+        conn.close()
+        return jsonify(response_data), 200
+
+    except Exception as e:
+        return (
+            jsonify(
+                {"error": f"Failed to submit tiebreaker decision: {str(e)}"}
+            ),
+            500,
+        )
+
+
+@app.route("/api/games/<game_id>/tiebreaker-play", methods=["POST"])
+@jwt_required()
+def play_tiebreaker_card(game_id):
+    """Play the 22nd card for the tiebreaker round after both players agreed."""
+    try:
+        game_id = InputSanitizer.sanitize_string(
+            game_id, max_length=100, allow_special=False
+        )
+
+        current_user = get_jwt_identity()
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+        game = cursor.fetchone()
+
+        if not game:
+            conn.close()
+            return jsonify({"error": "Game not found"}), 404
+
+        # Check if user is a player
+        is_player1 = current_user == game["player1_name"]
+        is_player2 = current_user == game["player2_name"]
+
+        if not is_player1 and not is_player2:
+            conn.close()
+            return jsonify({"error": "Unauthorized"}), 403
+
+        # Verify both players agreed to tiebreaker
+        p1_decision = game.get("player1_tiebreaker_decision")
+        p2_decision = game.get("player2_tiebreaker_decision")
+
+        if p1_decision != "yes" or p2_decision != "yes":
+            conn.close()
+            return (
+                jsonify({"error": "Both players must agree to tiebreaker"}),
+                400,
+            )
+
+        # Check if player already played their tiebreaker card
+        tiebreaker_field = (
+            "player1_played_card" if is_player1 else "player2_played_card"
+        )
+        if game.get(tiebreaker_field):
+            conn.close()
+            return (
+                jsonify(
+                    {"error": "You have already played your tiebreaker card"}
+                ),
+                400,
+            )
+
+        # Get the last card from player's deck (the 22nd card)
+        try:
+            deck_field = (
+                "player1_deck_cards" if is_player1 else "player2_deck_cards"
+            )
+            deck = json.loads(game[deck_field] or "[]")
+        except:
+            deck = []
+
+        if len(deck) == 0:
+            conn.close()
+            return jsonify({"error": "No cards remaining for tiebreaker"}), 400
+
+        # Play the last card from deck
+        tiebreaker_card = deck[-1]  # Get the last card
+
+        # Update database with played card
+        cursor = conn.cursor()
+        if is_player1:
+            cursor.execute(
+                """
+                UPDATE games 
+                SET player1_played_card = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE game_id = %s
+            """,
+                (json.dumps(tiebreaker_card), game_id),
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE games 
+                SET player2_played_card = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE game_id = %s
+            """,
+                (json.dumps(tiebreaker_card), game_id),
+            )
+
+        # Refresh to check if both played
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
+        updated_game = cursor.fetchone()
+
+        p1_card_data = json.loads(updated_game["player1_played_card"] or "null")
+        p2_card_data = json.loads(updated_game["player2_played_card"] or "null")
+        both_played = p1_card_data is not None and p2_card_data is not None
+
+        response = {
+            "tiebreaker_card_played": tiebreaker_card,
+            "both_played": both_played,
+        }
+
+        # If both played, resolve the tiebreaker
+        if both_played:
+            player1_card = Card(p1_card_data["type"], p1_card_data["power"])
+            player2_card = Card(p2_card_data["type"], p2_card_data["power"])
+
+            # Determine tiebreaker winner
+            winner_name = None
+            is_tied = False
+
+            if player1_card.ties_with(player2_card):
+                is_tied = True
+            elif player1_card.beats(player2_card):
+                winner_name = updated_game["player1_name"]
+            elif player2_card.beats(player1_card):
+                winner_name = updated_game["player2_name"]
+            else:
+                # Same type, different power
+                if player1_card.power > player2_card.power:
+                    winner_name = updated_game["player1_name"]
+                elif player2_card.power > player1_card.power:
+                    winner_name = updated_game["player2_name"]
+                else:
+                    is_tied = True
+
+            # Add tiebreaker to round history
+            try:
+                existing_history = json.loads(
+                    updated_game.get("round_history") or "[]"
+                )
+            except Exception:
+                existing_history = []
+
+            tiebreaker_data = {
+                "round": updated_game["turn"],
+                "is_tiebreaker": True,
+                "player1_card": p1_card_data,
+                "player2_card": p2_card_data,
+                "round_winner": (
+                    1
+                    if winner_name == updated_game["player1_name"]
+                    else (
+                        2
+                        if winner_name == updated_game["player2_name"]
+                        else None
+                    )
+                ),
+                "round_tied": is_tied,
+                "player1_score_after": updated_game["player1_score"],
+                "player2_score_after": updated_game["player2_score"],
+            }
+            existing_history.append(tiebreaker_data)
+
+            # End the game
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE games 
+                SET game_status = 'completed',
+                    winner = %s,
+                    awaiting_tiebreaker_response = FALSE,
+                    round_history = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE game_id = %s
+            """,
+                (winner_name, json.dumps(existing_history), game_id),
+            )
+
+            # Archive the game
+            try:
+                p1_deck = json.loads(updated_game["player1_deck_cards"] or "[]")
+                p2_deck = json.loads(updated_game["player2_deck_cards"] or "[]")
+            except:
+                p1_deck = p2_deck = []
+
+            # Refresh once more to get final state
+            dict_cursor = conn.cursor(cursor_factory=RealDictCursor)
+            dict_cursor.execute(
+                "SELECT * FROM games WHERE game_id = %s", (game_id,)
+            )
+            final_game = dict_cursor.fetchone()
+            dict_cursor.close()
+
+            archive_game_history(
+                conn,
+                final_game,
+                updated_game["player1_score"],
+                updated_game["player2_score"],
+                winner_name,
+                p1_deck,
+                p2_deck,
+            )
+
+            response["tiebreaker_resolved"] = True
+            response["winner"] = winner_name
+            response["is_tied"] = is_tied
+            response["player1_card"] = p1_card_data
+            response["player2_card"] = p2_card_data
+
+        conn.commit()
+        conn.close()
+        return jsonify(response), 200
+
+    except Exception as e:
+        return (
+            jsonify({"error": f"Failed to play tiebreaker card: {str(e)}"}),
             500,
         )
 
@@ -2175,7 +2589,13 @@ def select_deck(game_id):
 
         # Get all available cards from card service to assign powers
         try:
-            headers = {"Authorization": f"Bearer {token}"}
+            # Zero-trust: Include service API key for service-to-service call
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "X-Service-API-Key": ServiceAuth.get_service_key(
+                    "game-service"
+                ),
+            }
             response = requests.get(
                 f"{CARD_SERVICE_URL}/api/cards", headers=headers
             )

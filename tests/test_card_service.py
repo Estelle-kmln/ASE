@@ -20,6 +20,30 @@ session = requests.Session()
 session.verify = False
 
 
+class TestCardServiceHealth(unittest.TestCase):
+    """Test cases for health check endpoint."""
+
+    def test_health_check_success(self):
+        """Test health check endpoint returns healthy status."""
+        response = session.get(f"{BASE_URL}/api/cards/health")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("status", data)
+        self.assertEqual(data["status"], "healthy")
+        self.assertIn("service", data)
+        self.assertEqual(data["service"], "card-service")
+
+    def test_health_check_no_auth_required(self):
+        """Test health check works without authentication (public endpoint)."""
+        # Should work without any headers
+        response = session.get(f"{BASE_URL}/api/cards/health")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "healthy")
+
+
 class TestCardServiceSetup(unittest.TestCase):
     """Setup class to get authentication token for tests."""
 

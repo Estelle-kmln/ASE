@@ -93,6 +93,10 @@ async function loadMatches() {
             allMatches = data.matches || [];
             totalPages = Math.ceil(allMatches.length / ITEMS_PER_PAGE) || 1;
             renderPage();
+        } else if (response.status === 401 || response.status === 404) {
+            console.error('Unauthorized or user not found - clearing session');
+            localStorage.clear();
+            window.location.href = 'login.html';
         } else {
             showError('Failed to load matches');
         }

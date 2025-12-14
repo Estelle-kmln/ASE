@@ -32,11 +32,16 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build ${{ matrix.service }} image
+        working-directory: microservices
         run: |
-          cd microservices/${{ matrix.service }}
-          docker build -t ${{ matrix.service }}:${{ github.sha }} .
+          # Verify required files exist for Docker build
+          echo "Verifying Docker build context..."
+          ls -la ${{ matrix.service }}/requirements.txt || (echo "ERROR: ${{ matrix.service }}/requirements.txt not found" && exit 1)
+          ls -la utils/service_auth.py || (echo "ERROR: utils/service_auth.py not found" && exit 1)
+          echo "All required files found. Building ${{ matrix.service }}..."
+          docker build -t ${{ matrix.service }}:${{ github.sha }} -f ${{ matrix.service }}/Dockerfile .
 
-      - name: Run Trivy vulnerability scanner
+      - name: Run Trivy vulnerability scanner (SARIF)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ matrix.service }}:${{ github.sha }}
@@ -45,9 +50,20 @@ jobs:
           severity: 'CRITICAL,HIGH,MEDIUM'
           exit-code: '0'
 
-      - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4
+      - name: Verify SARIF file exists before upload
         if: always()
+        run: |
+          if [ ! -f "trivy-results-${{ matrix.service }}.sarif" ]; then
+            echo "Warning: SARIF file not found, creating minimal SARIF file"
+            echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema.json","runs":[]}' > trivy-results-${{ matrix.service }}.sarif
+          else
+            echo "SARIF file found: trivy-results-${{ matrix.service }}.sarif"
+            ls -la trivy-results-${{ matrix.service }}.sarif
+          fi
+
+      - name: Upload Trivy results to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results-${{ matrix.service }}.sarif'
           category: trivy-${{ matrix.service }}

@@ -13,7 +13,9 @@ from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
 # Add utils directory to path for input sanitizer
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "utils"))
+# Note: logs-service Dockerfile copies input_sanitizer.py directly, so this may not be needed
+# But kept for consistency and potential future use of utils modules
+sys.path.append(os.path.join(os.path.dirname(__file__), "utils"))
 from input_sanitizer import InputSanitizer, SecurityMiddleware
 
 # Load environment variables
@@ -165,8 +167,8 @@ def create_log():
         if not data or "action" not in data:
             return jsonify({"error": "Action is required"}), 400
         
-        action = InputSanitizer.sanitize(data["action"])
-        details = InputSanitizer.sanitize(data.get("details", ""))
+        action = InputSanitizer.sanitize_string(data["action"])
+        details = InputSanitizer.sanitize_string(data.get("details", ""))
         
         conn = get_db_connection()
         cursor = conn.cursor()

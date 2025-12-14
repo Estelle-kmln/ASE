@@ -20,6 +20,29 @@ session = requests.Session()
 session.verify = False
 
 
+class TestLeaderboardServiceHealth(unittest.TestCase):
+    """Test cases for health check endpoint."""
+
+    def test_health_check_success(self):
+        """Test health check endpoint returns healthy status."""
+        response = session.get(f"{BASE_URL}/api/leaderboard/health")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("status", data)
+        self.assertEqual(data["status"], "healthy")
+        self.assertIn("service", data)
+        self.assertEqual(data["service"], "leaderboard-service")
+
+    def test_health_check_no_auth_required(self):
+        """Test health check works without authentication (public endpoint)."""
+        response = session.get(f"{BASE_URL}/api/leaderboard/health")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "healthy")
+
+
 class TestLeaderboardServiceSetup(unittest.TestCase):
     """Setup class to get authentication token for tests."""
     
@@ -392,6 +415,201 @@ class TestLeaderboardServiceGetStatistics(TestLeaderboardServiceSetup):
                     data['shortest_game_turns'], 
                     data['longest_game_turns']
                 )
+
+
+class TestLeaderboardServiceMyMatches(unittest.TestCase):
+    """Test cases for getting user's own match history."""
+    
+    @classmethod
+    def setUpClass(cls):
+        """Set up test data for my matches tests."""
+        cls.unique_id = int(time.time() * 1000) + 6000
+        cls.test_username = f"lbmatch_{cls.unique_id}"
+        cls.test_password = "LbPass123!"
+        
+        # Register and get token
+        response = session.post(
+            f"{BASE_URL}/api/auth/register",
+            json={"username": cls.test_username, "password": cls.test_password}
+        )
+        cls.token = response.json().get('access_token')
+        cls.headers = {"Authorization": f"Bearer {cls.token}"}
+    
+    def test_get_my_matches_success(self):
+        """Test getting own match history with valid authentication."""
+        response = session.get(
+            f"{BASE_URL}/api/leaderboard/my-matches",
+            headers=self.headers
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIsInstance(data, dict)
+        self.assertIn('matches', data)
+        self.assertIsInstance(data['matches'], list)
+    
+    def test_get_my_matches_no_token(self):
+        """Test getting match history without authentication token."""
+        response = session.get(f"{BASE_URL}/api/leaderboard/my-matches")
+        
+        self.assertEqual(response.status_code, 401)
+    
+    def test_get_my_matches_invalid_token(self):
+        """Test getting match history with invalid authentication token."""
+        response = session.get(
+            f"{BASE_URL}/api/leaderboard/my-matches",
+            headers={"Authorization": "Bearer invalid_token"}
+        )
+        
+        self.assertEqual(response.status_code, 401)
+    
+    def test_get_my_matches_with_limit(self):
+        """Test getting match history with limit parameter."""
+        response = session.get(
+            f"{BASE_URL}/api/leaderboard/my-matches?limit=5",
+            headers=self.headers
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIsInstance(data, dict)
+        self.assertIn('matches', data)
+        self.assertIsInstance(data['matches'], list)
+        self.assertLessEqual(len(data['matches']), 5)
+
+
+class TestLeaderboardServiceRankings(unittest.TestCase):
+    """Test cases for getting player rankings."""
+    
+    @classmethod
+    def setUpClass(cls):
+        """Set up test data for rankings tests."""
+        cls.unique_id = int(time.time() * 1000) + 7000
+        cls.test_username = f"lbrank_{cls.unique_id}"
+        cls.test_password = "LbPass123!"
+        
+        # Register and get token
+        response = session.post(
+            f"{BASE_URL}/api/auth/register",
+            json={"username": cls.test_username, "password": cls.test_password}
+        )
+        cls.token = response.json().get('access_token')
+        cls.headers = {"Authorization": f"Bearer {cls.token}"}
+    
+    def test_get_rankings_success(self):
+        """Test getting rankings with valid authentication."""
+        response = session.get(
+            f"{BASE_URL}/api/leaderboard/rankings",
+            headers=self.headers
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIsInstance(data, dict)
+    
+    def test_get_rankings_no_token(self):
+        """Test getting rankings without authentication token."""
+        response = session.get(f"{BASE_URL}/api/leaderboard/rankings")
+        
+        self.assertEqual(response.status_code, 401)
+    
+    def test_get_rankings_invalid_token(self):
+        """Test getting rankings with invalid authentication token."""
+        response = session.get(
+            f"{BASE_URL}/api/leaderboard/rankings",
+            headers={"Authorization": "Bearer invalid_token"}
+        )
+        
+        self.assertEqual(response.status_code, 401)
+
+
+class TestLeaderboardServiceVisibility(unittest.TestCase):
+    """Test cases for leaderboard visibility preferences."""
+    
+    @classmethod
+    def setUpClass(cls):
+        """Set up test data for visibility tests."""
+        cls.unique_id = int(time.time() * 1000) + 8000
+        cls.test_username = f"lbvis_{cls.unique_id}"
+        cls.test_password = "LbPass123!"
+        
+        # Register and get token
+        response = session.post(
+            f"{BASE_URL}/api/auth/register",
+            json={"username": cls.test_username, "password": cls.test_password}
+        )
+        cls.token = response.json().get('access_token')
+        cls.headers = {"Authorization": f"Bearer {cls.token}"}
+    
+    def test_get_visibility_success(self):
+        """Test getting visibility preference with valid authentication."""
+        response = session.get(
+            f"{BASE_URL}/api/leaderboard/visibility",
+            headers=self.headers
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("show_on_leaderboard", data)
+        self.assertIsInstance(data["show_on_leaderboard"], bool)
+    
+    def test_get_visibility_no_token(self):
+        """Test getting visibility without authentication token."""
+        response = session.get(f"{BASE_URL}/api/leaderboard/visibility")
+        
+        self.assertEqual(response.status_code, 401)
+    
+    def test_update_visibility_success(self):
+        """Test updating visibility preference with valid data."""
+        response = session.put(
+            f"{BASE_URL}/api/leaderboard/visibility",
+            headers=self.headers,
+            json={"show_on_leaderboard": False}
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("show_on_leaderboard", data)
+        self.assertEqual(data["show_on_leaderboard"], False)
+    
+    def test_update_visibility_no_token(self):
+        """Test updating visibility without authentication token."""
+        response = session.put(
+            f"{BASE_URL}/api/leaderboard/visibility",
+            json={"show_on_leaderboard": False}
+        )
+        
+        self.assertEqual(response.status_code, 401)
+    
+    def test_update_visibility_invalid_token(self):
+        """Test updating visibility with invalid authentication token."""
+        response = session.put(
+            f"{BASE_URL}/api/leaderboard/visibility",
+            headers={"Authorization": "Bearer invalid_token"},
+            json={"show_on_leaderboard": False}
+        )
+        
+        self.assertEqual(response.status_code, 401)
+    
+    def test_update_visibility_missing_field(self):
+        """Test updating visibility without required field."""
+        response = session.put(
+            f"{BASE_URL}/api/leaderboard/visibility",
+            headers=self.headers,
+            json={}
+        )
+        
+        self.assertIn(response.status_code, [400, 422])
+    
+    def test_update_visibility_invalid_type(self):
+        """Test updating visibility with invalid data type."""
+        response = session.put(
+            f"{BASE_URL}/api/leaderboard/visibility",
+            headers=self.headers,
+            json={"show_on_leaderboard": "invalid"}
+        )
+        
+        self.assertIn(response.status_code, [400, 422])
 
 
 class TestLeaderboardServiceEdgeCases(TestLeaderboardServiceSetup):

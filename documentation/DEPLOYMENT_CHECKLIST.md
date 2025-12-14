@@ -12,7 +12,6 @@
 - [x] statistics.html
 - [x] rules.html
 - [x] admin.html (admin panel)
-- [x] welcome.html
 - [x] css/styles.css
 - [x] js/auth.js (with token refresh)
 - [x] js/token-management.js (token refresh module)

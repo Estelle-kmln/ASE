@@ -32,22 +32,29 @@ jobs:
         pip install -r requirements.txt
         pip install pytest pytest-cov requests urllib3
     - name: Build and start microservices (with GAME_HISTORY_KEY)
+      working-directory: microservices
       run: |
-        cd microservices
+        # Verify required files exist for Docker build
+        echo "Verifying Docker build context..."
+        ls -la auth-service/requirements.txt || (echo "ERROR: auth-service/requirements.txt not found" && exit 1)
+        ls -la utils/service_auth.py || (echo "ERROR: utils/service_auth.py not found" && exit 1)
+        ls -la card-service/requirements.txt || (echo "ERROR: card-service/requirements.txt not found" && exit 1)
+        ls -la game-service/requirements.txt || (echo "ERROR: game-service/requirements.txt not found" && exit 1)
+        echo "All required files found. Building services..."
         chmod +x build-and-start.sh
         ./build-and-start.sh
 
     - name: Wait for services to be healthy
+      working-directory: microservices
       run: |
-        cd microservices
         chmod +x wait-for-services.sh
         ./wait-for-services.sh
 
     - name: Verify services are running
+      working-directory: microservices
       run: |
         docker ps
         echo "=== Service Status ==="
-        cd microservices
         docker compose ps
         echo ""
         echo "=== Testing Auth Service through API Gateway ==="
@@ -66,12 +73,13 @@ jobs:
         pytest tests/test_card_service.py -v --tb=short
         pytest tests/test_game_service.py -v --tb=short
         pytest tests/test_leaderboard_service.py -v --tb=short
+        pytest tests/test_zero_trust.py -v --tb=short
 
     - name: Show service logs on failure
       if: failure()
+      working-directory: microservices
       run: |
         echo "=== Docker Compose Services ==="
-        cd microservices
         docker compose ps -a
         echo ""
         echo "=== PostgreSQL Logs ==="
@@ -97,8 +105,8 @@ jobs:
 
     - name: Cleanup
       if: always()
+      working-directory: microservices
       run: |
-        cd microservices
         docker compose down -v
 
   postman-tests:
@@ -129,22 +137,27 @@ jobs:
         npm install -g newman
         npm install -g newman-reporter-htmlextra
     - name: Build and start microservices (with GAME_HISTORY_KEY)
+      working-directory: microservices
       run: |
-        cd microservices
+        # Verify required files exist for Docker build
+        echo "Verifying Docker build context..."
+        ls -la auth-service/requirements.txt || (echo "ERROR: auth-service/requirements.txt not found" && exit 1)
+        ls -la utils/service_auth.py || (echo "ERROR: utils/service_auth.py not found" && exit 1)
+        echo "All required files found. Building services..."
         chmod +x build-and-start.sh
         ./build-and-start.sh
 
     - name: Wait for services to be healthy
+      working-directory: microservices
       run: |
-        cd microservices
         chmod +x wait-for-services.sh
         ./wait-for-services.sh
 
     - name: Verify services are running
+      working-directory: microservices
       run: |
         docker ps
         echo "=== Service Status ==="
-        cd microservices
         docker compose ps
         echo ""
         echo "=== Testing Auth Service through API Gateway ==="
@@ -156,10 +169,12 @@ jobs:
     - name: Run Postman tests with Newman
       run: |
         echo "Running Postman/Newman tests..."
-        newman run tests/microservices_postman_collection.json\
-          --environment <(echo '{}') \
+        newman run tests/microservices_postman_collection.json \
+          --environment tests/postman_environment.json \
           --reporters cli,htmlextra \
           --reporter-htmlextra-export newman-report.html \
+          --insecure \
+          --delay-request 100 \
           --color on
 
     - name: Upload Newman report
@@ -171,9 +186,9 @@ jobs:
 
     - name: Show service logs on failure
       if: failure()
+      working-directory: microservices
       run: |
         echo "=== Docker Compose Services ==="
-        cd microservices
         docker compose ps -a
         echo ""
         echo "=== PostgreSQL Logs ==="
@@ -199,8 +214,8 @@ jobs:
 
     - name: Cleanup
       if: always()
+      working-directory: microservices
       run: |
-        cd microservices
         docker compose down -v
 
   locust-tests:
@@ -222,22 +237,27 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     - name: Build and start microservices (with GAME_HISTORY_KEY)
+      working-directory: microservices
       run: |
-        cd microservices
+        # Verify required files exist for Docker build
+        echo "Verifying Docker build context..."
+        ls -la auth-service/requirements.txt || (echo "ERROR: auth-service/requirements.txt not found" && exit 1)
+        ls -la utils/service_auth.py || (echo "ERROR: utils/service_auth.py not found" && exit 1)
+        echo "All required files found. Building services..."
         chmod +x build-and-start.sh
         ./build-and-start.sh
 
     - name: Wait for services to be healthy
+      working-directory: microservices
       run: |
-        cd microservices
         chmod +x wait-for-services.sh
         ./wait-for-services.sh
 
     - name: Verify services are running
+      working-directory: microservices
       run: |
         docker ps
         echo "=== Service Status ==="
-        cd microservices
         docker compose ps
         echo ""
         echo "=== Testing Auth Service through API Gateway ==="
@@ -270,9 +290,9 @@ jobs:
 
     - name: Show service logs on failure
       if: failure()
+      working-directory: microservices
       run: |
         echo "=== Docker Compose Services ==="
-        cd microservices
         docker compose ps -a
         echo ""
         echo "=== PostgreSQL Logs ==="
@@ -298,7 +318,7 @@ jobs:
 
     - name: Cleanup
       if: always()
+      working-directory: microservices
       run: |
-        cd microservices
         docker compose down -v
 
