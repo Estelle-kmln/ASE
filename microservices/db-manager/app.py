@@ -4,11 +4,14 @@ Provides card, game, user, and utility data operations.
 """
 
 import os
+import json
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Flask, jsonify, request
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+from contextlib import contextmanager
+
 
 
 # Load environment variables
@@ -863,9 +866,6 @@ def db_get_leaderboard():
         return jsonify({"error": str(e)}), 500
 
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5005)
-
 @app.route("/db/my-matches", methods=["GET"])
 def db_get_my_matches():
     """
@@ -1395,12 +1395,6 @@ def db_get_visibility():
 
 # Logs requests
 
-# DB MANAGER – Logs related routes
-
-from flask import request, jsonify
-from psycopg2.extras import RealDictCursor
-from datetime import datetime
-
 @app.route("/db/logs/create", methods=["POST"])
 def db_create_log():
     try:
@@ -1555,6 +1549,695 @@ def db_is_admin():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# Game service
+def register_game_endpoints(app, get_db_connection):
+    """Register all game-related database endpoints."""
+
+    @contextmanager
+    def get_cursor():
+        """Context manager for database cursor."""
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            yield cursor
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+            conn.close()
+
+
+    @app.route("/db/games/create", methods=["POST"])
+    def db_create_game():
+        """Create a new game."""
+        try:
+            data = request.get_json()
+            game_id = data.get("game_id")
+            player1_name = data.get("player1_name")
+            player2_name = data.get("player2_name")
+
+            if not game_id or not player1_name or not player2_name:
+                return jsonify({"error": "Missing required fields"}), 400
+
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO games (
+                        game_id, player1_name, player2_name, 
+                        game_status, turn, created_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (game_id, player1_name, player2_name, "pending", 1, datetime.utcnow())
+                )
+
+            return jsonify({"game_id": game_id}), 201
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+
+
+    @app.route("/db/games/<game_id>", methods=["GET"])
+    def db_get_game(game_id):
+        """Get a single game by ID."""
+        try:
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT game_id, player1_name, player2_name, 
+                           game_status, turn, player1_score, player2_score,
+                           player1_deck_cards, player2_deck_cards,
+                           player1_hand_cards, player2_hand_cards,
+                           player1_played_card, player2_played_card,
+                           player1_has_drawn, player2_has_drawn,
+                           player1_has_played, player2_has_played,
+                           winner, created_at, round_history,
+                           awaiting_tiebreaker_response,
+                           player1_tiebreaker_decision,
+                           player2_tiebreaker_decision
+                    FROM games WHERE game_id = %s
+                    """,
+                    (game_id,)
+                )
+                game = cursor.fetchone()
+
+            if not game:
+                return jsonify({"error": "Game not found"}), 404
+
+            return jsonify(game), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/status", methods=["GET"])
+    def db_get_game_status(game_id):
+        """Get game status summary."""
+        try:
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT game_id, player1_name, player2_name, 
+                           game_status, turn, player1_score, player2_score,
+                           winner, awaiting_tiebreaker_response
+                    FROM games WHERE game_id = %s
+                    """,
+                    (game_id,)
+                )
+                game = cursor.fetchone()
+
+            if not game:
+                return jsonify({"error": "Game not found"}), 404
+
+            return jsonify(game), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/details", methods=["GET"])
+    def db_get_game_details(game_id):
+        """Get detailed game information."""
+        try:
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT game_id, player1_name, player2_name, 
+                           game_status, turn, player1_score, player2_score,
+                           player1_deck_cards, player2_deck_cards,
+                           player1_hand_cards, player2_hand_cards,
+                           player1_played_card, player2_played_card,
+                           player1_has_drawn, player2_has_drawn,
+                           player1_has_played, player2_has_played,
+                           winner, created_at, round_history,
+                           awaiting_tiebreaker_response,
+                           player1_tiebreaker_decision,
+                           player2_tiebreaker_decision
+                    FROM games WHERE game_id = %s
+                    """,
+                    (game_id,)
+                )
+                game = cursor.fetchone()
+
+            if not game:
+                return jsonify({"error": "Game not found"}), 404
+
+            return jsonify(game), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/history", methods=["GET"])
+    def db_get_game_history(game_id):
+        """Get archived game history."""
+        try:
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT game_id, player1_name, player2_name,
+                           player1_score, player2_score, winner,
+                           archived_at, round_history
+                    FROM game_history WHERE game_id = %s
+                    """,
+                    (game_id,)
+                )
+                history = cursor.fetchone()
+
+            if not history:
+                return jsonify({"error": "Game history not found"}), 404
+
+            return jsonify(history), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/is-archived", methods=["GET"])
+    def db_is_game_archived(game_id):
+        """Check if a game is archived."""
+        try:
+            with get_cursor() as cursor:
+                cursor.execute(
+                    "SELECT 1 FROM game_history WHERE game_id = %s LIMIT 1",
+                    (game_id,)
+                )
+                exists = cursor.fetchone() is not None
+
+            return jsonify({"archived": exists}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/user/<username>", methods=["GET"])
+    def db_get_user_games(username):
+        """Get all games for a user."""
+        try:
+            include_history = request.args.get("include_history", "false").lower() == "true"
+
+            with get_cursor() as cursor:
+                if include_history:
+                    # Get active games
+                    cursor.execute(
+                        """
+                        SELECT game_id, player1_name, player2_name, game_status, 
+                               turn, player1_score, player2_score, winner
+                        FROM games 
+                        WHERE player1_name = %s OR player2_name = %s
+                        ORDER BY created_at DESC
+                        """,
+                        (username, username)
+                    )
+                    active_games = cursor.fetchall()
+
+                    # Get archived games
+                    cursor.execute(
+                        """
+                        SELECT game_id, player1_name, player2_name,
+                               player1_score, player2_score, winner, archived_at
+                        FROM game_history
+                        WHERE player1_name = %s OR player2_name = %s
+                        ORDER BY archived_at DESC
+                        """,
+                        (username, username)
+                    )
+                    archived_games = cursor.fetchall()
+
+                    return jsonify({
+                        "active_games": active_games,
+                        "archived_games": archived_games,
+                    }), 200
+                else:
+                    # Only active games
+                    cursor.execute(
+                        """
+                        SELECT game_id, player1_name, player2_name, game_status, 
+                               turn, player1_score, player2_score, winner
+                        FROM games 
+                        WHERE player1_name = %s OR player2_name = %s
+                        ORDER BY created_at DESC
+                        """,
+                        (username, username)
+                    )
+                    games = cursor.fetchall()
+
+                    return jsonify({"games": games}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+
+    @app.route("/db/games/<game_id>/draw-hand", methods=["PUT"])
+    def db_draw_hand(game_id):
+        """Update hand and deck after drawing."""
+        try:
+            data = request.get_json()
+            is_player1 = data.get("is_player1")
+            hand = data.get("hand")
+            remaining_deck = data.get("remaining_deck")
+
+            with get_cursor() as cursor:
+                if is_player1:
+                    cursor.execute(
+                        """
+                        UPDATE games 
+                        SET player1_hand_cards = %s,
+                            player1_deck_cards = %s,
+                            player1_has_drawn = true
+                        WHERE game_id = %s
+                        """,
+                        (json.dumps(hand), json.dumps(remaining_deck), game_id)
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE games 
+                        SET player2_hand_cards = %s,
+                            player2_deck_cards = %s,
+                            player2_has_drawn = true
+                        WHERE game_id = %s
+                        """,
+                        (json.dumps(hand), json.dumps(remaining_deck), game_id)
+                    )
+
+            return jsonify({"success": True}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/play-card", methods=["PUT"])
+    def db_play_card(game_id):
+        """Update game when player plays a card."""
+        try:
+            data = request.get_json()
+            is_player1 = data.get("is_player1")
+            played_card = data.get("played_card")
+
+            with get_cursor() as cursor:
+                if is_player1:
+                    cursor.execute(
+                        """
+                        UPDATE games 
+                        SET player1_played_card = %s,
+                            player1_has_played = true
+                        WHERE game_id = %s
+                        """,
+                        (json.dumps(played_card), game_id)
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE games 
+                        SET player2_played_card = %s,
+                            player2_has_played = true
+                        WHERE game_id = %s
+                        """,
+                        (json.dumps(played_card), game_id)
+                    )
+
+            return jsonify({"success": True}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/resolve-round", methods=["PUT"])
+    def db_resolve_round(game_id):
+        """Resolve a round and update game state."""
+        try:
+            data = request.get_json()
+            player1_score = data.get("player1_score")
+            player2_score = data.get("player2_score")
+            game_status = data.get("game_status")
+            winner = data.get("winner")
+            turn = data.get("turn")
+            round_history = data.get("round_history")
+            awaiting_tiebreaker = data.get("awaiting_tiebreaker_response")
+
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE games 
+                    SET player1_score = %s,
+                        player2_score = %s,
+                        game_status = %s,
+                        winner = %s,
+                        turn = %s,
+                        round_history = %s,
+                        awaiting_tiebreaker_response = %s,
+                        player1_played_card = null,
+                        player2_played_card = null,
+                        player1_has_drawn = false,
+                        player2_has_drawn = false,
+                        player1_has_played = false,
+                        player2_has_played = false
+                    WHERE game_id = %s
+                    """,
+                    (
+                        player1_score, player2_score, game_status, winner, turn,
+                        json.dumps(round_history), awaiting_tiebreaker, game_id
+                    )
+                )
+
+            return jsonify({"success": True}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/accept", methods=["PUT"])
+    def db_accept_game(game_id):
+        """Accept game invitation."""
+        try:
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE games 
+                    SET game_status = 'deck_selection'
+                    WHERE game_id = %s
+                    """,
+                    (game_id,)
+                )
+
+            return jsonify({"success": True}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/ignore", methods=["PUT"])
+    def db_ignore_game(game_id):
+        """Ignore game invitation."""
+        try:
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE games 
+                    SET game_status = 'ignored'
+                    WHERE game_id = %s
+                    """,
+                    (game_id,)
+                )
+
+            return jsonify({"success": True}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/cancel", methods=["PUT"])
+    def db_cancel_game(game_id):
+        """Cancel game invitation."""
+        try:
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE games 
+                    SET game_status = 'cancelled'
+                    WHERE game_id = %s
+                    """,
+                    (game_id,)
+                )
+
+            return jsonify({"success": True}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/end", methods=["PUT"])
+    def db_end_game(game_id):
+        """End a game."""
+        try:
+            data = request.get_json()
+            new_status = data.get("new_status", "abandoned")
+
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE games 
+                    SET game_status = %s
+                    WHERE game_id = %s
+                    """,
+                    (new_status, game_id)
+                )
+
+            return jsonify({"success": True}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/mark-active", methods=["PUT"])
+    def db_mark_active(game_id):
+        """Mark game as active."""
+        try:
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE games 
+                    SET game_status = 'active'
+                    WHERE game_id = %s AND game_status = 'pending'
+                    """,
+                    (game_id,)
+                )
+
+            return jsonify({"success": True}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/select-deck", methods=["PUT"])
+    def db_select_deck(game_id):
+        """Select deck for a player."""
+        try:
+            data = request.get_json()
+            is_player1 = data.get("is_player1")
+            deck = data.get("deck")
+
+            with get_cursor() as cursor:
+                if is_player1:
+                    cursor.execute(
+                        """
+                        UPDATE games 
+                        SET player1_deck_cards = %s
+                        WHERE game_id = %s
+                        """,
+                        (json.dumps(deck), game_id)
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE games 
+                        SET player2_deck_cards = %s
+                        WHERE game_id = %s
+                        """,
+                        (json.dumps(deck), game_id)
+                    )
+
+                # Check if both players have selected decks
+                cursor.execute(
+                    """
+                    SELECT player1_deck_cards, player2_deck_cards 
+                    FROM games WHERE game_id = %s
+                    """,
+                    (game_id,)
+                )
+                game = cursor.fetchone()
+                both_selected = (
+                    game["player1_deck_cards"] is not None and
+                    game["player2_deck_cards"] is not None
+                )
+
+                if both_selected:
+                    cursor.execute(
+                        """
+                        UPDATE games 
+                        SET game_status = 'active'
+                        WHERE game_id = %s
+                        """,
+                        (game_id,)
+                    )
+
+            return jsonify({
+                "success": True,
+                "both_selected": both_selected,
+                "status": "active" if both_selected else "deck_selection"
+            }), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/tiebreaker-decision", methods=["PUT"])
+    def db_tiebreaker_decision(game_id):
+        """Submit tiebreaker decision."""
+        try:
+            data = request.get_json()
+            is_player1 = data.get("is_player1")
+            decision = data.get("decision")
+
+            with get_cursor() as cursor:
+                if is_player1:
+                    cursor.execute(
+                        """
+                        UPDATE games 
+                        SET player1_tiebreaker_decision = %s
+                        WHERE game_id = %s
+                        """,
+                        (decision, game_id)
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE games 
+                        SET player2_tiebreaker_decision = %s
+                        WHERE game_id = %s
+                        """,
+                        (decision, game_id)
+                    )
+
+                # Check if both players made decisions
+                cursor.execute(
+                    """
+                    SELECT player1_tiebreaker_decision, player2_tiebreaker_decision 
+                    FROM games WHERE game_id = %s
+                    """,
+                    (game_id,)
+                )
+                game = cursor.fetchone()
+                both_decided = (
+                    game["player1_tiebreaker_decision"] is not None and
+                    game["player2_tiebreaker_decision"] is not None
+                )
+
+                # If either said no, end game
+                if both_decided and (game["player1_tiebreaker_decision"] == "no" or 
+                                     game["player2_tiebreaker_decision"] == "no"):
+                    cursor.execute(
+                        """
+                        UPDATE games 
+                        SET game_status = 'completed', awaiting_tiebreaker_response = false
+                        WHERE game_id = %s
+                        """,
+                        (game_id,)
+                    )
+                elif both_decided and game["player1_tiebreaker_decision"] == "yes" and \
+                     game["player2_tiebreaker_decision"] == "yes":
+                    # Both want tiebreaker
+                    cursor.execute(
+                        """
+                        UPDATE games 
+                        SET awaiting_tiebreaker_response = false
+                        WHERE game_id = %s
+                        """,
+                        (game_id,)
+                    )
+
+            return jsonify({"success": True}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    @app.route("/db/games/<game_id>/tiebreaker-play", methods=["PUT"])
+    def db_tiebreaker_play(game_id):
+        """Play tiebreaker card."""
+        try:
+            data = request.get_json()
+            is_player1 = data.get("is_player1")
+            played_card = data.get("played_card")
+
+            with get_cursor() as cursor:
+                if is_player1:
+                    cursor.execute(
+                        """
+                        UPDATE games 
+                        SET player1_played_card = %s
+                        WHERE game_id = %s
+                        """,
+                        (json.dumps(played_card), game_id)
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE games 
+                        SET player2_played_card = %s
+                        WHERE game_id = %s
+                        """,
+                        (json.dumps(played_card), game_id)
+                    )
+
+            return jsonify({"success": True}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+
+    @app.route("/db/games/<game_id>/archive", methods=["POST"])
+    def db_archive_game(game_id):
+        """Archive a completed game."""
+        try:
+            data = request.get_json()
+            player1_name = data.get("player1_name")
+            player2_name = data.get("player2_name")
+            player1_score = data.get("player1_score")
+            player2_score = data.get("player2_score")
+            winner = data.get("winner")
+            encrypted_payload = data.get("encrypted_payload")
+            integrity_hash = data.get("integrity_hash")
+            round_history = data.get("round_history")
+
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO game_history 
+                    (game_id, player1_name, player2_name, player1_score, 
+                     player2_score, winner, archived_at, encrypted_payload,
+                     integrity_hash, round_history)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        game_id, player1_name, player2_name, player1_score,
+                        player2_score, winner, datetime.utcnow(), encrypted_payload,
+                        integrity_hash, json.dumps(round_history)
+                    )
+                )
+
+                # Update active game to mark as archived
+                cursor.execute(
+                    """
+                    UPDATE games 
+                    SET game_status = 'completed'
+                    WHERE game_id = %s
+                    """,
+                    (game_id,)
+                )
+
+            return jsonify({"success": True}), 201
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+
+    @app.route("/db/games/log-action", methods=["POST"])
+    def db_log_action():
+        """Log an action."""
+        try:
+            data = request.get_json()
+            action = data.get("action")
+            username = data.get("username")
+            details = data.get("details")
+
+            with get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO logs (action, username, details, created_at)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (action, username, details, datetime.utcnow())
+                )
+
+            return jsonify({"success": True}), 200
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+
+# Register game endpoints (must be outside __main__ for gunicorn)
+register_game_endpoints(app, get_db_connection)
 
 
 if __name__ == "__main__":

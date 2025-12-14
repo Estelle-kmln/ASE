@@ -49,7 +49,7 @@ services:
     ports:
       - "5001:5001"
     depends_on:
-      postgresql:
+      db-manager:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
@@ -70,7 +70,7 @@ services:
     ports:
       - "5002:5002"
     depends_on:
-      postgresql:
+      db-manager:
         condition: service_healthy
       auth-service:
         condition: service_healthy
@@ -87,7 +87,7 @@ services:
     build:
       context: ./game-service
     environment:
-      - DATABASE_URL=postgresql://gameuser:gamepassword@postgresql:5432/battlecards
+      - DB_MANAGER_URL=http://db-manager:5005
       - JWT_SECRET_KEY=your-super-secret-key-change-in-production
       - CARD_SERVICE_URL=http://card-service:5002
       - AUTH_SERVICE_URL=http://auth-service:5001
@@ -97,7 +97,7 @@ services:
     ports:
       - "5003:5003"
     depends_on:
-      postgresql:
+      db-manager:
         condition: service_healthy
       card-service:
         condition: service_healthy
@@ -119,7 +119,7 @@ services:
     ports:
       - "5004:5004"
     depends_on:
-      postgresql:
+      db-manager:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5004/health"]
