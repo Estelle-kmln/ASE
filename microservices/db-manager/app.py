@@ -1393,8 +1393,168 @@ def db_get_visibility():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Logs requests
+
+# DB MANAGER – Logs related routes
+
+from flask import request, jsonify
+from psycopg2.extras import RealDictCursor
+from datetime import datetime
+
+@app.route("/db/logs/create", methods=["POST"])
+def db_create_log():
+    try:
+        data = request.get_json()
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO logs (action, username, details)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (
+                data.get("action"),
+                data.get("username"),
+                data.get("details"),
+            ),
+        )
+
+        log_id = cursor.fetchone()[0]
+        conn.commit()
+        conn.close()
+
+        return jsonify({"message": "Log created successfully", "id": log_id}), 201
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
+@app.route("/db/logs/list", methods=["GET"])
+def db_list_logs():
+    try:
+        page = int(request.args.get("page", 0))
+        size = int(request.args.get("size", 50))
+        offset = page * size
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute("SELECT COUNT(*) as count FROM logs")
+        total = cursor.fetchone()["count"]
+
+        cursor.execute(
+            """
+            SELECT id, action, username, timestamp, details
+            FROM logs
+            ORDER BY timestamp DESC
+            LIMIT %s OFFSET %s
+            """,
+            (size, offset),
+        )
+
+        logs = cursor.fetchall()
+        conn.close()
+
+        return jsonify(
+            {
+                "total": total,
+                "logs": [
+                    {
+                        "id": l["id"],
+                        "action": l["action"],
+                        "username": l["username"],
+                        "timestamp": l["timestamp"].isoformat() if l["timestamp"] else None,
+                        "details": l["details"],
+                    }
+                    for l in logs
+                ],
+            }
+        ), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/db/logs/search", methods=["GET"])
+def db_search_logs():
+    try:
+        query = request.args.get("query", "")
+        page = int(request.args.get("page", 0))
+        size = int(request.args.get("size", 50))
+        offset = page * size
+
+        pattern = f"%{query}%"
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) as count
+            FROM logs
+            WHERE action ILIKE %s OR username ILIKE %s OR details ILIKE %s
+            """,
+            (pattern, pattern, pattern),
+        )
+        total = cursor.fetchone()["count"]
+
+        cursor.execute(
+            """
+            SELECT id, action, username, timestamp, details
+            FROM logs
+            WHERE action ILIKE %s OR username ILIKE %s OR details ILIKE %s
+            ORDER BY timestamp DESC
+            LIMIT %s OFFSET %s
+            """,
+            (pattern, pattern, pattern, size, offset),
+        )
+
+        logs = cursor.fetchall()
+        conn.close()
+
+        return jsonify(
+            {
+                "total": total,
+                "logs": [
+                    {
+                        "id": l["id"],
+                        "action": l["action"],
+                        "username": l["username"],
+                        "timestamp": l["timestamp"].isoformat() if l["timestamp"] else None,
+                        "details": l["details"],
+                    }
+                    for l in logs
+                ],
+            }
+        ), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/db/users/is-admin", methods=["GET"])
+def db_is_admin():
+    try:
+        username = request.args.get("username")
+
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            "SELECT is_admin FROM users WHERE username = %s",
+            (username,),
+        )
+
+        user = cursor.fetchone()
+        conn.close()
+
+        return jsonify({"is_admin": bool(user and user["is_admin"])}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
