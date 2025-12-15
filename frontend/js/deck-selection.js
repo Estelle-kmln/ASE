@@ -242,7 +242,7 @@ function startPollingForGameStart() {
                 return;
             }
             
-            if (data.status === 'in_progress') {
+            if (data.status === 'active') {
                 // Both players have selected decks, game can start!
                 clearInterval(pollInterval);
                 window.location.href = `game.html?game_id=${gameId}`;
