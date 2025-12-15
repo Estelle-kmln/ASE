@@ -31,6 +31,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest pytest-cov requests urllib3
+
+    - name: Install OpenSSL (for certificate generation)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y openssl
+    
     - name: Build and start microservices (with GAME_HISTORY_KEY)
       working-directory: microservices
       run: |
@@ -136,6 +142,12 @@ jobs:
       run: |
         npm install -g newman
         npm install -g newman-reporter-htmlextra
+
+    - name: Install OpenSSL (for certificate generation)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y openssl
+    
     - name: Build and start microservices (with GAME_HISTORY_KEY)
       working-directory: microservices
       run: |
@@ -236,6 +248,12 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+
+    - name: Install OpenSSL (for certificate generation)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y openssl
+    
     - name: Build and start microservices (with GAME_HISTORY_KEY)
       working-directory: microservices
       run: |
