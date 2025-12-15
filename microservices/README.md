@@ -61,30 +61,46 @@ The `-v` flag removes volumes (database), ensuring fresh initialization. **Alway
 - When troubleshooting issues
 - After switching branches
 
-**Recommended: Use the automated build script** (handles GAME_HISTORY_KEY automatically):
+#### Quick Start (Recommended for Development)
+
+**All platforms** - Simply run:
 
 ```bash
-# Build and start all services (automatically generates GAME_HISTORY_KEY if needed)
+docker compose up -d --build
+```
+
+That's it! This automatically:
+- ✅ Builds all microservices
+- ✅ Generates SSL certificates inside containers
+- ✅ Starts all services in detached mode
+- ✅ Works on Windows, Mac, and Linux
+
+The application will be available at:
+- **HTTPS**: https://localhost:8443
+
+#### Optional: Production-Ready Setup
+
+For production deployments with enhanced security, use the build scripts:
+
+**Linux/Mac/WSL:**
+```bash
 ./build-and-start.sh
-
-# Check service health
-docker-compose ps
 ```
 
-**Alternative: Manual build** (requires setting GAME_HISTORY_KEY manually):
-
-```bash
-# Build all services
-docker-compose build
-
-# Start all services in detached mode
-docker-compose up -d
-
-# Check service health
-docker-compose ps
+**Windows (PowerShell):**
+```powershell
+.\build-and-start.ps1
 ```
 
-**Note:** The build script automatically generates and saves a `GAME_HISTORY_KEY` to `.env` if one doesn't exist. This key is required for game history encryption and is gitignored for security.
+These scripts provide additional security features:
+- ✅ Generate unique GAME_HISTORY_KEY for encrypting game history
+- ✅ Create service API keys for zero-trust networking
+- ✅ Save all keys to .env file for persistence across restarts
+- ✅ Build and start all services
+
+**Note:** The basic `docker compose up` command works perfectly for development. The scripts are recommended when deploying to production or when you need persistent encryption keys.
+
+**Note:** If using Option B, some environment variables (service API keys) won't be set. This is fine for basic usage but recommended for full security.
 
 ### 4. Verify Installation
 
