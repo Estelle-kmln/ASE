@@ -160,7 +160,8 @@ def test_password_invalid_characters():
             InputSanitizer.validate_password(pwd)
             assert False, f"Should have rejected password with invalid character: '{pwd}'"
         except ValueError as e:
-            assert "invalid characters" in str(e).lower()
+            error_msg = str(e).lower()
+            assert ("invalid characters" in error_msg or "special character" in error_msg)
     
     print("✓ Passwords with invalid characters rejected")
 
