@@ -118,6 +118,7 @@ def list_logs():
         return jsonify({"error": f"Failed to list logs: {str(e)}"}), 500
 
 
+@app.route("/api/logs", methods=["POST"])
 @app.route("/api/logs/create", methods=["POST"])
 @jwt_required()
 def create_log():

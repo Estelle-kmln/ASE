@@ -66,6 +66,24 @@ def expired_token_callback(jwt_header, jwt_payload):
 # Database manager
 DB_MANAGER_URL = os.getenv("DB_MANAGER_URL", "http://db-manager:5005")
 
+
+def log_action(action: str, username: str = None, details: str = None):
+    """Delegate logging to DB Manager (fire-and-forget)."""
+    try:
+        requests.post(
+            f"{DB_MANAGER_URL}/db/logs/create",
+            json={
+                "action": action,
+                "username": username,
+                "details": details,
+            },
+            timeout=3,
+        )
+    except Exception as e:
+        # Don't fail the main operation if logging fails
+        print(f"Failed to log action: {e}")
+
+
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode(
