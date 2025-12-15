@@ -179,7 +179,7 @@ jobs:
 
     - name: Upload Newman report
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: newman-report
         path: newman-report.html
@@ -281,7 +281,7 @@ jobs:
 
     - name: Upload Locust reports
       if: always()
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: locust-reports
         path: |
