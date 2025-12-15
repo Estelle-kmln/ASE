@@ -1886,6 +1886,8 @@ def register_game_endpoints(app, get_db_connection):
                         awaiting_tiebreaker_response = %s,
                         player1_played_card = null,
                         player2_played_card = null,
+                        player1_hand_cards = null,
+                        player2_hand_cards = null,
                         player1_has_drawn = false,
                         player2_has_drawn = false,
                         player1_has_played = false,
