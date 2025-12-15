@@ -23,7 +23,7 @@ The Battle Cards application is a distributed system built with microservices, w
 
 ## 🏗️ Architecture
 
-The application is split into **four microservices** plus supporting infrastructure:
+The application is split into **six microservices** plus supporting infrastructure (with **DB Manager** as the central database layer used internally by the other services):
 
 | Service | Port | Gateway Path | Purpose |
 |---------|------|--------------|---------|
@@ -31,10 +31,13 @@ The application is split into **four microservices** plus supporting infrastruct
 | **🃏 Card Service** | 5002 | `/api/cards` | Card database, deck generation, statistics |
 | **🎯 Game Service** | 5003 | `/api/games` | Game logic, state management, battle resolution, invitations |
 | **🏆 Leaderboard Service** | 5004 | `/api/leaderboard` | Rankings, player statistics, game history |
-| **📝 Logs Service** | 5005 | `/api/logs` | User action logging and audit trails |
+| **📝 Logs Service** | 5006 | `/api/logs` | User action logging and audit trails |
+| **🗄️ DB Manager Service** | 5005 | _internal only_ | Central database access layer for other services |
 | **🌐 Nginx Gateway** | 8443 (HTTPS) | `/` | API Gateway and reverse proxy with TLS/SSL |
 | **🌐 Nginx Gateway** | 8080 (HTTP) | `/` | Redirects to HTTPS (port 8443) |
 | **🗄️ PostgreSQL Database** | 5432 | - | Data persistence |
+
+**Note:** DB Manager is not exposed through the gateway; other services call it directly on the internal network.
 
 ### Technology Stack
 
@@ -55,7 +58,7 @@ All services are accessed through the Nginx gateway with HTTPS encryption. HTTP 
 
 ## 🚀 Quick Start
 
-"The Battle Cards microservices project uses an Nginx API Gateway on port 8080 for all service access. All services (auth, card, game, leaderboard) are accessed through the gateway at <http://localhost:8080/api/>*. The project includes comprehensive testing with pytest (45+ unit tests), Postman/Newman (50 API endpoint tests), and Locust performance tests. All tests are automated via GitHub Actions with 3 parallel test jobs. Complete documentation is available in the documentation/ folder."
+"The Battle Cards microservices project uses an Nginx API Gateway on port 8080 for all externally exposed service access. Auth, card, game, leaderboard, and logs services are accessed through the gateway at <http://localhost:8080/api/>*. The DB Manager service is internal-only and is called directly by other services. The project includes comprehensive testing with pytest (45+ unit tests), Postman/Newman (50 API endpoint tests), and Locust performance tests. All tests are automated via GitHub Actions with 3 parallel test jobs. Complete documentation is available in the documentation/ folder."
 
 ## Quick Start
 
@@ -100,6 +103,7 @@ The `-v` flag removes volumes (database data), ensuring a fresh start. This is e
    curl -k https://localhost:8443/api/games/health
    curl -k https://localhost:8443/api/leaderboard/health
    curl -k https://localhost:8443/api/logs/health
+   curl    http://localhost:5005/health   # DB Manager (internal service)
    ```
 
 4. **Check container status:**
@@ -318,6 +322,7 @@ GAME_HISTORY_KEY=<32-byte-base64-encoded-key>
 
 # Service URLs (for inter-service communication)
 AUTH_SERVICE_URL=http://auth-service:5001
+DB_MANAGER_URL=http://db-manager:5005
 CARD_SERVICE_URL=http://card-service:5002
 ```
 
@@ -359,11 +364,12 @@ curl http://localhost:8080/api/auth/health
 curl http://localhost:8080/api/cards/health
 curl http://localhost:8080/api/games/health
 curl http://localhost:8080/api/leaderboard/health
+
 ```
 
 ## 📊 Project Statistics
 
-- **Microservices**: 4 (Auth, Card, Game, Leaderboard)
+- **Microservices**: 6 (Auth, Card, Game, Leaderboard, Logs, DB Manager)
 - **Unit Tests**: 96+ tests
 - **Integration Tests**: 50+ Postman tests
 - **Performance Tests**: Locust load testing
