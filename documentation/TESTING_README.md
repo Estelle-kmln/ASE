@@ -9,21 +9,28 @@ This document describes Python unit tests (pytest/unittest), Locust performance 
 1. **Start Docker Desktop** (if not already running)
 2. **Build and start all microservices:**
 
-**Recommended: Use the automated build script** (handles GAME_HISTORY_KEY automatically):
-
 ```bash
 cd microservices
+docker compose up -d --build
+```
+
+This automatically generates SSL certificates and starts all services.
+
+**Optional - For production-level testing with encryption keys:**
+
+Use the build scripts for enhanced security:
+
+**Linux/Mac/WSL:**
+```bash
 ./build-and-start.sh
 ```
 
-**Alternative: Manual build** (requires setting GAME_HISTORY_KEY manually):
-
-```bash
-cd microservices
-docker-compose up -d --build
+**Windows:**
+```powershell
+.\build-and-start.ps1
 ```
 
-**Note**: The build script automatically generates and saves a `GAME_HISTORY_KEY` to `.env` if one doesn't exist. This key is required for game history encryption and is gitignored for security.
+**Note**: The scripts generate `GAME_HISTORY_KEY` and service API keys. For basic testing, `docker compose up` is sufficient.
 
 ## Running Tests Locally to Match GitHub Actions
 

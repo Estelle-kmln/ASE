@@ -23,18 +23,26 @@ The Battle Cards application uses a microservices architecture with the followin
 
 ### Running the Application
 
-1. **Build and start all services (recommended method):**
+1. **Build and start all services:**
    ```bash
    cd microservices
+   docker compose up -d --build
+   ```
+   This automatically generates SSL certificates and starts all services.
+
+2. **Optional - Production setup with security enhancements:**
+   
+   **Linux/Mac/WSL:**
+   ```bash
    ./build-and-start.sh
    ```
-   This script automatically generates the required `GAME_HISTORY_KEY` if not present.
-
-2. **Manual build (alternative):**
-   ```bash
-   cd microservices
-   docker-compose up -d --build
+   
+   **Windows:**
+   ```powershell
+   .\build-and-start.ps1
    ```
+   
+   These scripts automatically generate the `GAME_HISTORY_KEY` and service API keys for enhanced security.
 
 3. **Access the application:**
    - Frontend: `https://localhost:8443` (HTTPS with self-signed certificate)
