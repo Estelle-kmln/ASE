@@ -58,13 +58,19 @@ All services are accessed through the Nginx gateway with HTTPS encryption. HTTP 
 
 ## 🚀 Quick Start
 
+<<<<<<< HEAD
 "The Battle Cards microservices project uses an Nginx API Gateway on port 8080 for all externally exposed service access. Auth, card, game, leaderboard, and logs services are accessed through the gateway at <http://localhost:8080/api/>*. The DB Manager service is internal-only and is called directly by other services. The project includes comprehensive testing with pytest (45+ unit tests), Postman/Newman (50 API endpoint tests), and Locust performance tests. All tests are automated via GitHub Actions with 3 parallel test jobs. Complete documentation is available in the documentation/ folder."
+=======
+### Prerequisites
+>>>>>>> 50ae6e4515e79ffe97a3dd10fea458de2121dd70
 
-## Quick Start
+- Docker Engine 20.10+
+- Docker Compose 2.0+
+- Git
 
-**To build and start all microservices:**
+### Setup Instructions
 
-⚠️ **IMPORTANT**: If you've previously run the application or have existing containers, first clean up:
+⚠️ **IMPORTANT**: If you've previously run the application, first clean up existing containers:
 ```bash
 cd microservices
 docker compose down -v
@@ -75,6 +81,8 @@ The `-v` flag removes volumes (database data), ensuring a fresh start. This is e
 - Switching branches
 - Troubleshooting issues
 
+### Running the Application
+
 1. **Navigate to the microservices directory:**
    ```bash
    cd microservices
@@ -82,17 +90,22 @@ The `-v` flag removes volumes (database data), ensuring a fresh start. This is e
 
 2. **Build and start all services:**
    ```bash
-   ./build-and-start.sh
+   docker compose up -d --build
    ```
 
-   The build script automatically:
-   - Generates a secure `GAME_HISTORY_KEY` if one doesn't exist
-   - Saves the key to `.env` (gitignored for security)
-   - Builds and starts all Docker containers
+   This automatically:
+   - ✅ Builds all microservices
+   - ✅ Generates SSL certificates inside containers
+   - ✅ Starts all services in detached mode
+   - ✅ Works on Windows, Mac, and Linux
 
-**Note:** The build script automatically generates and saves a `GAME_HISTORY_KEY` to `.env` if one doesn't exist. This key is required for game history encryption and tamper detection.
+3. **Access the application:**
+   - **Frontend**: https://localhost:8443
+   - **API Gateway**: https://localhost:8443/api
 
-3. **Verify services are running:**
+   **Note:** Your browser will show a security warning for the self-signed certificate. Click "Advanced" → "Proceed to localhost".
+
+4. **Verify services are running:**
    ```bash
    # Check gateway health (use -k flag for self-signed certificates)
    curl -k https://localhost:8443/health
@@ -106,26 +119,31 @@ The `-v` flag removes volumes (database data), ensuring a fresh start. This is e
    curl    http://localhost:5005/health   # DB Manager (internal service)
    ```
 
-4. **Check container status:**
+5. **Check container status:**
    ```bash
-   docker-compose ps
+   docker compose ps
    ```
 
-### Alternative: Manual Build
+### Optional: Production-Ready Setup
 
-If you prefer manual control:
+For production deployments with enhanced security features (persistent encryption keys, service API keys), use the build scripts:
 
+**Linux/Mac/WSL:**
 ```bash
-cd microservices
-docker-compose up -d --build
+./build-and-start.sh
 ```
 
-**Note**: The `GAME_HISTORY_KEY` is required for game history encryption. The build script generates it automatically, but if building manually, you'll need to set it in the `.env` file.
-
-You can generate one using the following command:
-```bash
-python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+**Windows (PowerShell):**
+```powershell
+.\build-and-start.ps1
 ```
+
+These scripts provide:
+- ✅ Unique GAME_HISTORY_KEY for game encryption
+- ✅ Service API keys for zero-trust networking  
+- ✅ Persistent keys saved to .env file
+
+**Note**: For basic development with `docker compose up`, the default configuration works perfectly. Scripts are recommended for production or when you need persistent encryption keys across container restarts.
 
 ### Stopping Services
 

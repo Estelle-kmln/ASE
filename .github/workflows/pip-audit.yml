@@ -76,7 +76,7 @@ jobs:
 
       - name: Upload pip-audit results
         if: always() && steps.check-requirements.outputs.exists == 'true'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: pip-audit-${{ matrix.service.name }}-results
           path: |
@@ -120,7 +120,7 @@ jobs:
           done
 
       - name: Upload summary report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: pip-audit-summary-report
           path: summary.md
