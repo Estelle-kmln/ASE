@@ -23,7 +23,7 @@ The Battle Cards application is a distributed system built with microservices, w
 
 ## 🏗️ Architecture
 
-The application is split into **six microservices** plus supporting infrastructure (with **DB Manager** as the central database layer used internally by the other services):
+The application is split into **five microservices** plus supporting infrastructure:
 
 | Service | Port | Gateway Path | Purpose |
 |---------|------|--------------|---------|
@@ -32,12 +32,10 @@ The application is split into **six microservices** plus supporting infrastructu
 | **🎯 Game Service** | 5003 | `/api/games` | Game logic, state management, battle resolution, invitations |
 | **🏆 Leaderboard Service** | 5004 | `/api/leaderboard` | Rankings, player statistics, game history |
 | **📝 Logs Service** | 5006 | `/api/logs` | User action logging and audit trails |
-| **🗄️ DB Manager Service** | 5005 | _internal only_ | Central database access layer for other services |
+| **🗄️ DB Manager Service** | 5005 | `/db` | Database abstraction layer - handles all database operations |
 | **🌐 Nginx Gateway** | 8443 (HTTPS) | `/` | API Gateway and reverse proxy with TLS/SSL |
 | **🌐 Nginx Gateway** | 8080 (HTTP) | `/` | Redirects to HTTPS (port 8443) |
 | **🗄️ PostgreSQL Database** | 5432 | - | Data persistence |
-
-**Note:** DB Manager is not exposed through the gateway; other services call it directly on the internal network.
 
 ### Technology Stack
 
@@ -58,19 +56,13 @@ All services are accessed through the Nginx gateway with HTTPS encryption. HTTP 
 
 ## 🚀 Quick Start
 
-<<<<<<< HEAD
-"The Battle Cards microservices project uses an Nginx API Gateway on port 8080 for all externally exposed service access. Auth, card, game, leaderboard, and logs services are accessed through the gateway at <http://localhost:8080/api/>*. The DB Manager service is internal-only and is called directly by other services. The project includes comprehensive testing with pytest (45+ unit tests), Postman/Newman (50 API endpoint tests), and Locust performance tests. All tests are automated via GitHub Actions with 3 parallel test jobs. Complete documentation is available in the documentation/ folder."
-=======
-### Prerequisites
->>>>>>> 50ae6e4515e79ffe97a3dd10fea458de2121dd70
+"The Battle Cards microservices project uses an Nginx API Gateway on port 8080 for all service access. All services (auth, card, game, leaderboard) are accessed through the gateway at <http://localhost:8080/api/>*. The project includes comprehensive testing with pytest (45+ unit tests), Postman/Newman (50 API endpoint tests), and Locust performance tests. All tests are automated via GitHub Actions with 3 parallel test jobs. Complete documentation is available in the documentation/ folder."
 
-- Docker Engine 20.10+
-- Docker Compose 2.0+
-- Git
+## Quick Start
 
-### Setup Instructions
+**To build and start all microservices:**
 
-⚠️ **IMPORTANT**: If you've previously run the application, first clean up existing containers:
+⚠️ **IMPORTANT**: If you've previously run the application or have existing containers, first clean up:
 ```bash
 cd microservices
 docker compose down -v
@@ -81,8 +73,6 @@ The `-v` flag removes volumes (database data), ensuring a fresh start. This is e
 - Switching branches
 - Troubleshooting issues
 
-### Running the Application
-
 1. **Navigate to the microservices directory:**
    ```bash
    cd microservices
@@ -90,22 +80,17 @@ The `-v` flag removes volumes (database data), ensuring a fresh start. This is e
 
 2. **Build and start all services:**
    ```bash
-   docker compose up -d --build
+   ./build-and-start.sh
    ```
 
-   This automatically:
-   - ✅ Builds all microservices
-   - ✅ Generates SSL certificates inside containers
-   - ✅ Starts all services in detached mode
-   - ✅ Works on Windows, Mac, and Linux
+   The build script automatically:
+   - Generates a secure `GAME_HISTORY_KEY` if one doesn't exist
+   - Saves the key to `.env` (gitignored for security)
+   - Builds and starts all Docker containers
 
-3. **Access the application:**
-   - **Frontend**: https://localhost:8443
-   - **API Gateway**: https://localhost:8443/api
+**Note:** The build script automatically generates and saves a `GAME_HISTORY_KEY` to `.env` if one doesn't exist. This key is required for game history encryption and tamper detection.
 
-   **Note:** Your browser will show a security warning for the self-signed certificate. Click "Advanced" → "Proceed to localhost".
-
-4. **Verify services are running:**
+3. **Verify services are running:**
    ```bash
    # Check gateway health (use -k flag for self-signed certificates)
    curl -k https://localhost:8443/health
@@ -116,34 +101,28 @@ The `-v` flag removes volumes (database data), ensuring a fresh start. This is e
    curl -k https://localhost:8443/api/games/health
    curl -k https://localhost:8443/api/leaderboard/health
    curl -k https://localhost:8443/api/logs/health
-   curl    http://localhost:5005/health   # DB Manager (internal service)
    ```
 
-5. **Check container status:**
+4. **Check container status:**
    ```bash
-   docker compose ps
+   docker-compose ps
    ```
 
-### Optional: Production-Ready Setup
+### Alternative: Manual Build
 
-For production deployments with enhanced security features (persistent encryption keys, service API keys), use the build scripts:
+If you prefer manual control:
 
-**Linux/Mac/WSL:**
 ```bash
-./build-and-start.sh
+cd microservices
+docker-compose up -d --build
 ```
 
-**Windows (PowerShell):**
-```powershell
-.\build-and-start.ps1
+**Note**: The `GAME_HISTORY_KEY` is required for game history encryption. The build script generates it automatically, but if building manually, you'll need to set it in the `.env` file.
+
+You can generate one using the following command:
+```bash
+python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
 ```
-
-These scripts provide:
-- ✅ Unique GAME_HISTORY_KEY for game encryption
-- ✅ Service API keys for zero-trust networking  
-- ✅ Persistent keys saved to .env file
-
-**Note**: For basic development with `docker compose up`, the default configuration works perfectly. Scripts are recommended for production or when you need persistent encryption keys across container restarts.
 
 ### Stopping Services
 
@@ -340,7 +319,6 @@ GAME_HISTORY_KEY=<32-byte-base64-encoded-key>
 
 # Service URLs (for inter-service communication)
 AUTH_SERVICE_URL=http://auth-service:5001
-DB_MANAGER_URL=http://db-manager:5005
 CARD_SERVICE_URL=http://card-service:5002
 ```
 
@@ -382,12 +360,13 @@ curl http://localhost:8080/api/auth/health
 curl http://localhost:8080/api/cards/health
 curl http://localhost:8080/api/games/health
 curl http://localhost:8080/api/leaderboard/health
+curl http://localhost:8080/api/logs/health
 
 ```
 
 ## 📊 Project Statistics
 
-- **Microservices**: 6 (Auth, Card, Game, Leaderboard, Logs, DB Manager)
+- **Microservices**: 5 (Auth, Card, Game, Leaderboard, Logs)
 - **Unit Tests**: 96+ tests
 - **Integration Tests**: 50+ Postman tests
 - **Performance Tests**: Locust load testing
