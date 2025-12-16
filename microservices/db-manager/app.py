@@ -2016,7 +2016,7 @@ def register_game_endpoints(app, get_db_connection):
                     cursor.execute(
                         """
                         UPDATE games 
-                        SET player1_deck_cards = %s
+                        SET player1_deck_cards = %s, player1_deck_selected = TRUE
                         WHERE game_id = %s
                         """,
                         (json.dumps(deck), game_id)
@@ -2025,12 +2025,11 @@ def register_game_endpoints(app, get_db_connection):
                     cursor.execute(
                         """
                         UPDATE games 
-                        SET player2_deck_cards = %s
+                        SET player2_deck_cards = %s, player2_deck_selected = TRUE
                         WHERE game_id = %s
                         """,
                         (json.dumps(deck), game_id)
                     )
-
                 # Check if both players have selected decks
                 cursor.execute(
                     """

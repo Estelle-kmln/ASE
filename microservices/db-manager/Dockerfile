@@ -23,4 +23,4 @@ USER authuser
 
 EXPOSE 5005
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5005", "--workers", "4", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5005", "--workers", "8", "--threads", "2", "--worker-class", "gthread", "--timeout", "120", "app:app"]

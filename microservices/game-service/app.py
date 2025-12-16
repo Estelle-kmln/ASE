@@ -124,14 +124,16 @@ class Card:
         return {"type": self.type, "power": self.power}
 
     def beats(self, other):
-        """Check if this card beats another card."""
+        # If same type, higher power wins
+        if self.type == other.type:
+            return self.power > other.power
+        # Type hierarchy wins
         winning_combinations = {
             "Rock": "Scissors",
             "Paper": "Rock",
             "Scissors": "Paper",
         }
         return winning_combinations.get(self.type) == other.type
-
     def ties_with(self, other):
         """Check if this card ties with another card (same type and same power)."""
         return self.type == other.type and self.power == other.power
@@ -144,13 +146,21 @@ def check_both_played(game):
     )
 
 
-def get_game_end_status(p1_deck, p2_deck, p1_score, p2_score, turn_number=0):
+def get_game_end_status(p1_deck, p2_deck, p1_score, p2_score, turn_number=0, rounds_played=0):
     """Determine game end status and winner."""
-    # Check for 7th round tie
-    if turn_number == 7 and p1_score == p2_score and len(p1_deck) > 0 and len(p2_deck) > 0:
-        return False, None, True, True, True
+    # After 7 rounds are played, game ends
+    if rounds_played >= 7:
+        # 7 rounds completed - determine final winner
+        if p1_score > p2_score:
+            return True, "player1", False, False, False
+        elif p2_score > p1_score:
+            return True, "player2", False, False, False
+        else:
+            # Tie after 7 rounds - check if tiebreaker possible
+            tie_breaker_possible = len(p1_deck) > 0 and len(p2_deck) > 0
+            return True, None, True, tie_breaker_possible, False
     
-    # Check if either player can continue
+    # Check if either player can continue (need at least 3 cards)
     p1_can_continue = len(p1_deck) >= 3
     p2_can_continue = len(p2_deck) >= 3
 
@@ -159,16 +169,15 @@ def get_game_end_status(p1_deck, p2_deck, p1_score, p2_score, turn_number=0):
     if not game_should_end:
         return False, None, False, False, False
 
-    # Determine winner
+    # One player can't continue - determine winner
     if p1_score > p2_score:
         return True, "player1", False, False, False
     elif p2_score > p1_score:
         return True, "player2", False, False, False
     else:
+        # Tie when one player runs out - check if tiebreaker possible
         tie_breaker_possible = len(p1_deck) > 0 and len(p2_deck) > 0
         return True, None, True, tie_breaker_possible, False
-
-
 HISTORY_LOCK_MESSAGE = "Game history is archived and cannot be modified"
 
 
@@ -191,6 +200,13 @@ def build_history_snapshot(game, player1_score, player2_score, winner_name, p1_d
         round_history = json.loads(game.get("round_history") or "[]")
     except Exception:
         round_history = []
+    created_at_val = game.get("created_at")
+    if isinstance(created_at_val, datetime):
+        created_at_iso = created_at_val.isoformat()
+    elif created_at_val:
+        created_at_iso = str(created_at_val)
+    else:
+        created_at_iso = None
 
     return {
         "game_id": game["game_id"],
@@ -208,9 +224,7 @@ def build_history_snapshot(game, player1_score, player2_score, winner_name, p1_d
         "winner": winner_name,
         "was_tie": player1_score == player2_score,
         "round_history": round_history,
-        "created_at": (
-            game["created_at"].isoformat() if game.get("created_at") else None
-        ),
+        "created_at": created_at_iso,
         "archived_at": datetime.utcnow().isoformat(),
     }
 
@@ -295,24 +309,13 @@ def auto_resolve_round(game):
         except:
             p1_deck = p2_deck = []
 
-        # Check game end status
-        game_should_end, winner, is_tie, tie_breaker_possible, awaiting_tiebreaker = (
-            get_game_end_status(
-                p1_deck, p2_deck, new_p1_score, new_p2_score, turn_number=game["turn"]
-            )
-        )
-
-        # Determine winner name
-        winner_name = None
-        if game_should_end and winner:
-            winner_name = game["player1_name"] if winner == "player1" else game["player2_name"]
-
-        # Store round in history
+        # Get existing round history
         try:
             existing_history = json.loads(game.get("round_history") or "[]")
         except Exception:
             existing_history = []
 
+        # Build round data
         round_data = {
             "round": game["turn"],
             "player1_card": player1_card_data,
@@ -322,7 +325,29 @@ def auto_resolve_round(game):
             "player1_score_after": new_p1_score,
             "player2_score_after": new_p2_score,
         }
-        existing_history.append(round_data)
+        
+        # Count all rounds including this one
+        all_rounds_including_current = existing_history + [round_data]
+        
+        # DEBUG
+        print(f"[DEBUG] Game {game['game_id']}: Turn {game['turn']}, Rounds played: {len(all_rounds_including_current)}, Scores: {new_p1_score}-{new_p2_score}")
+
+        # Check game end status with correct rounds_played count
+        game_should_end, winner, is_tie, tie_breaker_possible, awaiting_tiebreaker = (
+            get_game_end_status(
+                p1_deck, p2_deck, new_p1_score, new_p2_score, 
+                turn_number=game["turn"], 
+                rounds_played=len(all_rounds_including_current)
+            )
+        )
+        
+        # DEBUG
+        print(f"[DEBUG] Game end status: should_end={game_should_end}, winner={winner}, is_tie={is_tie}")
+
+        # Determine winner name (AFTER game_should_end is correctly set)
+        winner_name = None
+        if game_should_end and winner:
+            winner_name = game["player1_name"] if winner == "player1" else game["player2_name"]
 
         # Determine new game status
         if awaiting_tiebreaker:
@@ -333,6 +358,9 @@ def auto_resolve_round(game):
             current_status = game.get("game_status", "active")
             new_game_status = "active" if current_status == "pending" else current_status
 
+        print(f"[DEBUG] New game status: {new_game_status}")
+
+        new_turn = game["turn"] if game_should_end else game["turn"] + 1
         # Update game via DB Manager
         response = requests.put(
             f"{DB_MANAGER_URL}/db/games/{game['game_id']}/resolve-round",
@@ -341,8 +369,8 @@ def auto_resolve_round(game):
                 "player2_score": new_p2_score,
                 "game_status": new_game_status,
                 "winner": winner_name,
-                "turn": game["turn"] + 1,
-                "round_history": existing_history,
+                "turn": new_turn,
+                "round_history": all_rounds_including_current,
                 "awaiting_tiebreaker_response": awaiting_tiebreaker,
             },
             timeout=3
@@ -352,6 +380,7 @@ def auto_resolve_round(game):
             print(f"Failed to resolve round: {response.status_code}")
             return None
 
+        # Archive game if it's completed
         if game_should_end:
             archive_game_history(game, new_p1_score, new_p2_score, winner_name, p1_deck, p2_deck)
 
@@ -370,9 +399,9 @@ def auto_resolve_round(game):
         }
     except Exception as e:
         print(f"Error in auto_resolve_round: {e}")
+        import traceback
+        traceback.print_exc()
         return None
-
-
 def mark_game_as_active(game_id):
     """Mark a game as active via DB Manager."""
     try:
@@ -643,6 +672,10 @@ def draw_hand(game_id):
             return jsonify({
                 "error": "You have already drawn cards this turn. Wait for both players to play."
             }), 400
+        
+        # Check if game is completed
+        if game.get("game_status") == "completed":
+            return jsonify({"error": "Game is completed"}), 400
 
         # Parse deck
         deck_field = "player1_deck_cards" if is_player1 else "player2_deck_cards"
@@ -1527,7 +1560,7 @@ def get_game_status(game_id):
 
         response = requests.get(
             f"{DB_MANAGER_URL}/db/games/{game_id}/status",
-            timeout=3
+            timeout=10
         )
 
         if response.status_code == 404:
