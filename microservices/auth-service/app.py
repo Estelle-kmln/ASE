@@ -587,7 +587,6 @@ def get_profile():
                         "id": user["id"],
                         "username": user["username"],
                         "is_admin": user.get("is_admin", False),
-                        "enabled": user.get("enabled", True),
                         "created_at": user.get("created_at"),
                     }
                 }

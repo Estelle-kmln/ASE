@@ -564,7 +564,7 @@ def get_profile_db(username):
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         cursor.execute(
-            "SELECT id, username, is_admin, enabled, created_at FROM users WHERE username = %s",
+            "SELECT id, username, is_admin, created_at FROM users WHERE username = %s",
             (username,),
         )
         user = cursor.fetchone()
