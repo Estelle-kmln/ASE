@@ -167,6 +167,7 @@ Authorization: Bearer <your_jwt_token>
 - `GET /statistics` - Get card database statistics
 - `GET /types` - Get available card types and powers
 
+
 #### Game Service (`/api/games/`)
 - `POST /` - Create new game and send invitation
 - `GET /{game_id}` - Get game state
