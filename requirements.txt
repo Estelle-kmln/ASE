@@ -21,7 +21,7 @@ validators==0.22.0
 requests>=2.31.0,<2.32.6
 
 # WSGI Server
-gunicorn==23.0.0
+gunicorn==25.1.0
 
 # Environment Variables
 python-dotenv==1.2.1
