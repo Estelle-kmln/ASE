@@ -24,7 +24,7 @@ requests>=2.31.0,<2.32.6
 gunicorn==23.0.0
 
 # Environment Variables
-python-dotenv==1.2.1
+python-dotenv==1.2.2
 
 # Performance Testing
 locust==2.42.6
