@@ -4,4 +4,4 @@ Flask-CORS==6.0.2
 psycopg2-binary==2.9.9
 python-dotenv==1.2.1
 gunicorn==23.0.0
-requests==2.32.4
+requests==2.33.0
